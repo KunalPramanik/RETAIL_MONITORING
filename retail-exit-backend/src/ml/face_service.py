@@ -1,17 +1,20 @@
 """Face Recognition & Biometric Authentication Service
 
-Performs high-accuracy 1:N biometric identification using InsightFace / ArcFace 512-dimensional metric embeddings.
+Performs 1:N biometric identification using InsightFace / ArcFace 512-dimensional metric embeddings.
 Features:
-1. Multi-Frame Temporal Voting: Fuses multiple consecutive video frames (2–5 frames) as the carrier walks
-2. Strict L2-Norm Normalization to eliminate lighting and gain variations
-3. Multi-angle centroid verification against enrolled employee roster
-4. Dynamic confidence decision routing ('MATCHED', 'LOW_CONFIDENCE', 'NO_MATCH')
+1. InsightFace ArcFace Deep-Learning Feature Extractor (buffalo_s model zoo)
+2. SCRFD Deep-Learning Face Detector with 5 Facial Keypoints
+3. Real 512-d L2-Normalized Metric Embeddings
+4. Multi-Frame Temporal Voting & Cosine Similarity Matching
+5. Dynamic Confidence Decision Routing ('MATCHED', 'LOW_CONFIDENCE', 'NO_MATCH')
 """
 
+import os
+import cv2
+import numpy as np
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Union, Tuple
-import numpy as np
-import cv2
+from insightface.app import FaceAnalysis
 
 
 @dataclass
@@ -26,10 +29,23 @@ class FaceMatchResult:
 
 
 class FaceRecognitionService:
-    # InsightFace / ArcFace ResNet-100 512-dimensional embedding model
-    MODEL_VERSION = "insightface-arcface-r100-512d-v2.0+temporal-voting"
-    MATCH_THRESHOLD = 0.78
-    LOW_CONFIDENCE_THRESHOLD = 0.62
+    # InsightFace ArcFace 512-dimensional deep-learning embedding model
+    MODEL_VERSION = "insightface-arcface-buffalo_s-512d"
+    EMBEDDING_DIM = 512
+    MATCH_THRESHOLD = 0.65
+    LOW_CONFIDENCE_THRESHOLD = 0.45
+    THRESHOLD_MATCHED = MATCH_THRESHOLD
+    THRESHOLD_LOW_CONF = LOW_CONFIDENCE_THRESHOLD
+
+    _app: Optional[FaceAnalysis] = None
+
+    @classmethod
+    def get_app(cls) -> FaceAnalysis:
+        if cls._app is None:
+            app = FaceAnalysis(name="buffalo_s", providers=["CPUExecutionProvider"])
+            app.prepare(ctx_id=0, det_size=(640, 640))
+            cls._app = app
+        return cls._app
 
     @staticmethod
     def _normalize(vec: np.ndarray) -> np.ndarray:
@@ -38,6 +54,31 @@ class FaceRecognitionService:
         if norm > 1e-6:
             return vec / norm
         return vec
+
+    @classmethod
+    def cosine_similarity(cls, vec1: np.ndarray, vec2: np.ndarray) -> float:
+        """Computes cosine similarity between two 512-d feature vectors."""
+        v1 = cls._normalize(np.asarray(vec1, dtype=np.float32))
+        v2 = cls._normalize(np.asarray(vec2, dtype=np.float32))
+        return float(np.dot(v1, v2))
+
+    @classmethod
+    def extract_face_embedding(cls, frame_bytes: bytes) -> Optional[List[float]]:
+        """Extracts a real 512-d ArcFace embedding from a single face image."""
+        nparr = np.frombuffer(frame_bytes, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return None
+
+        app = cls.get_app()
+        faces = app.get(img)
+        if not faces:
+            return None
+
+        # Return the embedding of the most prominent face
+        faces.sort(key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]), reverse=True)
+        normed = cls._normalize(faces[0].embedding.astype(np.float32))
+        return normed.tolist()
 
     @classmethod
     def match_carrier(
@@ -63,17 +104,15 @@ class FaceRecognitionService:
         # Handle both single vector and multi-frame sequence
         frames: List[np.ndarray] = []
         if isinstance(probe_embedding[0], (int, float)):
-            # Single frame embedding vector [512]
             frames.append(cls._normalize(np.array(probe_embedding, dtype=np.float32)))
         else:
-            # Multi-frame sequence [[512], [512], ...]
             for f in probe_embedding:
                 frames.append(cls._normalize(np.array(f, dtype=np.float32)))
 
         best_score = -1.0
         best_employee = None
 
-        # Pre-process stored employee embeddings (support single vector or list of angle vectors)
+        # Compare against stored employee 512-d embeddings
         for emp in enrolled_employees:
             stored_emb = emp.get("face_embedding")
             if not stored_emb:
@@ -87,7 +126,6 @@ class FaceRecognitionService:
                     stored_vecs.append(cls._normalize(np.array(sv, dtype=np.float32)))
 
             # Multi-frame temporal evaluation
-            # Compare each captured frame against all stored angle templates for this employee
             frame_scores = []
             for frame_vec in frames:
                 max_frame_sim = max(float(np.dot(frame_vec, s_vec)) for s_vec in stored_vecs)
@@ -95,7 +133,6 @@ class FaceRecognitionService:
 
             if frame_scores:
                 frame_scores.sort(reverse=True)
-                # If the sharpest frame crosses the threshold, adopt the clear frame
                 if frame_scores[0] >= threshold:
                     emp_similarity = frame_scores[0]
                 elif len(frame_scores) > 1:
@@ -149,7 +186,7 @@ class FaceRecognitionService:
         enrolled_employees: List[Dict[str, Any]],
         match_threshold: Optional[float] = None,
     ) -> Tuple[FaceMatchResult, Optional[bytes], List[List[int]]]:
-        """Detects faces in raw image frame, extracts biometric embeddings, matches against active roster, and annotates frame."""
+        """Detects faces using InsightFace SCRFD and extracts ArcFace 512-d embeddings."""
         nparr = np.frombuffer(frame_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
@@ -168,33 +205,26 @@ class FaceRecognitionService:
                 [],
             )
 
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        haar_data = getattr(cv2, "data", None)
-        cascade_file = (haar_data.haarcascades if haar_data else "") + "haarcascade_frontalface_default.xml"
-        cascade = cv2.CascadeClassifier(cascade_file)
-
-        faces = cascade.detectMultiScale(
-            gray,
-            scaleFactor=1.1,
-            minNeighbors=4,
-            minSize=(35, 35),
-            flags=cv2.CASCADE_SCALE_IMAGE,
-        )
-
         detected_boxes: List[List[int]] = []
         probe_embeddings: List[List[float]] = []
 
-        for (x, y, w, h) in faces:
-            detected_boxes.append([int(x), int(y), int(w), int(h)])
+        try:
+            app = cls.get_app()
+            faces = app.get(img)
 
-            # Extract face ROI and generate normalized 512-d biometric descriptor
-            face_roi = gray[y : y + h, x : x + w]
-            resized_roi = cv2.resize(face_roi, (32, 16), interpolation=cv2.INTER_AREA)
-            emb = resized_roi.astype(np.float32).flatten() / 255.0
-            emb_norm = cls._normalize(emb)
-            probe_embeddings.append(emb_norm.tolist())
+            for face in faces:
+                x1, y1, x2, y2 = face.bbox.astype(int).tolist()
+                w = max(1, x2 - x1)
+                h = max(1, y2 - y1)
+                detected_boxes.append([int(x1), int(y1), int(w), int(h)])
 
-        # Match against enrolled employees
+                # Extract ArcFace 512-dimensional embedding
+                emb = cls._normalize(face.embedding.astype(np.float32))
+                probe_embeddings.append(emb.tolist())
+        except Exception:
+            pass
+
+        # Match against enrolled roster
         if probe_embeddings:
             match_res = cls.match_carrier(
                 probe_embedding=probe_embeddings,
@@ -212,11 +242,11 @@ class FaceRecognitionService:
                 frames_evaluated=1,
             )
 
-        # Draw face detection boxes on the image
-        for (x, y, w, h) in faces:
+        # Annotate face detections on the frame
+        for [x, y, w, h] in detected_boxes:
             box_color = (255, 200, 0) if match_res.decision == "MATCHED" else (0, 0, 255)
             cv2.rectangle(img, (x, y), (x + w, y + h), box_color, 2)
-            label = f"CARRIER: {match_res.employee_name or 'UNENROLLED'} ({match_res.decision})"
+            label = f"ARCFACE: {match_res.employee_name or 'UNENROLLED'} ({match_res.decision})"
             (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
             cv2.rectangle(img, (x, max(0, y - th - 6)), (x + tw + 6, max(th + 6, y)), box_color, -1)
             cv2.putText(

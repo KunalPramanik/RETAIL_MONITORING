@@ -90,3 +90,35 @@ async def test_list_invoices_after_upload(client):
     numbers = [inv["invoiceNumber"] for inv in invoices]
     assert "BOL-PERSIST-101" in numbers
 
+
+@pytest.mark.asyncio
+async def test_upload_invoice_with_real_paddleocr(client):
+    """Test uploading an invoice image with text parsed by deep-learning PaddleOCR."""
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGB", (600, 300), color=(255, 255, 255))
+    draw = ImageDraw.Draw(img)
+    draw.text((20, 20), "INVOICE: BOL-REAL-8899", fill=(0, 0, 0))
+    draw.text((20, 60), "CARRIER: BLUEDART LOGISTICS", fill=(0, 0, 0))
+    draw.text((20, 110), "SKU-WTR-500-24 3 CS PACK 24", fill=(0, 0, 0))
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG")
+    buf.seek(0)
+    buf.name = "real_bill.jpg"
+
+    files = {"file": ("real_bill.jpg", buf, "image/jpeg")}
+    resp = await client.post("/api/invoices/upload", files=files)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert "BOL-REAL-8899" in body["invoiceNumber"]
+    assert "BLUEDART" in body["carrierName"].upper()
+    assert body["declaredTotalUnits"] == 72
+    assert body["ocrConfidence"] > 70.0
+    assert len(body["lineItems"]) >= 1
+    assert body["lineItems"][0]["skuCode"] == "SKU-WTR-500-24"
+    assert body["lineItems"][0]["casesDeclared"] == 3
+    assert body["lineItems"][0]["unitsPerCase"] == 24
+    assert body["lineItems"][0]["totalUnits"] == 72
+
+

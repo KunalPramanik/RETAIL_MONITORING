@@ -127,65 +127,59 @@ async def upload_invoice_bill(
     with open(saved_path, "wb") as f:
         f.write(content)
 
-    # Determine unique invoice number
-    if invoiceNumber and invoiceNumber.strip():
-        inv_num = invoiceNumber.strip().upper()
-    else:
-        inv_num = f"BOL-2026-{random.randint(1000, 9999)}"
+    # Query catalog products for accurate SKU matching and pack size lookup
+    prod_res = await session.execute(select(Product))
+    catalog_products = [
+        {"sku_code": p.sku_code, "name": p.name, "pack_size": p.pack_size}
+        for p in prod_res.scalars().all()
+    ]
+    catalog_skus = [p["sku_code"] for p in catalog_products]
 
-    existing = await session.execute(select(Invoice).where(Invoice.invoice_number == inv_num))
-    if existing.scalar_one_or_none():
-        inv_num = f"{inv_num}-{random.randint(10, 99)}"
-
-    # Carrier Name
-    carrier = carrierName.strip() if carrierName and carrierName.strip() else random.choice([
-        "BlueDart Logistics Express",
-        "Delhivery Freight & Parcel",
-        "Gati-KWE Multi-Modal",
-        "DHL Supply Chain India",
-        "V-Trans Logistics",
-    ])
-
-    destination = storeDestination.strip() if storeDestination and storeDestination.strip() else "Store #402 - Metro Central"
-
-    # Line items parsing
-    parsed_items = []
-    if lineItemsJson:
+    # Line items parsing or deep-learning OCR extraction
+    parsed_items = None
+    if lineItemsJson and lineItemsJson.strip():
         try:
             parsed_items = json.loads(lineItemsJson)
         except Exception:
-            parsed_items = []
+            parsed_items = None
 
-    if not parsed_items:
-        prod_res = await session.execute(select(Product).limit(4))
-        catalog = prod_res.scalars().all()
-        if catalog:
-            for p in catalog:
-                cases = random.randint(2, 6)
-                parsed_items.append({
-                    "skuCode": p.sku_code,
-                    "description": p.name,
-                    "casesDeclared": cases,
-                    "unitsPerCase": p.pack_size,
-                    "totalUnits": cases * p.pack_size,
-                    "status": "MATCHED",
-                })
-        else:
-            parsed_items.append({
-                "skuCode": "SKU-WAT-500",
-                "description": "Glacier Spring Water 500ml",
-                "casesDeclared": 5,
-                "unitsPerCase": 24,
-                "totalUnits": 120,
-                "status": "MATCHED",
-            })
+    if parsed_items:
+        # Structured manifest passed directly
+        inv_num = invoiceNumber.strip().upper() if invoiceNumber and invoiceNumber.strip() else f"BOL-2026-{random.randint(1000, 9999)}"
+        carrier = carrierName.strip() if carrierName and carrierName.strip() else "BlueDart Logistics Express"
+        destination = storeDestination.strip() if storeDestination and storeDestination.strip() else "Store #402 - Metro Central"
+        ocr_result = OcrService.parse_manifest(
+            invoice_number=inv_num,
+            carrier_name=carrier,
+            line_items_data=parsed_items,
+            catalog_skus=catalog_skus,
+        )
+    else:
+        # Deep-learning PaddleOCR text and layout extraction directly from image bytes
+        ocr_result = OcrService.extract_from_image(
+            image_bytes=content,
+            catalog_skus=catalog_skus,
+            catalog_products=catalog_products,
+            default_invoice_num=invoiceNumber.strip().upper() if invoiceNumber and invoiceNumber.strip() else None,
+            default_carrier=carrierName.strip() if carrierName and carrierName.strip() else None,
+        )
+        inv_num = (
+            invoiceNumber.strip().upper() if invoiceNumber and invoiceNumber.strip()
+            else (ocr_result.extracted_invoice_number or f"BOL-2026-{random.randint(1000, 9999)}")
+        )
+        carrier = (
+            carrierName.strip() if carrierName and carrierName.strip()
+            else (ocr_result.extracted_carrier or "BlueDart Logistics Express")
+        )
+        destination = (
+            storeDestination.strip() if storeDestination and storeDestination.strip()
+            else (ocr_result.extracted_destination or "Store #402 - Metro Central")
+        )
 
-    # OCR Processing
-    ocr_result = OcrService.parse_manifest(
-        invoice_number=inv_num,
-        carrier_name=carrier,
-        line_items_data=parsed_items,
-    )
+    # Ensure invoice number uniqueness
+    existing = await session.execute(select(Invoice).where(Invoice.invoice_number == inv_num))
+    if existing.scalar_one_or_none():
+        inv_num = f"{inv_num}-{random.randint(10, 99)}"
 
     # Insert into database
     new_invoice = Invoice(

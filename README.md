@@ -14,9 +14,10 @@ An industrial-grade physical-security and loss-prevention control room platform 
                                                       |
                                                       v
 +------------------------+        +---------------------------------------+
-|  Hard-Copy Bills /     |  OCR   |   Inference & Ingestion Pipeline      |
-|  Manifest Ingestion    +------->|   - OpenCV Contour Detection          |
-+------------------------+        |   - Biometric Face Recognition        |
+|  Hard-Copy Bills /     |  OCR   |   Deep-Learning Ingestion Pipeline    |
+|  Manifest Ingestion    +------->|   - Megvii YOLOX (Apache 2.0)         |
++------------------------+        |   - InsightFace ArcFace (512-d)       |
+                                  |   - PaddleOCR (DBNet + CRNN)          |
                                   |   - Multi-Modal Sensor Fusion         |
                                   +-------------------+-------------------+
                                                       |
@@ -73,10 +74,10 @@ An industrial-grade physical-security and loss-prevention control room platform 
 │   │   ├── api/                # REST endpoints (cameras, events, alerts, invoices, etc.)
 │   │   ├── db/                 # Models, sessions, migrations & baseline init
 │   │   ├── engine/             # Camera worker, fusion engine & verdict logic
-│   │   ├── ml/                 # OpenCV vision contours & face matching
+│   │   ├── ml/                 # Megvii YOLOX, InsightFace ArcFace & PaddleOCR
 │   │   ├── schemas/            # Pydantic schemas
 │   │   └── main.py             # FastAPI entrypoint, lifespan & static mounts
-│   ├── tests/                  # 45+ unit, integration and CV pipeline tests
+│   ├── tests/                  # 49 unit, integration, and deep-learning ML tests
 │   ├── snapshots/              # Evidence snapshots and camera previews
 │   └── uploads/                # Hard-copy invoice uploads
 │
@@ -153,7 +154,7 @@ cd retail-exit-backend
 python -m pytest -v
 ```
 
-All 45 unit and integration tests run in isolated in-memory SQLite and verify all fusion, verdict, OCR, and computer vision pipelines.
+All 49 unit and integration tests run in isolated in-memory SQLite and verify all fusion, verdict, OCR, and computer vision pipelines.
 
 ---
 

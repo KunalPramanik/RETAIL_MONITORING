@@ -1,0 +1,13 @@
+{
+  "include": [
+    "retail-exit-backend"
+  ],
+  "extraPaths": [
+    "retail-exit-backend",
+    "retail-exit-backend/src"
+  ],
+  "venvPath": "retail-exit-backend",
+  "venv": ".venv",
+  "reportMissingImports": "none"
+}
+

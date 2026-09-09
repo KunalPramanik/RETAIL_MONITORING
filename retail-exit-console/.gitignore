@@ -1,0 +1,14 @@
+# Node dependencies
+node_modules/
+
+# Production build artifacts
+dist/
+dist-ssr/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment local overrides
+.env.local
+.env.*.local

@@ -1,0 +1,22 @@
+# Python Virtual Environment
+.venv/
+venv/
+
+# Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local database
+retail_exit.db
+*.sqlite3
+
+# Uploads and snapshots
+uploads/invoices/*
+!uploads/invoices/.gitkeep
+snapshots/*
+!snapshots/.gitkeep
+
+# Logs
+*.log
+

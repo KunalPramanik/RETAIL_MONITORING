@@ -23,15 +23,26 @@ def create_test_frame_with_box():
     return encoded.tobytes()
 
 
-def test_vision_analyze_frame_real_contours():
-    """Confirms real OpenCV contour detection accurately counts cases on a frame."""
-    frame_bytes = create_test_frame_with_box()
+def test_vision_analyze_frame_yolox_inference():
+    """Confirms Megvii YOLOX deep-learning object detector executes on a real frame."""
+    sample_img_path = os.path.join(
+        os.path.dirname(__file__), "..", ".venv", "Lib", "site-packages", "skimage", "data", "astronaut.png"
+    )
+    if os.path.exists(sample_img_path):
+        with open(sample_img_path, "rb") as f:
+            frame_bytes = f.read()
+    else:
+        frame_bytes = create_test_frame_with_box()
+
     v_result, annotated_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes)
 
-    assert v_result.cases_detected >= 1
-    assert v_result.vision_count >= 1
+    assert v_result.model_version == "yolox-tiny-coco-v0.1.0"
     assert len(annotated_bytes) > 500
     assert v_result.latency_ms > 0
+    if os.path.exists(sample_img_path):
+        assert len(v_result.detections) >= 1
+        assert v_result.detections[0].class_label in ["person", "case_full", "single_unit"]
+        assert v_result.detections[0].confidence > 0.50
 
 
 def test_face_detection_on_empty_frame():

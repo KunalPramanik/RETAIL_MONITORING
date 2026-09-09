@@ -380,49 +380,9 @@ class VisionInferenceService:
                         1,
                         cv2.LINE_AA,
                     )
-        except Exception as e:
+        except Exception:
             # Safe recovery if ONNX forward pass fails
             pass
-
-        # If synthetic test frame contains prominent case package box without full COCO scene context
-        if len(detections) == 0:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-            _, thresh = cv2.threshold(blurred, 200, 255, cv2.THRESH_BINARY)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            for c in contours:
-                area = cv2.contourArea(c)
-                if area > 10000:
-                    bx, by, bw, bh = cv2.boundingRect(c)
-                    conf = 0.92
-                    total_cases += 1
-                    total_units += default_pack
-                    conf_scores.append(conf)
-                    detections.append(
-                        DetectedBox(
-                            bbox=[int(bx), int(by), int(bw), int(bh)],
-                            class_label="case_full",
-                            product_id=default_prod_id,
-                            sku_code=default_sku,
-                            confidence=conf,
-                            pack_size=default_pack,
-                            track_id=track_id_seq + 1,
-                            exit_vector=(0.0, 15.0),
-                        )
-                    )
-                    cv2.rectangle(img, (bx, by), (bx + bw, by + bh), (0, 230, 115), 2)
-                    cv2.putText(
-                        img,
-                        f"YOLOX: CASE_FULL 92%",
-                        (bx + 3, max(20, by - 4)),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.45,
-                        (0, 230, 115),
-                        1,
-                        cv2.LINE_AA,
-                    )
-                    break
 
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.95

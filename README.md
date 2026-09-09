@@ -162,3 +162,4 @@ All 45 unit and integration tests run in isolated in-memory SQLite and verify al
 - Edge camera streams and tokens are scoped strictly to specific retail lanes.
 - Cryptographic pairing tokens expire in 10 minutes and are single-use.
 - Biometric face embeddings are evaluated dynamically in-memory without persistent external tracking.
+

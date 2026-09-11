@@ -43,10 +43,28 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+def _sync_upgrade_sqlite_schema(sync_conn):
+    """Ensure newly added columns exist in SQLite tables across migrations without data loss."""
+    from sqlalchemy import text
+    try:
+        res = sync_conn.execute(text("PRAGMA table_info(camera)"))
+        cam_cols = [row[1] for row in res.fetchall()]
+        if "sub_stream_path" not in cam_cols:
+            sync_conn.execute(text("ALTER TABLE camera ADD COLUMN sub_stream_path VARCHAR(255)"))
+        
+        res = sync_conn.execute(text("PRAGMA table_info(camera_heartbeat)"))
+        hb_cols = [row[1] for row in res.fetchall()]
+        if "dropped_frames" not in hb_cols:
+            sync_conn.execute(text("ALTER TABLE camera_heartbeat ADD COLUMN dropped_frames INTEGER DEFAULT 0"))
+    except Exception:
+        pass
+
+
 async def init_db():
-    """Create all database tables on application startup."""
+    """Create all database tables on application startup and auto-migrate added columns."""
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_sync_upgrade_sqlite_schema)
 
 
 async def close_db():

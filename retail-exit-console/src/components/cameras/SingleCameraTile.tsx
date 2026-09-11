@@ -315,6 +315,39 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
     status: camera.status,
   });
 
+  // ── 8b. Real-Time AI Detections & Biometric Overlay ───────────────
+  const [showAiDetections, setShowAiDetections] = useState(true);
+  const [liveDetection, setLiveDetection] = useState<{
+    casesDetected: number;
+    unitsDetected: number;
+    carrierName: string;
+    faceDecision: string;
+    confidence: number;
+    boxesCount: number;
+  } | null>(null);
+
+  const fetchLiveDetection = useCallback(async () => {
+    try {
+      const data = await api.getCameraLiveDetection(camera.cameraId);
+      setLiveDetection({
+        casesDetected: data.casesDetected,
+        unitsDetected: data.unitsDetected,
+        carrierName: data.carrierName,
+        faceDecision: data.faceDecision,
+        confidence: data.confidence,
+        boxesCount: data.boxesCount,
+      });
+    } catch {
+      // ignore
+    }
+  }, [camera.cameraId]);
+
+  useEffect(() => {
+    fetchLiveDetection();
+    const interval = setInterval(fetchLiveDetection, refreshIntervalMs > 0 ? refreshIntervalMs : 2500);
+    return () => clearInterval(interval);
+  }, [fetchLiveDetection, refreshIntervalMs, snapshotKey]);
+
   const fetchTelemetry = useCallback(async () => {
     try {
       const data = await api.getCameraTelemetry(camera.cameraId);
@@ -552,6 +585,32 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
           </div>
         )}
 
+        {/* Real-time AI Detections Overlay HUD (Matches EventDetailPanel) */}
+        {showAiDetections && (
+          <>
+            {/* Top Center: Live CV Tracking Mode Banner */}
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded bg-black/85 text-status-ok border border-status-ok/40 font-mono text-[11px] font-bold tracking-wider backdrop-blur-sm pointer-events-none shadow-lg">
+              <CameraIcon className="w-3.5 h-3.5 text-status-ok animate-pulse" />
+              LIVE CV INFERENCE // {assignedLane ? assignedLane.laneId : camera.label}
+            </div>
+
+            {/* Middle Overlay: Real-time Object & Biometric Detections */}
+            <div className="absolute inset-x-2 bottom-8 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-black/85 border border-status-ok/70 text-status-ok font-mono text-[11px] rounded-sm font-semibold shadow-md">
+                  DETECTED: {liveDetection?.casesDetected ?? 0} CASES · {liveDetection?.unitsDetected ?? 0} UNITS
+                </span>
+                <span className="px-2 py-0.5 bg-black/85 border border-hairline text-text-pri font-mono text-[11px] rounded-sm shadow-md">
+                  CARRIER: {liveDetection?.carrierName ?? 'UNVERIFIED'}
+                </span>
+              </div>
+              <span className="px-2 py-0.5 bg-black/85 border border-amber/60 text-amber font-mono text-[11px] rounded-sm font-semibold shadow-md">
+                CONSENSUS: {liveDetection?.unitsDetected ?? 0} UNITS
+              </span>
+            </div>
+          </>
+        )}
+
         {/* Viewport Top Overlay: Status & Stream Resolution */}
         {!isRecording && (
           <div className="absolute top-2 left-2 flex items-center gap-1.5 text-[10px] font-mono pointer-events-none">
@@ -722,6 +781,21 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
               )}
             </div>
           )}
+
+          {/* AI Detections Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowAiDetections(!showAiDetections)}
+            className={`px-2 py-1 rounded border transition-colors flex items-center gap-1 font-mono text-[10px] ${
+              showAiDetections
+                ? 'bg-status-ok/20 text-status-ok border-status-ok/40 font-bold'
+                : 'text-text-sec hover:text-text-pri bg-panel hover:bg-panel-raised border-hairline'
+            }`}
+            title="Toggle Live AI Detections & Bounding Overlays"
+          >
+            <Zap className={`w-3 h-3 ${showAiDetections ? 'text-status-ok fill-current' : 'text-text-sec'}`} />
+            <span>AI DETECT: {showAiDetections ? 'ON' : 'OFF'}</span>
+          </button>
 
           {/* Health HUD Toggle */}
           <button

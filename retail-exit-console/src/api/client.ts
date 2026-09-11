@@ -279,6 +279,20 @@ export const api = {
     return request(`/cameras/${cameraId}/telemetry`);
   },
 
+  async getCameraLiveDetection(cameraId: string): Promise<{
+    cameraId: string;
+    laneId?: string;
+    casesDetected: number;
+    unitsDetected: number;
+    carrierName: string;
+    faceDecision: string;
+    confidence: number;
+    boxesCount: number;
+    timestamp: string;
+  }> {
+    return request(`/cameras/${cameraId}/detection`);
+  },
+
   async updateCamera(cameraId: string, data: Partial<Camera>): Promise<Camera> {
     return request<Camera>(`/cameras/${cameraId}`, {
       method: 'PUT',

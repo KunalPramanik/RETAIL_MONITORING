@@ -50,6 +50,7 @@ class CameraIngestionWorker:
         self._task: Optional[asyncio.Task] = None
         self._last_frames: Dict[str, np.ndarray] = {}
         self._last_event_time: Dict[str, float] = {}
+        self._last_detections: Dict[str, Dict[str, Any]] = {}
 
     def start(self):
         """Starts the background camera ingestion worker."""
@@ -149,11 +150,57 @@ class CameraIngestionWorker:
         cam.status = "ONLINE"
         cam.offline_since = None
 
+        # Real-Time CV & Biometric Detection for Live Preview
+        annotated_bytes = frame_bytes
+        detection_data = {
+            "cameraId": cam.camera_id,
+            "laneId": cam.lane_id,
+            "casesDetected": 0,
+            "unitsDetected": 0,
+            "carrierName": "UNVERIFIED",
+            "faceDecision": "NO_MATCH",
+            "confidence": 95.0,
+            "boxesCount": 0,
+            "timestamp": now.isoformat(),
+        }
+
+        try:
+            prod_res = await session.execute(select(Product))
+            products = prod_res.scalars().all()
+            catalog = [
+                {"product_id": p.product_id, "sku_code": p.sku_code, "pack_size": p.pack_size}
+                for p in products
+            ]
+            emp_res = await session.execute(select(Employee).where(Employee.active_flag == True))
+            employees = emp_res.scalars().all()
+            roster = [
+                {"employee_id": e.employee_id, "name": e.name, "face_embedding": e.face_embedding}
+                for e in employees
+            ]
+
+            vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, catalog_products=catalog)
+            face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(obj_bytes or frame_bytes, roster)
+            annotated_bytes = final_bytes or obj_bytes or frame_bytes
+
+            carrier_label = face_res.employee_name if face_res.matched_employee_id else "UNVERIFIED"
+            detection_data.update({
+                "casesDetected": vis_res.cases_detected,
+                "unitsDetected": vis_res.vision_count,
+                "carrierName": carrier_label,
+                "faceDecision": face_res.decision,
+                "confidence": round(vis_res.vision_confidence * 100, 1) if vis_res.vision_confidence else 95.0,
+                "boxesCount": len(vis_res.detections) + len(face_boxes),
+            })
+        except Exception as e:
+            logger.warning("Preview CV annotation error on %s: %s", cam.camera_id, e)
+
+        self._last_detections[cam.camera_id] = detection_data
+
         os.makedirs("snapshots", exist_ok=True)
         preview_path = os.path.join("snapshots", f"preview_{cam.camera_id}.jpg")
         try:
             with open(preview_path, "wb") as f:
-                f.write(frame_bytes)
+                f.write(annotated_bytes)
         except Exception as e:
             logger.warning("Could not write preview snapshot: %s", e)
 
@@ -169,7 +216,20 @@ class CameraIngestionWorker:
                 trigger_reason="MOTION_TRAVERSAL",
             )
 
-        return frame_bytes
+        return annotated_bytes
+
+    def get_latest_detection(self, camera_id: str) -> Dict[str, Any]:
+        """Returns the latest real-time CV detection metadata for the given camera."""
+        return self._last_detections.get(camera_id, {
+            "cameraId": camera_id,
+            "casesDetected": 0,
+            "unitsDetected": 0,
+            "carrierName": "UNVERIFIED",
+            "faceDecision": "NO_MATCH",
+            "confidence": 95.0,
+            "boxesCount": 0,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
 
     def _check_motion(self, camera_id: str, frame_bytes: bytes) -> bool:
         """Determines if significant motion / traversal occurred between consecutive frames."""

@@ -503,7 +503,16 @@ async def test_camera_connection(
     snapshot_path = os.path.join("snapshots", f"preview_{camera_id}.jpg")
 
     has_real_frame = frame_bytes is not None
-    if not has_real_frame:
+    if has_real_frame:
+        try:
+            from src.ml.vision_service import VisionInferenceService
+            from src.ml.face_service import FaceRecognitionService
+            vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, [])
+            face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(obj_bytes or frame_bytes, [])
+            frame_bytes = final_bytes or obj_bytes or frame_bytes
+        except Exception:
+            pass
+    else:
         frame_bytes = generate_diagnostic_preview_frame(
             label=cam.label if cam else f"Camera {ip}",
             ip=ip,
@@ -585,13 +594,38 @@ async def get_camera_snapshot(
             str(cam.stream_url or "") if cam.stream_url else None,
         )
         if frame_bytes:
+            annotated_bytes = frame_bytes
+            try:
+                from src.ml.vision_service import VisionInferenceService
+                from src.ml.face_service import FaceRecognitionService
+                from src.db.models import Product, Employee
+
+                prod_res = await session.execute(select(Product))
+                products = prod_res.scalars().all()
+                catalog = [
+                    {"product_id": p.product_id, "sku_code": p.sku_code, "pack_size": p.pack_size}
+                    for p in products
+                ]
+                emp_res = await session.execute(select(Employee).where(Employee.active_flag == True))
+                employees = emp_res.scalars().all()
+                roster = [
+                    {"employee_id": e.employee_id, "name": e.name, "face_embedding": e.face_embedding}
+                    for e in employees
+                ]
+
+                vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, catalog_products=catalog)
+                face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(obj_bytes or frame_bytes, roster)
+                annotated_bytes = final_bytes or obj_bytes or frame_bytes
+            except Exception:
+                pass
+
             try:
                 with open(snapshot_path, "wb") as f:
-                    f.write(frame_bytes)
+                    f.write(annotated_bytes)
             except Exception:
                 pass
             return Response(
-                content=frame_bytes,
+                content=annotated_bytes,
                 media_type="image/jpeg",
                 headers={
                     "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -638,6 +672,13 @@ async def get_camera_snapshot(
             "Expires": "0",
         },
     )
+
+
+@router.get("/{camera_id}/detection")
+async def get_camera_detection(camera_id: str):
+    """Returns the latest real-time CV detection and biometric tracking metadata."""
+    from src.engine.camera_worker import camera_worker
+    return camera_worker.get_latest_detection(camera_id)
 
 
 @router.post("/{camera_id}/scan-now")

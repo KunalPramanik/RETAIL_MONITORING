@@ -166,17 +166,17 @@ export const DashboardView: React.FC = () => {
       </div>
 
       {/* Lower Section: Selected Event Detail Inspector */}
-      {selectedEvent ? (
+      {selectedEvent || filteredEvents[0] ? (
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="text-xs-tech font-semibold text-text-sec uppercase tracking-wider">
               Selected Exit Telemetry & Forensic Math
             </h3>
             <span className="font-mono text-xs-tech text-amber font-semibold">
-              EVENT: {selectedEvent.eventId}
+              EVENT: {(selectedEvent || filteredEvents[0]).eventId}
             </span>
           </div>
-          <EventDetailPanel event={selectedEvent} />
+          <EventDetailPanel event={selectedEvent || filteredEvents[0]} />
         </div>
       ) : (
         <div className="p-6 bg-panel border border-hairline rounded-sm text-center text-xs-tech text-text-sec">

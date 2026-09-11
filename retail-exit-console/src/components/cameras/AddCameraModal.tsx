@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppData } from '../../context/AppDataContext';
+import { resolveMediaUrl } from '../../api/client';
 import {
   Radio,
   CheckCircle2,
@@ -570,14 +571,17 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                     {[
                       {
+                        name: 'Local Webcam (0)',
+                        payload: '0',
+                      },
+                      {
+                        name: 'ESP32 IPCAM',
+                        payload: '{"ip":"192.168.29.17","path":"/snapshot","model":"ESP32-CAM","user":"admin","pass":""}',
+                      },
+                      {
                         name: 'Hikvision 4K',
                         payload:
                           '{"ip":"192.168.1.120","path":"/Streaming/Channels/101","model":"DS-2CD2386G2","user":"admin","pass":"SecOps2026!"}',
-                      },
-                      {
-                        name: 'Dahua Bullet',
-                        payload:
-                          '{"ip":"192.168.1.125","path":"/cam/realmonitor?channel=1","model":"IPC-HFW5842E","user":"admin","pass":"Dahua2026!"}',
                       },
                       {
                         name: 'Mobile IP Cam',
@@ -1031,11 +1035,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                         </div>
                         {testResult.snapshotUrl && !snapshotLoadFailed ? (
                           <img
-                            src={
-                              testResult.snapshotUrl.startsWith('http')
-                                ? testResult.snapshotUrl
-                                : `http://127.0.0.1:8000${testResult.snapshotUrl}?t=${Date.now()}`
-                            }
+                            src={resolveMediaUrl(`${testResult.snapshotUrl}?t=${Date.now()}`)}
                             alt="Live Camera Snapshot"
                             className="w-full h-full object-cover"
                             onError={() => setSnapshotLoadFailed(true)}

@@ -17,6 +17,33 @@ import type {
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+export const BACKEND_URL = API_BASE.replace(/\/api\/?$/, '');
+
+/** Resolves any relative media/snapshot URL against the active dynamic backend URL. */
+export function resolveMediaUrl(pathOrUrl?: string | null): string {
+  if (!pathOrUrl) return '';
+  if (
+    pathOrUrl.startsWith('http://') ||
+    pathOrUrl.startsWith('https://') ||
+    pathOrUrl.startsWith('blob:') ||
+    pathOrUrl.startsWith('data:')
+  ) {
+    return pathOrUrl;
+  }
+  const cleanPath = pathOrUrl.startsWith('/') ? pathOrUrl : `/${pathOrUrl}`;
+  return `${BACKEND_URL}${cleanPath}`;
+}
+
+/** Dynamically builds the live CCTV snapshot stream URL for a given camera ID. */
+export function getCameraSnapshotUrl(
+  cameraId: string,
+  key?: number | string,
+  quality?: 'main' | 'sub'
+): string {
+  const t = key || Date.now();
+  const streamParam = quality === 'sub' ? '&stream=sub' : '';
+  return `${BACKEND_URL}/api/cameras/${cameraId}/snapshot?t=${t}${streamParam}`;
+}
 
 export interface LiveKPIs {
   todayThroughputUnits: number;
@@ -219,12 +246,26 @@ export const api = {
 
   async testCameraConnection(
     cameraId: string,
-    overrides?: { ipAddress?: string; rtspPath?: string; subStreamPath?: string; credentials?: string }
+    overrides?: { ipAddress?: string; rtspPath?: string; subStreamPath?: string; streamUrl?: string; credentials?: string }
   ): Promise<TestConnectionResult> {
     return request<TestConnectionResult>(`/cameras/${cameraId}/test-connection`, {
       method: 'POST',
       body: JSON.stringify(overrides || {}),
     });
+  },
+
+  async scanCameraNow(cameraId: string): Promise<{
+    success: boolean;
+    eventId: string;
+    laneId: string;
+    casesDetected: number;
+    unitsDetected: number;
+    verdict: string;
+    severity: string;
+    snapshotUrl?: string;
+    detail?: string;
+  }> {
+    return request(`/cameras/${cameraId}/scan-now`, { method: 'POST' });
   },
 
   async getCameraTelemetry(cameraId: string): Promise<{

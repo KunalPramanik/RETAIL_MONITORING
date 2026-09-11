@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppData } from '../../context/AppDataContext';
+import { resolveMediaUrl } from '../../api/client';
 import type { Camera } from '../../types';
 import { CameraStatusDot } from './CameraStatusDot';
 import { AddCameraModal } from './AddCameraModal';
@@ -163,7 +164,7 @@ export const CameraManagementPanel: React.FC = () => {
             )}
             {testResult.snapshotUrl && (
               <img
-                src={testResult.snapshotUrl.startsWith('http') ? testResult.snapshotUrl : `http://127.0.0.1:8000${testResult.snapshotUrl}?t=${Date.now()}`}
+                src={resolveMediaUrl(`${testResult.snapshotUrl}?t=${Date.now()}`)}
                 alt="Camera live frame"
                 className="w-14 h-9 object-cover rounded border border-hairline shrink-0"
               />

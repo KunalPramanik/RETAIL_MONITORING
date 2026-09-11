@@ -28,9 +28,10 @@ class CameraResponse(BaseModel):
 
 class CameraCreate(BaseModel):
     label: str = Field(..., min_length=2, max_length=255)
-    ipAddress: str = Field(..., pattern=r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|localhost")
+    ipAddress: str = Field(..., min_length=1, max_length=255)
     rtspPath: str = Field(..., min_length=1)
     subStreamPath: Optional[str] = None
+    streamUrl: Optional[str] = None
     credentials: Optional[str] = None
     laneId: Optional[str] = None
     pairingMethod: Optional[str] = "MANUAL"
@@ -43,6 +44,7 @@ class CameraUpdate(BaseModel):
     ipAddress: Optional[str] = None
     rtspPath: Optional[str] = None
     subStreamPath: Optional[str] = None
+    streamUrl: Optional[str] = None
     credentials: Optional[str] = None
     laneId: Optional[str] = None
     resolution: Optional[str] = None
@@ -54,6 +56,7 @@ class CameraTestConnectionRequest(BaseModel):
     ipAddress: Optional[str] = None
     rtspPath: Optional[str] = None
     subStreamPath: Optional[str] = None
+    streamUrl: Optional[str] = None
     credentials: Optional[str] = None
 
 
@@ -116,7 +119,7 @@ class PairingTokenResponse(BaseModel):
 
 class PairCameraRequest(BaseModel):
     token: str
-    ipAddress: Optional[str] = "192.168.10.45"
+    ipAddress: Optional[str] = None
     label: Optional[str] = None
     model: Optional[str] = None
     rtspPath: Optional[str] = "/live/ch0"

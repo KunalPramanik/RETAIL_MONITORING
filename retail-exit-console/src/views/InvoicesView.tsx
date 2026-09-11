@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAppData } from '../context/AppDataContext';
+import { resolveMediaUrl } from '../api/client';
 import type { Invoice, InvoiceLineItem, ExitEvent } from '../types';
 import { Modal } from '../components/common/Modal';
 import { UploadBillModal } from '../components/invoices/UploadBillModal';
@@ -242,7 +243,7 @@ export const InvoicesView: React.FC = () => {
                     SCANNED BILL EVIDENCE (ARCHIVE: {selectedInvoice.invoiceNumber})
                   </span>
                   <a
-                    href={`http://127.0.0.1:8000${selectedInvoice.rawFileUrl}`}
+                    href={resolveMediaUrl(selectedInvoice.rawFileUrl)}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-amber hover:underline text-[11px] font-semibold flex items-center gap-1 font-mono"
@@ -253,7 +254,7 @@ export const InvoicesView: React.FC = () => {
                 </div>
                 <div className="border border-hairline rounded-sm overflow-hidden bg-black/80 flex items-center justify-center max-h-56">
                   <img
-                    src={`http://127.0.0.1:8000${selectedInvoice.rawFileUrl}`}
+                    src={resolveMediaUrl(selectedInvoice.rawFileUrl)}
                     alt="Scanned Waybill"
                     className="object-contain max-h-56 w-full"
                     onError={(e) => {

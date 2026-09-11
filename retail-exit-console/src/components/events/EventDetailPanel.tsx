@@ -5,6 +5,7 @@ import { SensorMatrix } from './SensorMatrix';
 import { SeverityBadge } from '../common/SeverityBadge';
 import { VerdictBadge } from '../common/VerdictBadge';
 import { useAppData } from '../../context/AppDataContext';
+import { resolveMediaUrl } from '../../api/client';
 import {
   Camera,
   Lock,
@@ -81,11 +82,7 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({ event, onClo
           {/* Real Snapshot Image if available */}
           {event.snapshotUrl ? (
             <img
-              src={
-                event.snapshotUrl.startsWith('http')
-                  ? event.snapshotUrl
-                  : `http://127.0.0.1:8000${event.snapshotUrl}`
-              }
+              src={resolveMediaUrl(event.snapshotUrl)}
               alt={`Exit Event Snapshot ${event.eventId}`}
               className="absolute inset-0 w-full h-full object-cover z-0"
               onError={(e) => {

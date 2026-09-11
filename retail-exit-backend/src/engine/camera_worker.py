@@ -137,6 +137,7 @@ class CameraIngestionWorker:
             str(cam.credentials_ref or ""),
             str(cam.sub_stream_path or ""),
             2.0,
+            str(cam.stream_url or "") if cam.stream_url else None,
         )
 
         if not frame_bytes:

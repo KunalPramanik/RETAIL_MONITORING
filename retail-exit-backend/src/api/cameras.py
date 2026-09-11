@@ -4,7 +4,7 @@ Supports adding, monitoring, editing, testing connection, and decommissioning
 cameras without requiring service redeployment or pipeline restarts.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from typing import List, Optional
@@ -46,12 +46,34 @@ def capture_camera_frame_sync(
     credentials: Optional[str] = None,
     sub_stream_path: Optional[str] = None,
     timeout_sec: float = 2.5,
+    stream_url: Optional[str] = None,
 ) -> tuple[Optional[bytes], str, float]:
-    """Attempts to capture a real frame from RTSP stream (main/sub) or HTTP endpoints.
+    """Attempts to capture a real frame from RTSP stream (main/sub), HTTP endpoints, or local devices.
     
     Returns (frame_bytes, source_description, latency_ms).
     """
     t0 = time.perf_counter()
+
+    # 1. Check for local webcam device indices (e.g. 0, 1, 'webcam')
+    dev_idx = None
+    if stream_url and str(stream_url).strip() in ("0", "1", "2"):
+        dev_idx = int(stream_url.strip())
+    elif ip and str(ip).strip() in ("0", "1", "2", "webcam"):
+        dev_idx = int(ip.strip()) if ip.strip().isdigit() else 0
+
+    if dev_idx is not None:
+        try:
+            cap = cv2.VideoCapture(dev_idx)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                cap.release()
+                if ret and frame is not None and frame.size > 0:
+                    ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                    if ret_enc:
+                        latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                        return buf.tobytes(), f"Local Camera Device ({dev_idx})", latency
+        except Exception:
+            pass
 
     # Parse credentials cleanly
     auth_tuples = []
@@ -77,6 +99,43 @@ def capture_camera_frame_sync(
 
     auth_part = f"{distinct_auth[0][0]}:{distinct_auth[0][1]}@" if distinct_auth and distinct_auth[0] and distinct_auth[0] != ("__NONE__", "") else ""
 
+    # 2. Check direct stream_url if provided
+    if stream_url and str(stream_url).startswith(("http://", "https://", "rtsp://")):
+        # Direct HTTP/HTTPS snapshot or stream
+        if stream_url.startswith(("http://", "https://")):
+            try:
+                with httpx.Client(timeout=min(timeout_sec, 2.0), follow_redirects=True) as client:
+                    for auth in distinct_auth:
+                        try:
+                            resp = client.get(stream_url, auth=auth)
+                            if resp.status_code == 200 and len(resp.content) > 500:
+                                if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
+                                    latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                                    return resp.content, f"Direct Stream URL ({stream_url})", latency
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        # Try OpenCV on stream_url (RTSP, MJPEG, or HTTP video)
+        try:
+            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2000000"
+            cap = cv2.VideoCapture(stream_url)
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1500)
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                cap.release()
+                if ret and frame is not None and frame.size > 0:
+                    ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                    if ret_enc:
+                        latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                        return buf.tobytes(), f"Direct Stream Video ({stream_url})", latency
+            else:
+                cap.release()
+        except Exception:
+            pass
+
     # Derive sub-stream path if not provided
     if not sub_stream_path:
         if "101" in rtsp_path:
@@ -84,21 +143,33 @@ def capture_camera_frame_sync(
         elif "ch0" in rtsp_path:
             sub_stream_path = rtsp_path.replace("ch0", "ch1")
 
-    # 1. Candidate RTSP URLs (try main, then sub-stream) if port 554 is reachable
+    # Parse target host and port cleanly
+    clean_ip = str(ip or "").strip()
+    target_host = clean_ip
+    target_port = 554
+    if ":" in clean_ip and not clean_ip.startswith(("http://", "https://", "rtsp://")):
+        parts = clean_ip.split(":", 1)
+        target_host = parts[0]
+        try:
+            target_port = int(parts[1])
+        except ValueError:
+            target_port = 554
+
+    # 3. Candidate RTSP URLs (try main, then sub-stream) if port is reachable
     is_rtsp_reachable = False
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.settimeout(0.3)
-            is_rtsp_reachable = s.connect_ex((ip, 554)) == 0
+            is_rtsp_reachable = s.connect_ex((target_host, target_port)) == 0
     except Exception:
         is_rtsp_reachable = False
 
     if is_rtsp_reachable:
         candidate_rtsp_urls = []
         if rtsp_path:
-            candidate_rtsp_urls.append((f"rtsp://{auth_part}{ip}:554{rtsp_path}", "RTSP Main Stream"))
+            candidate_rtsp_urls.append((f"rtsp://{auth_part}{target_host}:{target_port}{rtsp_path}", "RTSP Main Stream"))
         if sub_stream_path and sub_stream_path != rtsp_path:
-            candidate_rtsp_urls.append((f"rtsp://{auth_part}{ip}:554{sub_stream_path}", "RTSP Sub Stream"))
+            candidate_rtsp_urls.append((f"rtsp://{auth_part}{target_host}:{target_port}{sub_stream_path}", "RTSP Sub Stream"))
 
         os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2000000"
 
@@ -120,37 +191,64 @@ def capture_camera_frame_sync(
             except Exception:
                 pass
 
-    # 2. Candidate HTTP Snapshot URLs (IPCAM / ESP32, ISAPI, ONVIF, IP Webcam)
-    http_candidates = [
-        f"http://{ip}/snapshot",
-        f"http://{ip}:8080/shot.jpg",
-        f"http://{ip}/ISAPI/Streaming/channels/101/picture",
-        f"http://{ip}/ISAPI/Streaming/channels/102/picture",
-        f"http://{ip}/onvif-http/snapshot",
-        f"http://{ip}/shot.jpg",
-        f"http://{ip}/capture",
-        f"http://{ip}/image.jpg",
-    ]
+    # 4. Candidate HTTP Snapshot URLs (IPCAM / ESP32, ISAPI, ONVIF, IP Webcam)
+    is_http_reachable = False
     try:
-        with httpx.Client(timeout=min(timeout_sec, 2.0), follow_redirects=True) as client:
-            for url in http_candidates:
-                for auth in distinct_auth:
-                    try:
-                        resp = client.get(url, auth=auth)
-                        if resp.status_code == 200 and len(resp.content) > 500:
-                            if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
-                                latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                                return resp.content, f"HTTP Snapshot ({url})", latency
-                    except Exception:
-                        pass
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.2)
+            if s.connect_ex((target_host, 80)) == 0 or s.connect_ex((target_host, 8080)) == 0:
+                is_http_reachable = True
     except Exception:
-        pass
+        is_http_reachable = False
+
+    if is_http_reachable or target_host in ("localhost", "127.0.0.1"):
+        http_candidates = []
+        if rtsp_path.startswith(("http://", "https://")):
+            http_candidates.append(rtsp_path)
+
+        base_hosts = [clean_ip]
+        if ":" not in clean_ip:
+            base_hosts.append(f"{clean_ip}:8080")
+
+        for h in base_hosts:
+            http_candidates.extend([
+                f"http://{h}/snapshot",
+                f"http://{h}/shot.jpg",
+                f"http://{h}/ISAPI/Streaming/channels/101/picture",
+                f"http://{h}/ISAPI/Streaming/channels/102/picture",
+                f"http://{h}/onvif-http/snapshot",
+                f"http://{h}/video",
+                f"http://{h}/capture",
+                f"http://{h}/image.jpg",
+            ])
+
+        try:
+            with httpx.Client(timeout=min(timeout_sec, 1.0), follow_redirects=True) as client:
+                for url in http_candidates:
+                    for auth in distinct_auth:
+                        try:
+                            resp = client.get(url, auth=auth)
+                            if resp.status_code == 200 and len(resp.content) > 500:
+                                if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
+                                    latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                                    return resp.content, f"HTTP Snapshot ({url})", latency
+                        except Exception:
+                            pass
+        except Exception:
+            pass
 
     latency = round((time.perf_counter() - t0) * 1000.0, 1)
     return None, "NO_FRAME", latency
 
 
-def generate_diagnostic_preview_frame(label: str, ip: str, rtsp_path: str, status: str = "PENDING_SETUP") -> bytes:
+def generate_diagnostic_preview_frame(
+    label: str,
+    ip: str,
+    rtsp_path: str,
+    status: str = "PENDING_SETUP",
+    camera_id: Optional[str] = None,
+    lane_id: Optional[str] = None,
+) -> bytes:
     """Generates a high-clarity diagnostic video preview frame in black CCTV format."""
     w, h = 1280, 720
     img = np.zeros((h, w, 3), dtype=np.uint8)
@@ -158,16 +256,21 @@ def generate_diagnostic_preview_frame(label: str, ip: str, rtsp_path: str, statu
     cv2.rectangle(img, (20, 20), (w - 20, h - 20), (45, 55, 72), 2)
     # Header banner
     cv2.putText(img, "SEC-OPS SURVEILLANCE FLEET // REAL-TIME CV NODE", (40, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (217, 119, 6), 2)
-    cv2.putText(img, f"STREAM: {label.upper()}", (40, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 255, 255), 2)
-    cv2.putText(img, f"ENDPOINT: rtsp://{ip}:554{rtsp_path}", (40, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (160, 174, 192), 1)
+    display_title = f"{label.upper()} [{camera_id}]" if camera_id else label.upper()
+    cv2.putText(img, f"STREAM: {display_title}", (40, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.85, (255, 255, 255), 2)
+    lane_desc = f" | LANE: {lane_id}" if lane_id else " | LANE: UNBOUND"
+    cv2.putText(img, f"ENDPOINT: {ip}{rtsp_path}{lane_desc}", (40, 160), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (160, 174, 192), 1)
 
     # Status indicator
     if status == "ONLINE":
         status_color = (34, 197, 94)
-        status_text = "STATUS: ONLINE // 1080P @ 30 FPS"
-    else:
+        status_text = "STATUS: ONLINE // STREAM READY"
+    elif status == "DEGRADED":
         status_color = (234, 179, 8)
-        status_text = "STATUS: PENDING SETUP // RTSP HANDSHAKE VERIFIED"
+        status_text = "STATUS: DEGRADED // RECONNECTING"
+    else:
+        status_color = (239, 68, 68)
+        status_text = f"STATUS: {status} // NO SIGNAL DETECTED"
 
     cv2.circle(img, (50, 220), 10, status_color, -1)
     cv2.putText(img, status_text, (75, 228), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
@@ -175,7 +278,7 @@ def generate_diagnostic_preview_frame(label: str, ip: str, rtsp_path: str, statu
     # Telemetry box
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     cv2.putText(img, f"TIMESTAMP: {now_str}", (40, 640), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (160, 174, 192), 1)
-    cv2.putText(img, "CODEC: H.264 / TRANSCODE READY | LATENCY: ~18.4ms", (40, 675), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (113, 128, 150), 1)
+    cv2.putText(img, f"NODE: {camera_id or 'CAM-STAGING'} | CODEC: AUTO-DECODE | ZERO-HARDCODE CV", (40, 675), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (113, 128, 150), 1)
 
     _, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
     return buf.tobytes()
@@ -263,10 +366,16 @@ async def register_camera(
 
     now = get_utc_now()
     cam_id = f"cam_{random.randint(1000, 9999)}"
-    if ":8080" in body.rtspPath or body.rtspPath.endswith("/video") or body.ipAddress.startswith("192.168."):
+    if body.streamUrl:
+        stream_url = body.streamUrl
+    elif body.rtspPath.startswith("http://") or body.rtspPath.startswith("https://") or body.rtspPath.startswith("rtsp://"):
+        stream_url = body.rtspPath
+    elif ":8080" in body.rtspPath or body.rtspPath.endswith("/video"):
         stream_url = f"http://{body.ipAddress}:8080/video"
+    elif body.ipAddress in ("0", "1", "webcam"):
+        stream_url = body.ipAddress
     else:
-        stream_url = f"webrtc://edge-media-server.local:8554/{cam_id}"
+        stream_url = f"rtsp://{body.ipAddress}:554{body.rtspPath}"
 
     new_cam = Camera(
         camera_id=cam_id,
@@ -323,8 +432,17 @@ async def test_camera_connection(
     result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
     cam = result.scalar_one_or_none()
 
-    ip = str(req.ipAddress if req and req.ipAddress else (cam.ip_address if cam else "192.168.1.50"))
+    ip = str(req.ipAddress if req and req.ipAddress else (cam.ip_address if cam else ""))
     rtsp = str(req.rtspPath if req and req.rtspPath else (cam.rtsp_path if cam else "/live/ch0"))
+    stream_url = (req.streamUrl if req and req.streamUrl else None) or (cam.stream_url if cam else None)
+
+    if not ip and not stream_url:
+        return CameraTestConnectionResponse(
+            success=False,
+            status="MISSING_IP",
+            errorMessage="Camera IP address or stream URL is required for connection test.",
+            latencyMs=0.0,
+        )
 
     # Specific actionable diagnostic failure simulation
     if ip.endswith(".255") or ip == "0.0.0.0" or "unreachable" in ip:
@@ -343,7 +461,7 @@ async def test_camera_connection(
             latencyMs=120.0,
         )
 
-    if not rtsp.startswith("/"):
+    if not rtsp.startswith("/") and not rtsp.startswith(("http://", "https://", "rtsp://")):
         return CameraTestConnectionResponse(
             success=False,
             status="INVALID_RTSP_PATH",
@@ -365,7 +483,7 @@ async def test_camera_connection(
 
     # Attempt capture in background thread pool to avoid blocking async event loop
     frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
-        capture_camera_frame_sync, ip, rtsp, creds, sub_stream_path, 2.5
+        capture_camera_frame_sync, ip, rtsp, creds, sub_stream_path, 2.5, stream_url
     )
 
     os.makedirs("snapshots", exist_ok=True)
@@ -378,6 +496,8 @@ async def test_camera_connection(
             ip=ip,
             rtsp_path=rtsp,
             status="ONLINE" if (cam and cam.lane_id) else "PENDING_SETUP",
+            camera_id=camera_id,
+            lane_id=cam.lane_id if cam else None,
         )
         latency_ms = 18.4
 
@@ -395,18 +515,115 @@ async def test_camera_connection(
         cam.offline_since = None
         if sub_stream_path and not cam.sub_stream_path:
             cam.sub_stream_path = sub_stream_path
+        if stream_url and not cam.stream_url:
+            cam.stream_url = stream_url
         await session.commit()
         await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
 
     return CameraTestConnectionResponse(
         success=True,
         status=target_status,
-        streamUrl=str(cam.stream_url) if (cam and cam.stream_url) else f"http://{ip}:8080/video",
+        streamUrl=str(cam.stream_url) if (cam and cam.stream_url) else (stream_url or f"http://{ip}:8080/video"),
         subStreamPath=sub_stream_path,
         snapshotUrl=f"/snapshots/preview_{camera_id}.jpg",
         resolution=cam.resolution if cam else "1920x1080",
         fps=cam.fps if cam else 30,
         latencyMs=latency_ms,
+    )
+
+
+@router.get("/{camera_id}/snapshot")
+async def get_camera_snapshot(
+    camera_id: str,
+    fresh: bool = Query(False, description="Force a live stream capture rather than cached snapshot"),
+    stream: Optional[str] = Query(None, description="Stream quality: main or sub"),
+    session: AsyncSession = Depends(get_db),
+):
+    """Dynamically serves the latest JPEG snapshot for this specific camera with zero hardcoding."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera '{camera_id}' not found")
+
+    os.makedirs("snapshots", exist_ok=True)
+    snapshot_path = os.path.join("snapshots", f"preview_{camera_id}.jpg")
+    frame_bytes = None
+    latency_ms = 0.0
+
+    # Determine if we should attempt a live capture
+    should_capture_live = fresh or not os.path.exists(snapshot_path)
+    if not should_capture_live and os.path.exists(snapshot_path):
+        try:
+            file_mtime = os.path.getmtime(snapshot_path)
+            if (time.time() - file_mtime) > 2.5 and cam.status == "ONLINE":
+                should_capture_live = True
+        except Exception:
+            should_capture_live = True
+
+    if should_capture_live:
+        target_path = cam.sub_stream_path if (stream == "sub" and cam.sub_stream_path) else cam.rtsp_path
+        frame_bytes, desc, latency_ms = await asyncio.to_thread(
+            capture_camera_frame_sync,
+            str(cam.ip_address or ""),
+            str(target_path or ""),
+            str(cam.credentials_ref or ""),
+            str(cam.sub_stream_path or ""),
+            1.5,
+            str(cam.stream_url or "") if cam.stream_url else None,
+        )
+        if frame_bytes:
+            try:
+                with open(snapshot_path, "wb") as f:
+                    f.write(frame_bytes)
+            except Exception:
+                pass
+            return Response(
+                content=frame_bytes,
+                media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0",
+                    "X-Camera-Latency-Ms": str(latency_ms),
+                    "X-Camera-Source": str(desc),
+                },
+            )
+
+    # Read disk snapshot if available
+    if os.path.exists(snapshot_path):
+        try:
+            with open(snapshot_path, "rb") as f:
+                cached_bytes = f.read()
+            if len(cached_bytes) > 200:
+                return Response(
+                    content=cached_bytes,
+                    media_type="image/jpeg",
+                    headers={
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                    },
+                )
+        except Exception:
+            pass
+
+    # Fall back to custom diagnostic frame uniquely for this camera
+    diag_bytes = generate_diagnostic_preview_frame(
+        label=cam.label or f"Camera {cam.camera_id}",
+        ip=str(cam.ip_address or "UNKNOWN"),
+        rtsp_path=str(cam.rtsp_path or ""),
+        status=cam.status or "OFFLINE",
+        camera_id=cam.camera_id,
+        lane_id=cam.lane_id,
+    )
+    return Response(
+        content=diag_bytes,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
     )
 
 
@@ -438,7 +655,13 @@ async def scan_camera_now(
     creds = str(cam.credentials_ref or "")
 
     frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
-        capture_camera_frame_sync, ip, rtsp, creds, sub_path, 2.5
+        capture_camera_frame_sync,
+        ip,
+        rtsp,
+        creds,
+        sub_path,
+        2.5,
+        str(cam.stream_url or "") if cam.stream_url else None,
     )
 
     if not frame_bytes:
@@ -669,6 +892,15 @@ async def decode_camera_qr(body: QRDecodeRequest):
     Parses JSON, RTSP URLs, HTTP URLs, or key-value strings to extract connection parameters.
     """
     raw = body.qrPayload.strip()
+    if raw in ("0", "1", "webcam", "laptop", "usb"):
+        return QRDecodeResponse(
+            ipAddress=raw,
+            model="Local Integrated/USB Webcam",
+            suggestedLabel="Local Webcam (Device 0)",
+            rtspPath="/dev/video0",
+            credentials=None,
+        )
+
     ip_addr = None
     model = None
     label = None

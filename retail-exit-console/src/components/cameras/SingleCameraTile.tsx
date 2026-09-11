@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Camera, SensorLane } from '../../types';
-import { api } from '../../api/client';
+import { api, getCameraSnapshotUrl } from '../../api/client';
 import {
   Camera as CameraIcon,
   Radio,
@@ -41,6 +41,7 @@ export interface SingleCameraTileProps {
   isScanning: boolean;
   onScanNow: (cam: Camera) => void;
   scanMessage: { id: string; text: string; isError?: boolean } | null;
+  refreshIntervalMs?: number;
 }
 
 export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
@@ -49,6 +50,7 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
   isScanning,
   onScanNow,
   scanMessage,
+  refreshIntervalMs = 2500,
 }) => {
   // ── 1. Fullscreen State ───────────────────────────────────────────
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -157,18 +159,17 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
     setTimeout(() => setFlashMessage(null), 2500);
   };
 
-  const streamParam = quality === 'sub' ? '&stream=sub' : '';
-  const snapshotUrl = `http://127.0.0.1:8000/snapshots/preview_${camera.cameraId}.jpg?t=${snapshotKey}${streamParam}`;
+  const snapshotUrl = getCameraSnapshotUrl(camera.cameraId, snapshotKey, quality);
 
   // Live frame refresh interval for online cameras
   useEffect(() => {
-    if (camera.status === 'ONLINE') {
+    if (camera.status === 'ONLINE' && refreshIntervalMs > 0) {
       const interval = setInterval(() => {
         setSnapshotKey(Date.now());
-      }, 2500);
+      }, refreshIntervalMs);
       return () => clearInterval(interval);
     }
-  }, [camera.status]);
+  }, [camera.status, refreshIntervalMs]);
 
   // ── 5. Client-Side Snapshot Download ──────────────────────────────
   const handleDownloadSnapshot = () => {

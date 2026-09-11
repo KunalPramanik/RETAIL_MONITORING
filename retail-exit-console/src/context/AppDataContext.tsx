@@ -241,7 +241,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const connectWebSocket = () => {
       try {
-        const wsUrl = import.meta.env.VITE_WS_URL || 'ws://127.0.0.1:8000/ws/live';
+        const defaultHost = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
+        const defaultProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = import.meta.env.VITE_WS_URL || `${defaultProto}//${defaultHost}:8000/ws/live`;
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {

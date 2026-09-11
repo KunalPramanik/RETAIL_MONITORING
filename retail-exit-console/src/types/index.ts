@@ -114,6 +114,7 @@ export interface Camera {
   bitrateKbps?: number;
   fpsObserved?: number;
   droppedFrames?: number;
+  hasAudio?: boolean;
   lastHeartbeatAt?: string;
   offlineSince?: string;
   addedAt: string;

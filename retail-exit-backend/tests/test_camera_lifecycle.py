@@ -263,3 +263,35 @@ async def test_qr_pairing_direction_2(client):
     assert repeat_pair.status_code == 400
 
 
+@pytest.mark.asyncio
+async def test_scan_now_without_lane_linkage_returns_actionable_error(client):
+    """Attempting scan-now on an unbound camera returns actionable HTTP 400 error pointing to settings."""
+    # cam_105 in seed has no lane_id assigned
+    resp = await client.post("/api/cameras/cam_105/scan-now")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert "Camera setup incomplete: lane linkage was never finished" in data["detail"]
+    assert "Settings -> Camera Fleet" in data["detail"]
+
+
+@pytest.mark.asyncio
+async def test_camera_telemetry_endpoint(client):
+    """GET /api/cameras/{id}/telemetry returns live observed FPS, bitrate, and dropped frames."""
+    # First send heartbeat with telemetry
+    hb_resp = await client.post(
+        "/api/cameras/cam_101/heartbeat",
+        json={"fpsObserved": 29.5, "bitrateKbps": 4200.0, "droppedFrames": 2},
+    )
+    assert hb_resp.status_code == 200
+
+    # Query telemetry
+    resp = await client.get("/api/cameras/cam_101/telemetry")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["cameraId"] == "cam_101"
+    assert data["fpsObserved"] == 29.5
+    assert data["bitrateKbps"] == 4200.0
+    assert data["droppedFrames"] == 2
+
+
+

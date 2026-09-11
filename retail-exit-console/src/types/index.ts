@@ -105,11 +105,15 @@ export interface Camera {
   laneId?: string; // unassigned until linked to a lane
   ipAddress: string;
   rtspPath: string;
+  subStreamPath?: string; // e.g. "/Streaming/Channels/102"
   streamUrl?: string; // media-server-exposed WebRTC/HLS URL
   pairingMethod?: "MANUAL" | "QR_CAMERA_DISPLAYED" | "QR_APP_GENERATED";
   status: CameraStatus;
   resolution?: string; // e.g. "1920x1080"
   fps?: number;
+  bitrateKbps?: number;
+  fpsObserved?: number;
+  droppedFrames?: number;
   lastHeartbeatAt?: string;
   offlineSince?: string;
   addedAt: string;

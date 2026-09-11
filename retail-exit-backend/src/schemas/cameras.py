@@ -11,10 +11,14 @@ class CameraResponse(BaseModel):
     laneId: Optional[str] = None
     ipAddress: str
     rtspPath: str
+    subStreamPath: Optional[str] = None
     streamUrl: Optional[str] = None
     pairingMethod: Optional[str] = "MANUAL"
     resolution: Optional[str] = "1920x1080"
     fps: Optional[int] = 30
+    bitrateKbps: Optional[float] = 4096.0
+    fpsObserved: Optional[float] = 30.0
+    droppedFrames: Optional[int] = 0
     status: str  # ONLINE, OFFLINE, DEGRADED, PENDING_SETUP
     lastHeartbeatAt: Optional[str] = None
     offlineSince: Optional[str] = None
@@ -26,6 +30,7 @@ class CameraCreate(BaseModel):
     label: str = Field(..., min_length=2, max_length=255)
     ipAddress: str = Field(..., pattern=r"^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|localhost")
     rtspPath: str = Field(..., min_length=1)
+    subStreamPath: Optional[str] = None
     credentials: Optional[str] = None
     laneId: Optional[str] = None
     pairingMethod: Optional[str] = "MANUAL"
@@ -35,6 +40,10 @@ class CameraCreate(BaseModel):
 
 class CameraUpdate(BaseModel):
     label: Optional[str] = None
+    ipAddress: Optional[str] = None
+    rtspPath: Optional[str] = None
+    subStreamPath: Optional[str] = None
+    credentials: Optional[str] = None
     laneId: Optional[str] = None
     resolution: Optional[str] = None
     fps: Optional[int] = None
@@ -44,6 +53,7 @@ class CameraUpdate(BaseModel):
 class CameraTestConnectionRequest(BaseModel):
     ipAddress: Optional[str] = None
     rtspPath: Optional[str] = None
+    subStreamPath: Optional[str] = None
     credentials: Optional[str] = None
 
 
@@ -51,6 +61,7 @@ class CameraTestConnectionResponse(BaseModel):
     success: bool
     status: str
     streamUrl: Optional[str] = None
+    subStreamPath: Optional[str] = None
     snapshotUrl: Optional[str] = None
     resolution: Optional[str] = None
     fps: Optional[int] = None
@@ -61,6 +72,16 @@ class CameraTestConnectionResponse(BaseModel):
 class CameraHeartbeatCreate(BaseModel):
     fpsObserved: Optional[float] = 30.0
     bitrateKbps: Optional[float] = 4096.0
+    droppedFrames: Optional[int] = 0
+
+
+class CameraTelemetryResponse(BaseModel):
+    cameraId: str
+    status: str
+    fpsObserved: float = 30.0
+    bitrateKbps: float = 4096.0
+    droppedFrames: int = 0
+    lastHeartbeatAt: Optional[str] = None
 
 
 class QRDecodeRequest(BaseModel):

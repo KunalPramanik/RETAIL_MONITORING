@@ -161,6 +161,7 @@ class Camera(Base):
     lane_id: Any = Column(String(36), ForeignKey("lane.lane_id"), nullable=True)
     ip_address: Any = Column(String(64), nullable=False)
     rtsp_path: Any = Column(String(255), nullable=False)
+    sub_stream_path: Any = Column(String(255), nullable=True)
     credentials_ref: Any = Column(String(128), nullable=True)  # pointer into secrets manager
     stream_url: Any = Column(Text, nullable=True)  # media-server WebRTC/HLS URL
     pairing_method: Any = Column(String(32), nullable=False, default="MANUAL")
@@ -213,6 +214,7 @@ class CameraHeartbeat(Base):
     received_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
     fps_observed = Column(Numeric(6, 2), nullable=True)
     bitrate_kbps = Column(Numeric(10, 2), nullable=True)
+    dropped_frames = Column(Integer, nullable=True, default=0)
 
     camera = relationship("Camera", back_populates="heartbeats")
 

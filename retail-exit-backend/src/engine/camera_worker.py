@@ -127,31 +127,17 @@ class CameraIngestionWorker:
         if not ip:
             return None
 
-        # Build candidate URLs for snapshot
-        candidate_urls = []
-        stream_url_str = str(cam.stream_url or "")
-        rtsp_path_str = str(cam.rtsp_path or "")
-        if ":8080" in stream_url_str or ":8080" in rtsp_path_str:
-            candidate_urls.append(f"http://{ip}:8080/shot.jpg")
-        elif "8080" in str(ip):
-            candidate_urls.append(f"http://{ip}/shot.jpg")
-        else:
-            candidate_urls.extend([
-                f"http://{ip}:8080/shot.jpg",
-                f"http://{ip}/shot.jpg",
-                f"http://{ip}/image.jpg",
-            ])
+        # Attempt frame capture via RTSP stream or HTTP endpoints
+        from src.api.cameras import capture_camera_frame_sync
 
-        frame_bytes = None
-        for url in candidate_urls:
-            try:
-                async with httpx.AsyncClient(timeout=2.0) as client:
-                    resp = await client.get(url)
-                    if resp.status_code == 200 and len(resp.content) > 1000:
-                        frame_bytes = resp.content
-                        break
-            except Exception:
-                continue
+        frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
+            capture_camera_frame_sync,
+            str(cam.ip_address),
+            str(cam.rtsp_path or ""),
+            str(cam.credentials_ref or ""),
+            str(cam.sub_stream_path or ""),
+            2.0,
+        )
 
         if not frame_bytes:
             return None

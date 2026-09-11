@@ -207,6 +207,7 @@ export const api = {
     label: string;
     ipAddress: string;
     rtspPath: string;
+    subStreamPath?: string;
     laneId?: string;
     credentials?: string;
   }): Promise<Camera> {
@@ -218,12 +219,23 @@ export const api = {
 
   async testCameraConnection(
     cameraId: string,
-    overrides?: { ipAddress?: string; rtspPath?: string; credentials?: string }
+    overrides?: { ipAddress?: string; rtspPath?: string; subStreamPath?: string; credentials?: string }
   ): Promise<TestConnectionResult> {
     return request<TestConnectionResult>(`/cameras/${cameraId}/test-connection`, {
       method: 'POST',
       body: JSON.stringify(overrides || {}),
     });
+  },
+
+  async getCameraTelemetry(cameraId: string): Promise<{
+    cameraId: string;
+    status: string;
+    fpsObserved: number;
+    bitrateKbps: number;
+    droppedFrames: number;
+    lastHeartbeatAt?: string;
+  }> {
+    return request(`/cameras/${cameraId}/telemetry`);
   },
 
   async updateCamera(cameraId: string, data: Partial<Camera>): Promise<Camera> {

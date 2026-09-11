@@ -21,6 +21,7 @@ export const CameraManagementPanel: React.FC = () => {
   const { cameras, lanes, removeCamera, updateCamera, testCameraConnection } = useAppData();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [resumingCamera, setResumingCamera] = useState<Camera | null>(null);
   
   // Decommission confirmation state
   const [cameraToDelete, setCameraToDelete] = useState<Camera | null>(null);
@@ -107,7 +108,10 @@ export const CameraManagementPanel: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setIsAddModalOpen(true)}
+            onClick={() => {
+              setResumingCamera(null);
+              setIsAddModalOpen(true);
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold bg-amber hover:bg-amber/90 text-black rounded-sm transition-colors shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -233,9 +237,21 @@ export const CameraManagementPanel: React.FC = () => {
                           <span className="text-text-sec">({assignedLane?.location || 'Assigned'})</span>
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-yellow-950/20 text-status-low border border-status-low/30 font-mono text-[11px]">
-                          UNASSIGNED (SPARE)
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-amber/20 text-amber border border-amber/40 font-mono text-[10px]">
+                            UNBOUND
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResumingCamera(cam);
+                              setIsAddModalOpen(true);
+                            }}
+                            className="px-2 py-0.5 bg-amber hover:bg-amber/90 text-black font-semibold text-[10px] rounded-sm transition-colors shadow-xs"
+                          >
+                            Resume Setup
+                          </button>
+                        </div>
                       )}
                     </td>
 
@@ -281,6 +297,21 @@ export const CameraManagementPanel: React.FC = () => {
                     {/* Actions */}
                     <td className="p-2.5 text-right font-sans">
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Resume Setup Action */}
+                        {(cam.status === 'PENDING_SETUP' || !cam.laneId) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResumingCamera(cam);
+                              setIsAddModalOpen(true);
+                            }}
+                            className="px-2 py-1 bg-amber/20 hover:bg-amber text-amber hover:text-black border border-amber/50 font-semibold text-[10px] rounded-sm transition-colors flex items-center gap-1 mr-1"
+                            title="Resume camera setup at Lane Linkage"
+                          >
+                            Resume Setup
+                          </button>
+                        )}
+
                         {/* Test Connection */}
                         <button
                           type="button"
@@ -334,7 +365,10 @@ export const CameraManagementPanel: React.FC = () => {
                     </span>
                     <button
                       type="button"
-                      onClick={() => setIsAddModalOpen(true)}
+                      onClick={() => {
+                        setResumingCamera(null);
+                        setIsAddModalOpen(true);
+                      }}
                       className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber hover:bg-amber/90 text-black font-semibold rounded-sm transition-colors shadow-sm"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -348,10 +382,15 @@ export const CameraManagementPanel: React.FC = () => {
         </table>
       </div>
 
-      {/* Add Camera Modal */}
+      {/* Add / Resume Camera Modal */}
       <AddCameraModal
         isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
+        initialCamera={resumingCamera}
+        initialStep={resumingCamera ? (resumingCamera.laneId ? 4 : 3) : 1}
+        onClose={() => {
+          setIsAddModalOpen(false);
+          setResumingCamera(null);
+        }}
       />
 
       {/* Reassign Lane Modal */}

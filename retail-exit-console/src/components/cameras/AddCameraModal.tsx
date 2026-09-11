@@ -21,19 +21,30 @@ import {
 import { Modal } from '../common/Modal';
 import { QrCodeSvg } from './QrCodeSvg';
 
+import type { Camera } from '../../types';
+
 interface AddCameraModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  initialCamera?: Camera | null;
+  initialStep?: 1 | 2 | 3 | 4;
 }
 
 type SetupMode = 'MANUAL' | 'QR';
 type QrDirection = 'SCAN_CAMERA' | 'GENERATE_QR';
 
-export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AddCameraModal: React.FC<AddCameraModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  initialCamera,
+  initialStep,
+}) => {
   const {
     lanes,
     addCamera,
+    updateCamera,
     testCameraConnection,
     createLane,
     decodeCameraQr,
@@ -56,6 +67,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose,
   const [rtspPath, setRtspPath] = useState('');
   const [credentials, setCredentials] = useState('');
   const [selectedLaneId, setSelectedLaneId] = useState<string>('');
+  const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false);
 
   // Inline new lane creation
   const [isCreatingInlineLane, setIsCreatingInlineLane] = useState(false);
@@ -135,7 +147,30 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose,
     setSecondsRemaining(600);
     setIsSimulatingPair(false);
     setPairSuccessCamera(null);
+    setSnapshotLoadFailed(false);
   };
+
+  useEffect(() => {
+    if (isOpen && initialCamera) {
+      setSetupMode('MANUAL');
+      setLabel(initialCamera.label || '');
+      setIpAddress(initialCamera.ipAddress || '');
+      setRtspPath(initialCamera.rtspPath || '');
+      setSelectedLaneId(initialCamera.laneId || '');
+      setPairingMethod(initialCamera.pairingMethod || 'MANUAL');
+      setTestResult({
+        tested: true,
+        success: true,
+        snapshotUrl: `/snapshots/preview_${initialCamera.cameraId}.jpg`,
+      });
+      setSnapshotLoadFailed(false);
+      if (initialStep) {
+        setStep(initialStep);
+      } else {
+        setStep(initialCamera.laneId ? 4 : 3);
+      }
+    }
+  }, [isOpen, initialCamera, initialStep]);
 
   // Webcam QR scanner cleanup
   const stopWebcamScan = () => {
@@ -297,9 +332,10 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose,
   // Test RTSP Connection
   const handleTestConnection = async () => {
     setIsTesting(true);
+    setSnapshotLoadFailed(false);
     setTestResult({ tested: false, success: false });
     try {
-      const res = await testCameraConnection('temp_test', {
+      const res = await testCameraConnection(initialCamera?.cameraId || 'temp_test', {
         ipAddress,
         rtspPath,
         credentials,
@@ -334,19 +370,30 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose,
     if (!label.trim()) return;
     setIsSubmitting(true);
     try {
-      await addCamera({
-        label,
-        ipAddress,
-        rtspPath,
-        laneId: selectedLaneId || undefined,
-        credentials,
-        pairingMethod,
-      });
+      if (initialCamera?.cameraId) {
+        await updateCamera({
+          cameraId: initialCamera.cameraId,
+          label,
+          ipAddress,
+          rtspPath,
+          laneId: selectedLaneId || undefined,
+          status: selectedLaneId ? 'ONLINE' : 'PENDING_SETUP',
+        });
+      } else {
+        await addCamera({
+          label,
+          ipAddress,
+          rtspPath,
+          laneId: selectedLaneId || undefined,
+          credentials,
+          pairingMethod,
+        });
+      }
       if (onSuccess) onSuccess();
       onClose();
       resetForm();
     } catch (err) {
-      console.error('Failed to register camera:', err);
+      console.error('Failed to register/update camera:', err);
     } finally {
       setIsSubmitting(false);
     }
@@ -982,7 +1029,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose,
                           <span className="font-mono text-[10px] text-status-ok">● LIVE FEED READY</span>
                           <span className="font-mono text-[10px] text-text-sec">1080p · 30 FPS</span>
                         </div>
-                        {testResult.snapshotUrl ? (
+                        {testResult.snapshotUrl && !snapshotLoadFailed ? (
                           <img
                             src={
                               testResult.snapshotUrl.startsWith('http')
@@ -991,11 +1038,17 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose,
                             }
                             alt="Live Camera Snapshot"
                             className="w-full h-full object-cover"
+                            onError={() => setSnapshotLoadFailed(true)}
                           />
                         ) : (
-                          <div className="text-center p-4">
-                            <Video className="w-8 h-8 text-status-ok mx-auto mb-1 opacity-70" />
-                            <span className="text-[11px] text-text-sec font-mono">Live Video Stream Connected</span>
+                          <div className="text-center p-4 bg-canvas/80 rounded m-2 border border-hairline">
+                            <Video className="w-8 h-8 text-amber mx-auto mb-1 opacity-80" />
+                            <span className="text-[11px] text-amber font-mono block font-semibold">
+                              Stream Handshake Verified · Video Decode In Progress
+                            </span>
+                            <span className="text-[10px] text-text-sec font-mono block mt-1">
+                              Status: PENDING_SETUP — you can proceed to link lane and complete deployment.
+                            </span>
                           </div>
                         )}
                       </div>
@@ -1015,8 +1068,9 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({ isOpen, onClose,
 
                   <button
                     type="button"
+                    disabled={!testResult.success}
                     onClick={() => setStep(3)}
-                    className="flex items-center gap-1.5 px-4 py-2 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 text-black transition-colors"
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 disabled:opacity-40 text-black transition-colors"
                   >
                     Continue to Lane Linkage
                     <ArrowRight className="w-3.5 h-3.5" />

@@ -16,6 +16,8 @@ import httpx
 import cv2
 import numpy as np
 import asyncio
+import socket
+import urllib.parse
 from datetime import datetime, timezone
 
 from src.db.session import get_db
@@ -101,40 +103,53 @@ def capture_camera_frame_sync(
 
     # 2. Check direct stream_url if provided
     if stream_url and str(stream_url).startswith(("http://", "https://", "rtsp://")):
-        # Direct HTTP/HTTPS snapshot or stream
-        if stream_url.startswith(("http://", "https://")):
+        is_stream_open = False
+        try:
+            parsed_u = urllib.parse.urlparse(stream_url)
+            u_host = parsed_u.hostname
+            u_port = parsed_u.port or (443 if parsed_u.scheme == "https" else (554 if parsed_u.scheme == "rtsp" else 80))
+            if u_host:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.25)
+                    is_stream_open = (s.connect_ex((u_host, u_port)) == 0)
+        except Exception:
+            is_stream_open = False
+
+        if is_stream_open:
+            # Direct HTTP/HTTPS snapshot or stream
+            if stream_url.startswith(("http://", "https://")):
+                try:
+                    with httpx.Client(timeout=min(timeout_sec, 1.5), follow_redirects=True) as client:
+                        for auth in distinct_auth:
+                            try:
+                                resp = client.get(stream_url, auth=auth)
+                                if resp.status_code == 200 and len(resp.content) > 500:
+                                    if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
+                                        latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                                        return resp.content, f"Direct Stream URL ({stream_url})", latency
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
+
+            # Try OpenCV on stream_url (RTSP, MJPEG, or HTTP video)
             try:
-                with httpx.Client(timeout=min(timeout_sec, 2.0), follow_redirects=True) as client:
-                    for auth in distinct_auth:
-                        try:
-                            resp = client.get(stream_url, auth=auth)
-                            if resp.status_code == 200 and len(resp.content) > 500:
-                                if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
-                                    latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                                    return resp.content, f"Direct Stream URL ({stream_url})", latency
-                        except Exception:
-                            pass
+                os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2000000"
+                cap = cv2.VideoCapture(stream_url)
+                cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1500)
+                cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
+                if cap.isOpened():
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret and frame is not None and frame.size > 0:
+                        ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                        if ret_enc:
+                            latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                            return buf.tobytes(), f"Direct Stream Video ({stream_url})", latency
+                else:
+                    cap.release()
             except Exception:
                 pass
-
-        # Try OpenCV on stream_url (RTSP, MJPEG, or HTTP video)
-        try:
-            os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2000000"
-            cap = cv2.VideoCapture(stream_url)
-            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1500)
-            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                cap.release()
-                if ret and frame is not None and frame.size > 0:
-                    ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-                    if ret_enc:
-                        latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                        return buf.tobytes(), f"Direct Stream Video ({stream_url})", latency
-            else:
-                cap.release()
-        except Exception:
-            pass
 
     # Derive sub-stream path if not provided
     if not sub_stream_path:
@@ -192,25 +207,23 @@ def capture_camera_frame_sync(
                 pass
 
     # 4. Candidate HTTP Snapshot URLs (IPCAM / ESP32, ISAPI, ONVIF, IP Webcam)
-    is_http_reachable = False
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.2)
-            if s.connect_ex((target_host, 80)) == 0 or s.connect_ex((target_host, 8080)) == 0:
-                is_http_reachable = True
-    except Exception:
-        is_http_reachable = False
+    open_http_ports = []
+    for test_p in [80, 8080]:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.15)
+                if s.connect_ex((target_host, test_p)) == 0:
+                    open_http_ports.append(test_p)
+        except Exception:
+            pass
 
-    if is_http_reachable or target_host in ("localhost", "127.0.0.1"):
+    if open_http_ports or target_host in ("localhost", "127.0.0.1"):
         http_candidates = []
         if rtsp_path.startswith(("http://", "https://")):
             http_candidates.append(rtsp_path)
 
-        base_hosts = [clean_ip]
-        if ":" not in clean_ip:
-            base_hosts.append(f"{clean_ip}:8080")
-
-        for h in base_hosts:
+        for p in (open_http_ports if open_http_ports else [80]):
+            h = f"{target_host}:{p}" if p != 80 else target_host
             http_candidates.extend([
                 f"http://{h}/snapshot",
                 f"http://{h}/shot.jpg",

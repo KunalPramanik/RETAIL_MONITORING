@@ -160,6 +160,16 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
   const streamParam = quality === 'sub' ? '&stream=sub' : '';
   const snapshotUrl = `http://127.0.0.1:8000/snapshots/preview_${camera.cameraId}.jpg?t=${snapshotKey}${streamParam}`;
 
+  // Live frame refresh interval for online cameras
+  useEffect(() => {
+    if (camera.status === 'ONLINE') {
+      const interval = setInterval(() => {
+        setSnapshotKey(Date.now());
+      }, 2500);
+      return () => clearInterval(interval);
+    }
+  }, [camera.status]);
+
   // ── 5. Client-Side Snapshot Download ──────────────────────────────
   const handleDownloadSnapshot = () => {
     const img = imgRef.current;

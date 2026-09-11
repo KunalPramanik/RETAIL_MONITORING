@@ -52,7 +52,30 @@ def capture_camera_frame_sync(
     Returns (frame_bytes, source_description, latency_ms).
     """
     t0 = time.perf_counter()
-    auth_part = f"{credentials}@" if credentials and "@" not in credentials else ""
+
+    # Parse credentials cleanly
+    auth_tuples = []
+    if credentials:
+        clean_c = str(credentials).strip()
+        if ":" in clean_c:
+            u, p = clean_c.split(":", 1)
+            auth_tuples.append((u, p))
+        elif not clean_c.startswith("secops/"):
+            auth_tuples.append((clean_c, ""))
+
+    # Common IP camera / IPCAM authentication defaults
+    auth_tuples.extend([("admin", ""), ("admin", "admin"), ("admin", "12345"), None])
+
+    # Distinct auth tuples while preserving order
+    seen = set()
+    distinct_auth = []
+    for a in auth_tuples:
+        key = a if a is not None else ("__NONE__", "")
+        if key not in seen:
+            seen.add(key)
+            distinct_auth.append(a)
+
+    auth_part = f"{distinct_auth[0][0]}:{distinct_auth[0][1]}@" if distinct_auth and distinct_auth[0] and distinct_auth[0] != ("__NONE__", "") else ""
 
     # Derive sub-stream path if not provided
     if not sub_stream_path:
@@ -61,50 +84,67 @@ def capture_camera_frame_sync(
         elif "ch0" in rtsp_path:
             sub_stream_path = rtsp_path.replace("ch0", "ch1")
 
-    # 1. Candidate RTSP URLs (try main, then sub-stream)
-    candidate_rtsp_urls = []
-    if rtsp_path:
-        candidate_rtsp_urls.append((f"rtsp://{auth_part}{ip}:554{rtsp_path}", "RTSP Main Stream"))
-    if sub_stream_path and sub_stream_path != rtsp_path:
-        candidate_rtsp_urls.append((f"rtsp://{auth_part}{ip}:554{sub_stream_path}", "RTSP Sub Stream"))
+    # 1. Candidate RTSP URLs (try main, then sub-stream) if port 554 is reachable
+    is_rtsp_reachable = False
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            is_rtsp_reachable = s.connect_ex((ip, 554)) == 0
+    except Exception:
+        is_rtsp_reachable = False
 
-    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|timeout;2500000"
+    if is_rtsp_reachable:
+        candidate_rtsp_urls = []
+        if rtsp_path:
+            candidate_rtsp_urls.append((f"rtsp://{auth_part}{ip}:554{rtsp_path}", "RTSP Main Stream"))
+        if sub_stream_path and sub_stream_path != rtsp_path:
+            candidate_rtsp_urls.append((f"rtsp://{auth_part}{ip}:554{sub_stream_path}", "RTSP Sub Stream"))
 
-    for url, desc in candidate_rtsp_urls:
-        try:
-            cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, int(timeout_sec * 1000))
-            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, int(timeout_sec * 1000))
-            if cap.isOpened():
-                ret, frame = cap.read()
-                cap.release()
-                if ret and frame is not None and frame.size > 0:
-                    ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-                    if ret_enc:
-                        latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                        return buf.tobytes(), desc, latency
-            else:
-                cap.release()
-        except Exception:
-            pass
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2000000"
 
-    # 2. Candidate HTTP Snapshot URLs (ISAPI, ONVIF, IP Webcam)
+        for url, desc in candidate_rtsp_urls:
+            try:
+                cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+                cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1500)
+                cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
+                if cap.isOpened():
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret and frame is not None and frame.size > 0:
+                        ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                        if ret_enc:
+                            latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                            return buf.tobytes(), desc, latency
+                else:
+                    cap.release()
+            except Exception:
+                pass
+
+    # 2. Candidate HTTP Snapshot URLs (IPCAM / ESP32, ISAPI, ONVIF, IP Webcam)
     http_candidates = [
+        f"http://{ip}/snapshot",
+        f"http://{ip}:8080/shot.jpg",
         f"http://{ip}/ISAPI/Streaming/channels/101/picture",
         f"http://{ip}/ISAPI/Streaming/channels/102/picture",
-        f"http://{ip}:8080/shot.jpg",
+        f"http://{ip}/onvif-http/snapshot",
         f"http://{ip}/shot.jpg",
+        f"http://{ip}/capture",
         f"http://{ip}/image.jpg",
     ]
-    for url in http_candidates:
-        try:
-            with httpx.Client(timeout=timeout_sec) as client:
-                resp = client.get(url)
-                if resp.status_code == 200 and len(resp.content) > 1000:
-                    latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                    return resp.content, f"HTTP Snapshot ({url})", latency
-        except Exception:
-            pass
+    try:
+        with httpx.Client(timeout=min(timeout_sec, 2.0), follow_redirects=True) as client:
+            for url in http_candidates:
+                for auth in distinct_auth:
+                    try:
+                        resp = client.get(url, auth=auth)
+                        if resp.status_code == 200 and len(resp.content) > 500:
+                            if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
+                                latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                                return resp.content, f"HTTP Snapshot ({url})", latency
+                    except Exception:
+                        pass
+    except Exception:
+        pass
 
     latency = round((time.perf_counter() - t0) * 1000.0, 1)
     return None, "NO_FRAME", latency

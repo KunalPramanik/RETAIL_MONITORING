@@ -101,7 +101,7 @@ class CameraIngestionWorker:
                 stmt = select(Camera).where(
                     and_(
                         Camera.removed_at.is_(None),
-                        Camera.status.in_(["ONLINE", "PENDING_SETUP"]),
+                        Camera.status.in_(["ONLINE", "PENDING_SETUP", "OFFLINE"]),
                     )
                 )
                 res = await session.execute(stmt)

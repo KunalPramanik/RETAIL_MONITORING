@@ -368,14 +368,16 @@ class VisionInferenceService:
                     # Draw YOLOX bounding box
                     cv2.rectangle(img, (bx, by), (bx + bw, by + bh), color, 2)
                     badge_text = f"YOLOX: {class_label.upper()} {conf*100:.0f}%"
-                    (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-                    cv2.rectangle(img, (bx, max(0, by - th - 6)), (bx + tw + 6, max(th + 6, by)), color, -1)
+                    (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.40, 1)
+                    lbl_x = max(2, min(bx, orig_w - tw - 8))
+                    lbl_y = max(th + 6, by)
+                    cv2.rectangle(img, (lbl_x, max(0, lbl_y - th - 6)), (lbl_x + tw + 6, lbl_y), color, -1)
                     cv2.putText(
                         img,
                         badge_text,
-                        (bx + 3, max(th + 2, by - 4)),
+                        (lbl_x + 3, lbl_y - 4),
                         cv2.FONT_HERSHEY_SIMPLEX,
-                        0.45,
+                        0.40,
                         (0, 0, 0),
                         1,
                         cv2.LINE_AA,
@@ -387,15 +389,19 @@ class VisionInferenceService:
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.95
 
-        # CCTV Diagnostics Banner
-        ts_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-        status_banner = f"YOLOX INFERENCE // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}) // {latency_ms:.1f}ms"
+        # CCTV Diagnostics Banner with semi-transparent dark backdrop (positioned below camera OSD)
+        status_banner = f"YOLOX CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}) // {latency_ms:.0f}ms"
+        (bw_t, bh_t), _ = cv2.getTextSize(status_banner, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
+        banner_y = min(orig_h - 12, max(42, 52))
+        overlay = img.copy()
+        cv2.rectangle(overlay, (8, banner_y - bh_t - 4), (min(orig_w - 4, 8 + bw_t + 10), banner_y + 4), (10, 15, 20), -1)
+        cv2.addWeighted(overlay, 0.75, img, 0.25, 0, img)
         cv2.putText(
             img,
-            f"{status_banner} // {ts_str}",
-            (14, 28),
+            status_banner,
+            (13, banner_y - 2),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
+            0.38,
             (0, 255, 200),
             1,
             cv2.LINE_AA,

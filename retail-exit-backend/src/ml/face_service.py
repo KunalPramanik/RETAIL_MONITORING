@@ -243,19 +243,24 @@ class FaceRecognitionService:
             )
 
         # Annotate face detections on the frame
+        orig_h, orig_w = img.shape[:2]
         for [x, y, w, h] in detected_boxes:
-            box_color = (255, 200, 0) if match_res.decision == "MATCHED" else (0, 0, 255)
+            box_color = (0, 200, 0) if match_res.decision == "MATCHED" else (0, 0, 255)
             cv2.rectangle(img, (x, y), (x + w, y + h), box_color, 2)
-            label = f"ARCFACE: {match_res.employee_name or 'UNENROLLED'} ({match_res.decision})"
-            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-            cv2.rectangle(img, (x, max(0, y - th - 6)), (x + tw + 6, max(th + 6, y)), box_color, -1)
+            label = f"ARCFACE: {match_res.employee_name or 'UNENROLLED'}"
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
+            lbl_x = max(4, min(x, orig_w - tw - 8))
+            lbl_y = y + h + th + 5
+            if lbl_y + 4 > orig_h:
+                lbl_y = y + h - 4
+            cv2.rectangle(img, (lbl_x, lbl_y - th - 4), (lbl_x + tw + 6, lbl_y + 2), box_color, -1)
             cv2.putText(
                 img,
                 label,
-                (x + 3, max(th + 2, y - 4)),
+                (lbl_x + 3, lbl_y - 2),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (0, 0, 0),
+                0.38,
+                (255, 255, 255),
                 1,
                 cv2.LINE_AA,
             )

@@ -515,6 +515,7 @@ async def test_camera_connection(
                 cases_detected=vis_res.cases_detected,
                 units_detected=vis_res.vision_count,
                 raw_frame_bytes=frame_bytes,
+                camera_id=camera_id,
             )
             frame_bytes = final_bytes or obj_bytes or frame_bytes
         except Exception:
@@ -628,6 +629,7 @@ async def get_camera_snapshot(
                     cases_detected=vis_res.cases_detected,
                     units_detected=vis_res.vision_count,
                     raw_frame_bytes=frame_bytes,
+                    camera_id=camera_id,
                 )
                 annotated_bytes = final_bytes or obj_bytes or frame_bytes
             except Exception:

@@ -15,6 +15,7 @@ import numpy as np
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Union, Tuple
 from insightface.app import FaceAnalysis
+from src.ml.liveness_service import LivenessDetectionService, LivenessResult
 
 
 @dataclass
@@ -26,6 +27,8 @@ class FaceMatchResult:
     model_version: str
     unauthorized_alert_needed: bool
     frames_evaluated: int = 1
+    liveness_score: float = 1.0
+    liveness_decision: str = "LIVE"   # 'LIVE' | 'STATIC_PHOTO' | 'SPOOF' | 'NO_FACE'
 
 
 class FaceRecognitionService:
@@ -42,7 +45,11 @@ class FaceRecognitionService:
     @classmethod
     def get_app(cls) -> FaceAnalysis:
         if cls._app is None:
-            app = FaceAnalysis(name="buffalo_s", providers=["CPUExecutionProvider"])
+            app = FaceAnalysis(
+                name="buffalo_s",
+                allowed_modules=["detection", "recognition", "genderage", "landmark_3d_68"],
+                providers=["CPUExecutionProvider"],
+            )
             app.prepare(ctx_id=0, det_thresh=0.06, det_size=(640, 640))
             cls._app = app
         return cls._app
@@ -189,8 +196,10 @@ class FaceRecognitionService:
         cases_detected: int = 0,
         units_detected: int = 0,
         raw_frame_bytes: Optional[bytes] = None,
+        camera_id: Optional[str] = None,
+        filter_static: bool = True,
     ) -> Tuple[FaceMatchResult, Optional[bytes], List[List[int]]]:
-        """Detects faces using InsightFace SCRFD and extracts ArcFace 512-d embeddings."""
+        """Detects faces using InsightFace SCRFD and verifies liveness before ArcFace 512-d extraction."""
         nparr = np.frombuffer(frame_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
@@ -204,6 +213,8 @@ class FaceRecognitionService:
                     model_version=cls.MODEL_VERSION,
                     unauthorized_alert_needed=False,
                     frames_evaluated=0,
+                    liveness_score=0.0,
+                    liveness_decision="NO_FACE",
                 ),
                 None,
                 [],
@@ -212,6 +223,8 @@ class FaceRecognitionService:
         detected_boxes: List[List[int]] = []
         probe_embeddings: List[List[float]] = []
         box_annotations: List[Tuple[List[int], str, Tuple[int, int, int]]] = []
+        best_liveness_score = 0.0
+        any_static_detected = False
 
         try:
             # If pristine unannotated frame bytes are available, run SCRFD on clean pixels
@@ -228,7 +241,7 @@ class FaceRecognitionService:
             faces.sort(key=lambda f: getattr(f, "det_score", 0.0), reverse=True)
 
             orig_h, orig_w = img.shape[:2]
-            kept_faces: List[Tuple[Any, str, Tuple[int, int, int]]] = []
+            kept_faces: List[Tuple[Any, str, Tuple[int, int, int], LivenessResult]] = []
             for face in faces:
                 x1, y1, x2, y2 = face.bbox.astype(int).tolist()
                 det_score = getattr(face, "det_score", 0.0)
@@ -246,7 +259,7 @@ class FaceRecognitionService:
 
                 cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                 too_close = False
-                for (kf, _, _) in kept_faces:
+                for (kf, _, _, _) in kept_faces:
                     kx1, ky1, kx2, ky2 = kf.bbox.astype(int).tolist()
                     kcx, kcy = (kx1 + kx2) / 2.0, (ky1 + ky2) / 2.0
                     w_inter = max(0, min(x2, kx2) - max(x1, kx1))
@@ -261,43 +274,46 @@ class FaceRecognitionService:
                         break
 
                 if not too_close:
-                    # Dynamic classification of wall portraits vs real persons in exit lane
-                    if cx < 0.40 * orig_w and cy < 0.50 * orig_h:
-                        # Left wall frame: Lord Ganesha
-                        conf_pct = int(max(det_score, 0.85) * 100)
-                        lbl = f"GANESH {conf_pct}%"
-                        color = (0, 200, 255)
-                    elif cx > 0.65 * orig_w and cy < 0.50 * orig_h:
-                        # Right wall frame: Male portrait
-                        conf_pct = int(max(det_score, 0.88) * 100)
-                        lbl = f"MAN {conf_pct}%"
-                        color = (255, 180, 0)
-                    elif 0.35 * orig_w <= cx <= 0.65 * orig_w and cy < 0.50 * orig_h:
-                        # Middle wall frame: Female portrait
-                        conf_pct = int(max(det_score, 0.85) * 100)
-                        lbl = f"WOMAN {conf_pct}%"
-                        color = (255, 100, 255)
+                    # Multi-Factor Anti-Spoofing & Liveness Evaluation
+                    liveness = LivenessDetectionService.evaluate_face(
+                        img=infer_img,
+                        face=face,
+                        camera_id=camera_id,
+                    )
+                    best_liveness_score = max(best_liveness_score, liveness.liveness_score)
+
+                    if not liveness.is_live:
+                        any_static_detected = True
+                        # If filtering static imagery (default True): ignore static wall pictures / photos
+                        if filter_static:
+                            continue
+                        else:
+                            # Inspection / audit mode: badge photo
+                            lbl = f"PHOTO {int(det_score * 100)}%"
+                            color = (120, 120, 120)
                     else:
-                        # Real person anywhere in view (standing, seated, walking through exit)
+                        # Genuine living human detected
                         gender = getattr(face, "gender", 1)
                         gender_str = "MAN" if gender == 1 else "WOMAN"
                         conf_pct = int(det_score * 100)
-                        lbl = f"{gender_str} {conf_pct}%"
-                        color = (255, 180, 0) if gender == 1 else (255, 100, 255)
+                        lbl = f"LIVE {gender_str} {conf_pct}%"
+                        color = (0, 255, 120) if gender == 1 else (255, 100, 255)
 
-                    kept_faces.append((face, lbl, color))
+                    kept_faces.append((face, lbl, color, liveness))
 
-            for (face, def_lbl, col) in kept_faces:
+            for (face, def_lbl, col, liveness) in kept_faces:
                 x1, y1, x2, y2 = face.bbox.astype(int).tolist()
                 w = max(1, x2 - x1)
                 h = max(1, y2 - y1)
                 box = [int(x1), int(y1), int(w), int(h)]
-                detected_boxes.append(box)
                 box_annotations.append((box, def_lbl, col))
 
-                if hasattr(face, "embedding") and face.embedding is not None:
-                    emb = cls._normalize(face.embedding.astype(np.float32))
-                    probe_embeddings.append(emb.tolist())
+                # Only living individuals are admitted into exit events and employee matching
+                if liveness.is_live:
+                    detected_boxes.append(box)
+                    if hasattr(face, "embedding") and face.embedding is not None:
+                        emb = cls._normalize(face.embedding.astype(np.float32))
+                        probe_embeddings.append(emb.tolist())
         except Exception:
             pass
 
@@ -308,6 +324,8 @@ class FaceRecognitionService:
                 enrolled_employees=enrolled_employees,
                 match_threshold=match_threshold,
             )
+            match_res.liveness_score = best_liveness_score
+            match_res.liveness_decision = "LIVE"
         else:
             match_res = FaceMatchResult(
                 matched_employee_id=None,
@@ -317,6 +335,8 @@ class FaceRecognitionService:
                 model_version=cls.MODEL_VERSION,
                 unauthorized_alert_needed=False,
                 frames_evaluated=1 if probe_embeddings else 0,
+                liveness_score=best_liveness_score if any_static_detected or probe_embeddings else 0.0,
+                liveness_decision="LIVE" if probe_embeddings else ("STATIC_PHOTO" if any_static_detected else "NO_FACE"),
             )
 
         # Annotate face detections on the frame

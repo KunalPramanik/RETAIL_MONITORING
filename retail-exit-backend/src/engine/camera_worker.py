@@ -186,6 +186,7 @@ class CameraIngestionWorker:
                 cases_detected=vis_res.cases_detected,
                 units_detected=vis_res.vision_count,
                 raw_frame_bytes=frame_bytes,
+                camera_id=cam.camera_id,
             )
             annotated_bytes = final_bytes or obj_bytes or frame_bytes
 
@@ -195,6 +196,8 @@ class CameraIngestionWorker:
                 "unitsDetected": vis_res.vision_count,
                 "carrierName": carrier_label,
                 "faceDecision": face_res.decision,
+                "livenessDecision": face_res.liveness_decision,
+                "livenessScore": round(face_res.liveness_score * 100, 1),
                 "confidence": round(vis_res.vision_confidence * 100, 1) if vis_res.vision_confidence else 95.0,
                 "boxesCount": len(vis_res.detections) + len(face_boxes),
             })
@@ -306,7 +309,7 @@ class CameraIngestionWorker:
             catalog_products=catalog,
         )
 
-        # 3. Run Real OpenCV Face Recognition on the annotated frame
+        # 3. Run Real OpenCV Face Recognition on the annotated frame with Anti-Spoofing Liveness
         face_result, final_annotated_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
             frame_bytes=annotated_bytes,
             enrolled_employees=roster,
@@ -314,6 +317,7 @@ class CameraIngestionWorker:
             cases_detected=vision_result.cases_detected,
             units_detected=vision_result.vision_count,
             raw_frame_bytes=frame_bytes,
+            camera_id=cam.camera_id,
         )
 
         # 4. Multi-Sensor Consensus Fusion (Degrades cleanly to Vision count when RFID/Scale absent)

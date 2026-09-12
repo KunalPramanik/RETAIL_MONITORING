@@ -213,91 +213,30 @@ class FaceRecognitionService:
             app = cls.get_app()
             faces = app.get(img)
 
-            orig_h, orig_w = img.shape[:2]
-            wall_crop = img[max(0, orig_h - 120):max(1, orig_h - 40), 100:min(orig_w, 300)]
-            avg_bgr = np.mean(wall_crop, axis=(0, 1)) if wall_crop.size > 0 else [0, 0, 0]
-            is_wall_scene = avg_bgr[1] > avg_bgr[0] and avg_bgr[1] > avg_bgr[2] and avg_bgr[1] > 110
-
             faces.sort(key=lambda f: getattr(f, "det_score", 0.0), reverse=True)
 
             kept_faces: List[Tuple[Any, str, Tuple[int, int, int]]] = []
-            if is_wall_scene:
-                ganesh_face = None
-                male_face = None
-                female_face = None
-                foreground_faces = []
-
-                for face in faces:
-                    x1, y1, x2, y2 = face.bbox.astype(int).tolist()
-                    cx = (x1 + x2) / 2.0
-                    cy = (y1 + y2) / 2.0
-
-                    if cy < 180 and x1 >= 130 and x2 <= 270:
-                        if ganesh_face is None:
-                            ganesh_face = face
-                    elif cy < 180 and x1 >= 270 and x2 <= 440:
-                        if male_face is None:
-                            male_face = face
-                    elif cy < 180 and x1 >= 440 and x2 <= 610:
-                        if female_face is None:
-                            female_face = face
-                    else:
-                        foreground_faces.append(face)
-
-                if ganesh_face is not None:
-                    kept_faces.append((ganesh_face, "ARCFACE: GANESH", (0, 200, 255)))
-                else:
-                    box_annotations.append(([209, 101, 12, 14], "ARCFACE: GANESH", (0, 200, 255)))
-                    detected_boxes.append([209, 101, 12, 14])
-
-                if male_face is not None:
-                    kept_faces.append((male_face, "ARCFACE: MALE", (255, 180, 0)))
-                else:
-                    box_annotations.append(([353, 104, 14, 16], "ARCFACE: MALE", (255, 180, 0)))
-                    detected_boxes.append([353, 104, 14, 16])
-
-                if female_face is not None:
-                    kept_faces.append((female_face, "ARCFACE: FEMALE", (255, 100, 255)))
-                else:
-                    box_annotations.append(([488, 89, 22, 26], "ARCFACE: FEMALE", (255, 100, 255)))
-                    detected_boxes.append([488, 89, 22, 26])
-
-                # Handle occluded/foreground persons with distance suppression (min_dist=40px)
-                for f in foreground_faces:
-                    x1, y1, x2, y2 = f.bbox.astype(int).tolist()
-                    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                    too_close = False
-                    for (kf, _, _) in kept_faces:
-                        kx1, ky1, kx2, ky2 = kf.bbox.astype(int).tolist()
-                        kcx, kcy = (kx1 + kx2) / 2.0, (ky1 + ky2) / 2.0
-                        if np.hypot(cx - kcx, cy - kcy) < 40:
-                            too_close = True
-                            break
-                    if not too_close:
-                        gender = getattr(f, "gender", 1)
-                        lbl = f"ARCFACE: PERSON ({'MALE' if gender == 1 else 'FEMALE'})"
-                        kept_faces.append((f, lbl, (0, 255, 180)))
-            else:
-                for face in faces:
-                    x1, y1, x2, y2 = face.bbox.astype(int).tolist()
-                    cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                    too_close = False
-                    for (kf, _, _) in kept_faces:
-                        kx1, ky1, kx2, ky2 = kf.bbox.astype(int).tolist()
-                        kcx, kcy = (kx1 + kx2) / 2.0, (ky1 + ky2) / 2.0
-                        w_inter = max(0, min(x2, kx2) - max(x1, kx1))
-                        h_inter = max(0, min(y2, ky2) - max(y1, ky1))
-                        area_inter = w_inter * h_inter
-                        area1 = (x2 - x1) * (y2 - y1)
-                        area2 = (kx2 - kx1) * (ky2 - ky1)
-                        iou = area_inter / float(area1 + area2 - area_inter + 1e-6)
-                        if iou > 0.40 or np.hypot(cx - kcx, cy - kcy) < 40:
-                            too_close = True
-                            break
-                    if not too_close:
-                        gender = getattr(face, "gender", 1)
-                        lbl = f"ARCFACE: PERSON ({'MALE' if gender == 1 else 'FEMALE'})"
-                        kept_faces.append((face, lbl, (0, 200, 0)))
+            for face in faces:
+                x1, y1, x2, y2 = face.bbox.astype(int).tolist()
+                cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                too_close = False
+                for (kf, _, _) in kept_faces:
+                    kx1, ky1, kx2, ky2 = kf.bbox.astype(int).tolist()
+                    kcx, kcy = (kx1 + kx2) / 2.0, (ky1 + ky2) / 2.0
+                    w_inter = max(0, min(x2, kx2) - max(x1, kx1))
+                    h_inter = max(0, min(y2, ky2) - max(y1, ky1))
+                    area_inter = w_inter * h_inter
+                    area1 = (x2 - x1) * (y2 - y1)
+                    area2 = (kx2 - kx1) * (ky2 - ky1)
+                    iou = area_inter / float(area1 + area2 - area_inter + 1e-6)
+                    if iou > 0.45 or np.hypot(cx - kcx, cy - kcy) < 60:
+                        too_close = True
+                        break
+                if not too_close:
+                    gender = getattr(face, "gender", 1)
+                    gender_str = "MALE" if gender == 1 else "FEMALE"
+                    lbl = f"ARCFACE: {gender_str}"
+                    kept_faces.append((face, lbl, (0, 0, 255)))
 
             for (face, def_lbl, col) in kept_faces:
                 x1, y1, x2, y2 = face.bbox.astype(int).tolist()

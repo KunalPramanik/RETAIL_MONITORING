@@ -365,73 +365,12 @@ class VisionInferenceService:
             # Safe recovery if ONNX forward pass fails
             pass
 
-        # Robust multi-picture & occlusion handling for camera scene
-        wall_crop = img[max(0, orig_h - 120):max(1, orig_h - 40), 100:min(orig_w, 300)]
-        avg_bgr = np.mean(wall_crop, axis=(0, 1)) if wall_crop.size > 0 else [0, 0, 0]
-        is_wall_scene = avg_bgr[1] > avg_bgr[0] and avg_bgr[1] > avg_bgr[2] and avg_bgr[1] > 110
-
-        if is_wall_scene:
-            # Filter out wall-level person boxes in picture zones while preserving any foreground/occluded persons
-            detections = [
-                d for d in detections
-                if not (d.class_label == "person" and d.bbox[1] < 180 and d.bbox[0] >= 100 and d.bbox[0] <= 600)
-            ]
-            wall_items = [
-                {
-                    "bbox": [140, 85, 125, 160],
-                    "class": "ganesh",
-                    "badge": "YOLOX: GANESH",
-                    "color": (0, 200, 255),
-                    "conf": 0.94,
-                },
-                {
-                    "bbox": [285, 85, 135, 165],
-                    "class": "person",
-                    "badge": "YOLOX: PERSON (MALE)",
-                    "color": (255, 180, 0),
-                    "conf": 0.91,
-                },
-                {
-                    "bbox": [445, 75, 135, 195],
-                    "class": "person",
-                    "badge": "YOLOX: PERSON (FEMALE)",
-                    "color": (255, 100, 255),
-                    "conf": 0.93,
-                },
-            ]
-            for w_item in wall_items:
-                wbx, wby, wbw, wbh = w_item["bbox"]
-                track_id_seq += 1
-                detections.append(
-                    DetectedBox(
-                        bbox=[wbx, wby, wbw, wbh],
-                        class_label=w_item["class"],
-                        product_id=default_prod_id,
-                        sku_code=default_sku,
-                        confidence=w_item["conf"],
-                        pack_size=1,
-                        track_id=track_id_seq,
-                        exit_vector=(0.0, 0.0),
-                    )
-                )
-                conf_scores.append(w_item["conf"])
-
-        # Draw all final bounding boxes and labels onto frame
+        # Draw all dynamic bounding boxes and labels onto frame
         for d in detections:
             bx, by, bw, bh = d.bbox
-            if d.class_label == "ganesh":
-                badge_text = "YOLOX: GANESH"
-                color = (0, 200, 255)
-            elif d.class_label == "person":
-                if is_wall_scene and bx >= 400 and by < 120:
-                    badge_text = "YOLOX: PERSON (FEMALE)"
-                    color = (255, 100, 255)
-                elif is_wall_scene and 250 <= bx < 400 and by < 120:
-                    badge_text = "YOLOX: PERSON (MALE)"
-                    color = (255, 180, 0)
-                else:
-                    badge_text = f"YOLOX: PERSON {int(d.confidence * 100)}%"
-                    color = (255, 180, 0)
+            if d.class_label == "person":
+                badge_text = f"YOLOX: PERSON {int(d.confidence * 100)}%"
+                color = (255, 180, 0)
             elif d.class_label == "case_full":
                 badge_text = f"YOLOX: CASE FULL {int(d.confidence * 100)}%"
                 color = (0, 230, 115)
@@ -459,10 +398,7 @@ class VisionInferenceService:
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.95
 
         # CCTV Diagnostics Banner with semi-transparent dark backdrop (positioned below camera OSD)
-        if is_wall_scene:
-            status_banner = f"YOLOX CV // DETECTIONS: {len(detections)} (GANESH: 1 | PERSON MALE: 1 | PERSON FEMALE: 1) // {latency_ms:.0f}ms"
-        else:
-            status_banner = f"YOLOX CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}) // {latency_ms:.0f}ms"
+        status_banner = f"YOLOX CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}) // {latency_ms:.0f}ms"
         (bw_t, bh_t), _ = cv2.getTextSize(status_banner, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
         banner_y = min(orig_h - 12, max(40, 44))
         overlay = img.copy()

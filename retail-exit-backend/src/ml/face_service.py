@@ -213,20 +213,15 @@ class FaceRecognitionService:
             app = cls.get_app()
             faces = app.get(img)
 
-            faces.sort(key=lambda f: getattr(f, "det_score", 0.0), reverse=True)
-
-            orig_h, orig_w = img.shape[:2]
-            wall_crop = img[max(0, orig_h - 120):max(1, orig_h - 40), 100:min(orig_w, 300)]
-            avg_bgr = np.mean(wall_crop, axis=(0, 1)) if wall_crop.size > 0 else [0, 0, 0]
-            has_wall_pictures = avg_bgr[1] > avg_bgr[0] and avg_bgr[1] > avg_bgr[2] and avg_bgr[1] > 110
-
             kept_faces: List[Tuple[Any, str, Tuple[int, int, int]]] = []
             for face in faces:
                 x1, y1, x2, y2 = face.bbox.astype(int).tolist()
                 det_score = getattr(face, "det_score", 0.0)
 
-                # Filter out stray wall nail/hook at top or low-confidence noise
-                if y1 < 70 or det_score < 0.12:
+                # Filter ceiling noise or low confidence
+                if y1 < 25 and (y2 - y1) < 30:
+                    continue
+                if det_score < 0.12:
                     continue
 
                 cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
@@ -240,27 +235,17 @@ class FaceRecognitionService:
                     area1 = (x2 - x1) * (y2 - y1)
                     area2 = (kx2 - kx1) * (ky2 - ky1)
                     iou = area_inter / float(area1 + area2 - area_inter + 1e-6)
-                    if iou > 0.45 or np.hypot(cx - kcx, cy - kcy) < 55:
+                    # Non-aggressive IoU (0.75) and min distance (15px) so overlapping faces are preserved
+                    if iou > 0.75 or np.hypot(cx - kcx, cy - kcy) < 15:
                         too_close = True
                         break
-                if not too_close:
-                    if has_wall_pictures and cy < 180:
-                        if cx < 260:
-                            lbl = f"GANESH {int(max(0.90, det_score) * 100 if det_score > 0.5 else 92)}%"
-                            color = (0, 200, 255)
-                        elif cx < 440:
-                            lbl = f"MAN {int(max(0.85, det_score) * 100 if det_score > 0.5 else 88)}%"
-                            color = (255, 180, 0)
-                        else:
-                            lbl = f"WOMAN {int(max(0.88, det_score) * 100 if det_score > 0.5 else 91)}%"
-                            color = (255, 100, 255)
-                    else:
-                        gender = getattr(face, "gender", 1)
-                        gender_str = "MAN" if gender == 1 else "WOMAN"
-                        conf_pct = int(det_score * 100) if det_score > 0.5 else 90
-                        lbl = f"REAL PERSON ({gender_str}) {conf_pct}%"
-                        color = (0, 255, 180)
 
+                if not too_close:
+                    gender = getattr(face, "gender", 1)
+                    gender_str = "MAN" if gender == 1 else "WOMAN"
+                    conf_pct = int(det_score * 100)
+                    lbl = f"{gender_str} {conf_pct}%"
+                    color = (255, 180, 0) if gender == 1 else (255, 100, 255)
                     kept_faces.append((face, lbl, color))
 
             for (face, def_lbl, col) in kept_faces:

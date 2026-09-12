@@ -577,7 +577,7 @@ async def get_camera_snapshot(
     if not should_capture_live and os.path.exists(snapshot_path):
         try:
             file_mtime = os.path.getmtime(snapshot_path)
-            if (time.time() - file_mtime) > 2.5 and cam.status == "ONLINE":
+            if (time.time() - file_mtime) > 1.2 and (cam.status == "ONLINE" or cam.ip_address):
                 should_capture_live = True
         except Exception:
             should_capture_live = True

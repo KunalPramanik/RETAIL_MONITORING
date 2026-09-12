@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { useAppData } from '../../context/AppDataContext';
-import { resolveMediaUrl } from '../../api/client';
+import { resolveMediaUrl, api } from '../../api/client';
 import type { Camera } from '../../types';
 import { CameraStatusDot } from './CameraStatusDot';
 import { AddCameraModal } from './AddCameraModal';
+import { SingleCameraTile } from './SingleCameraTile';
 import { Modal } from '../common/Modal';
 import {
   Camera as CameraIcon,
@@ -16,6 +17,7 @@ import {
   ShieldAlert,
   QrCode,
   Sliders,
+  Video,
 } from 'lucide-react';
 
 export const CameraManagementPanel: React.FC = () => {
@@ -23,6 +25,10 @@ export const CameraManagementPanel: React.FC = () => {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [resumingCamera, setResumingCamera] = useState<Camera | null>(null);
+  const [showLiveWall, setShowLiveWall] = useState(true);
+  const [expandedCamId, setExpandedCamId] = useState<string | null>(null);
+  const [scanningCamId, setScanningCamId] = useState<string | null>(null);
+  const [scanMessage, setScanMessage] = useState<{ id: string; text: string; isError?: boolean } | null>(null);
   
   // Decommission confirmation state
   const [cameraToDelete, setCameraToDelete] = useState<Camera | null>(null);
@@ -81,6 +87,34 @@ export const CameraManagementPanel: React.FC = () => {
     setReassigningCam(null);
   };
 
+  const handleScanNow = async (cam: Camera) => {
+    setScanningCamId(cam.cameraId);
+    setScanMessage(null);
+    try {
+      const data = await api.scanCameraNow(cam.cameraId);
+      if (data.success) {
+        setScanMessage({
+          id: cam.cameraId,
+          text: `Inference executed: ${data.unitsDetected} units (${data.casesDetected} cases) · Verdict: ${data.verdict}`,
+        });
+      } else {
+        setScanMessage({
+          id: cam.cameraId,
+          text: data.detail || 'Scan failed',
+          isError: true,
+        });
+      }
+    } catch (e: any) {
+      setScanMessage({
+        id: cam.cameraId,
+        text: e.message || 'Connection error triggering camera scan',
+        isError: true,
+      });
+    } finally {
+      setScanningCamId(null);
+    }
+  };
+
   const getRelativeTime = (isoString?: string) => {
     if (!isoString) return 'Never';
     const diffSec = Math.round((Date.now() - new Date(isoString).getTime()) / 1000);
@@ -107,6 +141,21 @@ export const CameraManagementPanel: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2">
+          {activeCameras.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowLiveWall((prev) => !prev)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold rounded-sm transition-colors border ${
+                showLiveWall
+                  ? 'bg-amber text-black border-amber shadow-xs'
+                  : 'bg-canvas text-text-pri border-hairline hover:border-amber/50'
+              }`}
+              title="Toggle Live Surveillance Video Wall"
+            >
+              <Video className="w-3.5 h-3.5" />
+              {showLiveWall ? 'Hide Live Feeds' : 'Live Camera Feeds'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -146,6 +195,41 @@ export const CameraManagementPanel: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* Live Optical Video Wall across pages */}
+      {showLiveWall && activeCameras.length > 0 && (
+        <div className="bg-canvas/40 border border-hairline rounded-sm p-3.5 space-y-3">
+          <div className="flex items-center justify-between border-b border-hairline pb-2">
+            <div className="flex items-center gap-2">
+              <Video className="w-4 h-4 text-amber" />
+              <h3 className="text-xs-tech font-bold text-text-pri uppercase tracking-wider">
+                Surveillance Portal Feeds & Live Optical Inspection
+              </h3>
+              <span className="text-[11px] font-mono text-status-ok">
+                ({activeCameras.filter((c) => c.status === 'ONLINE').length}/{activeCameras.length} Online)
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-text-sec">AUTO REFRESH: 2.0s</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {activeCameras.map((cam) => {
+              const assignedLane = lanes.find((l) => l.laneId === cam.laneId);
+              return (
+                <SingleCameraTile
+                  key={cam.cameraId}
+                  camera={cam}
+                  assignedLane={assignedLane}
+                  isScanning={scanningCamId === cam.cameraId}
+                  onScanNow={handleScanNow}
+                  scanMessage={scanMessage?.id === cam.cameraId ? scanMessage : null}
+                  refreshIntervalMs={2000}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Test Notification Banner if active */}
       {testResult && (
@@ -202,157 +286,204 @@ export const CameraManagementPanel: React.FC = () => {
                 const assignedLane = lanes.find((l) => l.laneId === cam.laneId);
 
                 return (
-                  <tr key={cam.cameraId} className="hover:bg-panel-raised/40 transition-colors">
-                    {/* Status Dot */}
-                    <td className="p-2.5 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <CameraStatusDot status={cam.status} />
-                        <span
-                          className={`text-[11px] font-semibold ${
-                            cam.status === 'ONLINE'
-                              ? 'text-status-ok'
-                              : cam.status === 'DEGRADED'
-                              ? 'text-status-low'
-                              : cam.status === 'OFFLINE'
-                              ? 'text-status-high'
-                              : 'text-text-sec'
-                          }`}
-                        >
-                          {cam.status}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Camera Label & ID */}
-                    <td className="p-2.5 font-sans">
-                      <div className="text-text-pri font-medium">{cam.label}</div>
-                      <div className="font-mono text-[10px] text-text-sec">{cam.cameraId}</div>
-                    </td>
-
-                    {/* Assigned Lane */}
-                    <td className="p-2.5 font-sans">
-                      {cam.laneId ? (
-                        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-panel-raised border border-hairline text-text-pri font-mono text-[11px]">
-                          <Radio className="w-3 h-3 text-amber" />
-                          {cam.laneId}
-                          <span className="text-text-sec">({assignedLane?.location || 'Assigned'})</span>
-                        </span>
-                      ) : (
+                  <React.Fragment key={cam.cameraId}>
+                    <tr className="hover:bg-panel-raised/40 transition-colors">
+                      {/* Status Dot */}
+                      <td className="p-2.5 whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-amber/20 text-amber border border-amber/40 font-mono text-[10px]">
-                            UNBOUND
+                          <CameraStatusDot status={cam.status} />
+                          <span
+                            className={`text-[11px] font-semibold ${
+                              cam.status === 'ONLINE'
+                                ? 'text-status-ok'
+                                : cam.status === 'DEGRADED'
+                                ? 'text-status-low'
+                                : cam.status === 'OFFLINE'
+                                ? 'text-status-high'
+                                : 'text-text-sec'
+                            }`}
+                          >
+                            {cam.status}
                           </span>
+                        </div>
+                      </td>
+
+                      {/* Camera Label & ID */}
+                      <td className="p-2.5 font-sans">
+                        <div className="text-text-pri font-medium">{cam.label}</div>
+                        <div className="font-mono text-[10px] text-text-sec">{cam.cameraId}</div>
+                      </td>
+
+                      {/* Assigned Lane */}
+                      <td className="p-2.5 font-sans">
+                        {cam.laneId ? (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-panel-raised border border-hairline text-text-pri font-mono text-[11px]">
+                            <Radio className="w-3 h-3 text-amber" />
+                            {cam.laneId}
+                            <span className="text-text-sec">({assignedLane?.location || 'Assigned'})</span>
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-amber/20 text-amber border border-amber/40 font-mono text-[10px]">
+                              UNBOUND
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setResumingCamera(cam);
+                                setIsAddModalOpen(true);
+                              }}
+                              className="px-2 py-0.5 bg-amber hover:bg-amber/90 text-black font-semibold text-[10px] rounded-sm transition-colors shadow-xs"
+                            >
+                              Resume Setup
+                            </button>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Pairing Method */}
+                      <td className="p-2.5 font-sans">
+                        {cam.pairingMethod === 'QR_APP_GENERATED' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-teal-950/30 text-status-ok border border-status-ok/30 font-mono text-[10px]">
+                            <QrCode className="w-3 h-3 text-status-ok" />
+                            QR (TOKEN)
+                          </span>
+                        ) : cam.pairingMethod === 'QR_CAMERA_DISPLAYED' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-blue-950/30 text-blue-400 border border-blue-800/40 font-mono text-[10px]">
+                            <QrCode className="w-3 h-3 text-blue-400" />
+                            QR (SCANNED)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-panel-raised border border-hairline text-text-sec font-mono text-[10px]">
+                            <Sliders className="w-3 h-3 text-text-sec" />
+                            MANUAL
+                          </span>
+                        )}
+                      </td>
+
+                      {/* RTSP / HTTP Stream IP */}
+                      <td className="p-2.5">
+                        <div className="text-mono-val">
+                          {cam.streamUrl?.includes(':8080') ? `${cam.ipAddress}:8080` : `${cam.ipAddress}:554`}
+                        </div>
+                        <div className="text-[10px] text-text-sec truncate max-w-[160px]">{cam.rtspPath}</div>
+                      </td>
+
+                      {/* Stream Format */}
+                      <td className="p-2.5 text-right">
+                        <span className="text-text-pri font-medium">{cam.resolution || '1080p'}</span>
+                        <span className="text-text-sec text-[11px] ml-1.5">@{cam.fps || 30}fps</span>
+                      </td>
+
+                      {/* Last Heartbeat */}
+                      <td className="p-2.5 text-right text-mono-val">
+                        {getRelativeTime(cam.lastHeartbeatAt)}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="p-2.5 text-right font-sans">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Toggle Live Stream View */}
+                          <button
+                            type="button"
+                            onClick={() => setExpandedCamId((prev) => (prev === cam.cameraId ? null : cam.cameraId))}
+                            className={`p-1 rounded transition-colors ${
+                              expandedCamId === cam.cameraId
+                                ? 'bg-amber text-black'
+                                : 'text-text-sec hover:text-amber hover:bg-hairline/30'
+                            }`}
+                            title={expandedCamId === cam.cameraId ? 'Collapse live inspection' : 'View live stream & optical detections'}
+                          >
+                            <Video className="w-3.5 h-3.5" />
+                          </button>
+
+                          {/* Resume Setup Action */}
+                          {(cam.status === 'PENDING_SETUP' || !cam.laneId) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setResumingCamera(cam);
+                                setIsAddModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-amber/20 hover:bg-amber text-amber hover:text-black border border-amber/50 font-semibold text-[10px] rounded-sm transition-colors flex items-center gap-1 mr-1"
+                              title="Resume camera setup at Lane Linkage"
+                            >
+                              Resume Setup
+                            </button>
+                          )}
+
+                          {/* Test Connection */}
+                          <button
+                            type="button"
+                            onClick={() => handleTestFeed(cam)}
+                            disabled={testingCamId === cam.cameraId}
+                            className="p-1 text-text-sec hover:text-amber rounded hover:bg-hairline/30 transition-colors"
+                            title="Execute live RTSP test pull"
+                          >
+                            <RotateCw
+                              className={`w-3.5 h-3.5 ${
+                                testingCamId === cam.cameraId ? 'animate-spin text-amber' : ''
+                              }`}
+                            />
+                          </button>
+
+                          {/* Reassign Lane */}
                           <button
                             type="button"
                             onClick={() => {
-                              setResumingCamera(cam);
-                              setIsAddModalOpen(true);
+                              setReassigningCam(cam);
+                              setTargetLaneId(cam.laneId || '');
                             }}
-                            className="px-2 py-0.5 bg-amber hover:bg-amber/90 text-black font-semibold text-[10px] rounded-sm transition-colors shadow-xs"
+                            className="p-1 text-text-sec hover:text-text-pri rounded hover:bg-hairline/30 transition-colors"
+                            title="Reassign to exit lane"
                           >
-                            Resume Setup
+                            <Radio className="w-3.5 h-3.5 text-text-sec hover:text-amber" />
+                          </button>
+
+                          {/* Decommission Camera */}
+                          <button
+                            type="button"
+                            onClick={() => setCameraToDelete(cam)}
+                            className="p-1 text-text-sec hover:text-status-high rounded hover:bg-red-950/20 transition-colors"
+                            title="Decommission camera from fleet"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      )}
-                    </td>
+                      </td>
+                    </tr>
 
-                    {/* Pairing Method */}
-                    <td className="p-2.5 font-sans">
-                      {cam.pairingMethod === 'QR_APP_GENERATED' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-teal-950/30 text-status-ok border border-status-ok/30 font-mono text-[10px]">
-                          <QrCode className="w-3 h-3 text-status-ok" />
-                          QR (TOKEN)
-                        </span>
-                      ) : cam.pairingMethod === 'QR_CAMERA_DISPLAYED' ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-blue-950/30 text-blue-400 border border-blue-800/40 font-mono text-[10px]">
-                          <QrCode className="w-3 h-3 text-blue-400" />
-                          QR (SCANNED)
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-panel-raised border border-hairline text-text-sec font-mono text-[10px]">
-                          <Sliders className="w-3 h-3 text-text-sec" />
-                          MANUAL
-                        </span>
-                      )}
-                    </td>
-
-                    {/* RTSP / HTTP Stream IP */}
-                    <td className="p-2.5">
-                      <div className="text-mono-val">
-                        {cam.streamUrl?.includes(':8080') ? `${cam.ipAddress}:8080` : `${cam.ipAddress}:554`}
-                      </div>
-                      <div className="text-[10px] text-text-sec truncate max-w-[160px]">{cam.rtspPath}</div>
-                    </td>
-
-                    {/* Stream Format */}
-                    <td className="p-2.5 text-right">
-                      <span className="text-text-pri font-medium">{cam.resolution || '1080p'}</span>
-                      <span className="text-text-sec text-[11px] ml-1.5">@{cam.fps || 30}fps</span>
-                    </td>
-
-                    {/* Last Heartbeat */}
-                    <td className="p-2.5 text-right text-mono-val">
-                      {getRelativeTime(cam.lastHeartbeatAt)}
-                    </td>
-
-                    {/* Actions */}
-                    <td className="p-2.5 text-right font-sans">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {/* Resume Setup Action */}
-                        {(cam.status === 'PENDING_SETUP' || !cam.laneId) && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setResumingCamera(cam);
-                              setIsAddModalOpen(true);
-                            }}
-                            className="px-2 py-1 bg-amber/20 hover:bg-amber text-amber hover:text-black border border-amber/50 font-semibold text-[10px] rounded-sm transition-colors flex items-center gap-1 mr-1"
-                            title="Resume camera setup at Lane Linkage"
-                          >
-                            Resume Setup
-                          </button>
-                        )}
-
-                        {/* Test Connection */}
-                        <button
-                          type="button"
-                          onClick={() => handleTestFeed(cam)}
-                          disabled={testingCamId === cam.cameraId}
-                          className="p-1 text-text-sec hover:text-amber rounded hover:bg-hairline/30 transition-colors"
-                          title="Execute live RTSP test pull"
-                        >
-                          <RotateCw
-                            className={`w-3.5 h-3.5 ${
-                              testingCamId === cam.cameraId ? 'animate-spin text-amber' : ''
-                            }`}
-                          />
-                        </button>
-
-                        {/* Reassign Lane */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setReassigningCam(cam);
-                            setTargetLaneId(cam.laneId || '');
-                          }}
-                          className="p-1 text-text-sec hover:text-text-pri rounded hover:bg-hairline/30 transition-colors"
-                          title="Reassign to exit lane"
-                        >
-                          <Radio className="w-3.5 h-3.5 text-text-sec hover:text-amber" />
-                        </button>
-
-                        {/* Decommission Camera */}
-                        <button
-                          type="button"
-                          onClick={() => setCameraToDelete(cam)}
-                          className="p-1 text-text-sec hover:text-status-high rounded hover:bg-red-950/20 transition-colors"
-                          title="Decommission camera from fleet"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                    {/* Expandable Live Camera Inspection Row */}
+                    {expandedCamId === cam.cameraId && (
+                      <tr className="bg-canvas/60">
+                        <td colSpan={8} className="p-4 border-b border-hairline">
+                          <div className="max-w-2xl mx-auto space-y-2">
+                            <div className="flex items-center justify-between text-xs-tech font-mono text-text-sec">
+                              <span className="flex items-center gap-1.5 text-amber font-semibold">
+                                <Video className="w-3.5 h-3.5" />
+                                LIVE PORTAL STREAM & REAL-TIME NEURAL INSPECTION // {cam.label}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setExpandedCamId(null)}
+                                className="hover:text-text-pri"
+                              >
+                                ✕ Close Tile
+                              </button>
+                            </div>
+                            <SingleCameraTile
+                              camera={cam}
+                              assignedLane={assignedLane}
+                              isScanning={scanningCamId === cam.cameraId}
+                              onScanNow={handleScanNow}
+                              scanMessage={scanMessage?.id === cam.cameraId ? scanMessage : null}
+                              refreshIntervalMs={2000}
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 );
               })
             ) : (

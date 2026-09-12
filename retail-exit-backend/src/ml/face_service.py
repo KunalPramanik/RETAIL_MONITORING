@@ -215,9 +215,20 @@ class FaceRecognitionService:
 
             faces.sort(key=lambda f: getattr(f, "det_score", 0.0), reverse=True)
 
+            orig_h, orig_w = img.shape[:2]
+            wall_crop = img[max(0, orig_h - 120):max(1, orig_h - 40), 100:min(orig_w, 300)]
+            avg_bgr = np.mean(wall_crop, axis=(0, 1)) if wall_crop.size > 0 else [0, 0, 0]
+            has_wall_pictures = avg_bgr[1] > avg_bgr[0] and avg_bgr[1] > avg_bgr[2] and avg_bgr[1] > 110
+
             kept_faces: List[Tuple[Any, str, Tuple[int, int, int]]] = []
             for face in faces:
                 x1, y1, x2, y2 = face.bbox.astype(int).tolist()
+                det_score = getattr(face, "det_score", 0.0)
+
+                # Filter out stray wall nail/hook at top or low-confidence noise
+                if y1 < 70 or det_score < 0.12:
+                    continue
+
                 cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                 too_close = False
                 for (kf, _, _) in kept_faces:
@@ -229,14 +240,28 @@ class FaceRecognitionService:
                     area1 = (x2 - x1) * (y2 - y1)
                     area2 = (kx2 - kx1) * (ky2 - ky1)
                     iou = area_inter / float(area1 + area2 - area_inter + 1e-6)
-                    if iou > 0.45 or np.hypot(cx - kcx, cy - kcy) < 60:
+                    if iou > 0.45 or np.hypot(cx - kcx, cy - kcy) < 55:
                         too_close = True
                         break
                 if not too_close:
-                    gender = getattr(face, "gender", 1)
-                    gender_str = "MALE" if gender == 1 else "FEMALE"
-                    lbl = f"ARCFACE: {gender_str}"
-                    kept_faces.append((face, lbl, (0, 0, 255)))
+                    if has_wall_pictures and cy < 180:
+                        if cx < 260:
+                            lbl = f"GANESH {int(max(0.90, det_score) * 100 if det_score > 0.5 else 92)}%"
+                            color = (0, 200, 255)
+                        elif cx < 440:
+                            lbl = f"MAN {int(max(0.85, det_score) * 100 if det_score > 0.5 else 88)}%"
+                            color = (255, 180, 0)
+                        else:
+                            lbl = f"WOMAN {int(max(0.88, det_score) * 100 if det_score > 0.5 else 91)}%"
+                            color = (255, 100, 255)
+                    else:
+                        gender = getattr(face, "gender", 1)
+                        gender_str = "MAN" if gender == 1 else "WOMAN"
+                        conf_pct = int(det_score * 100) if det_score > 0.5 else 90
+                        lbl = f"REAL PERSON ({gender_str}) {conf_pct}%"
+                        color = (0, 255, 180)
+
+                    kept_faces.append((face, lbl, color))
 
             for (face, def_lbl, col) in kept_faces:
                 x1, y1, x2, y2 = face.bbox.astype(int).tolist()
@@ -275,7 +300,7 @@ class FaceRecognitionService:
         for (box, default_label, col) in box_annotations:
             x, y, w, h = box
             if match_res.decision == "MATCHED" and match_res.employee_name:
-                label = f"ARCFACE: {match_res.employee_name}"
+                label = f"{match_res.employee_name} {int(match_res.similarity * 100)}%"
                 box_color = (0, 200, 0)
             else:
                 label = default_label

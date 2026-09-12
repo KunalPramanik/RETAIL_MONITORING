@@ -507,7 +507,7 @@ async def test_camera_connection(
         try:
             from src.ml.vision_service import VisionInferenceService
             from src.ml.face_service import FaceRecognitionService
-            vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, [])
+            vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes=frame_bytes, catalog_products=[])
             face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
                 frame_bytes=obj_bytes or frame_bytes,
                 enrolled_employees=[],
@@ -859,13 +859,42 @@ async def get_camera_telemetry(
         .limit(1)
     )
     latest_hb = hb_res.scalar_one_or_none()
+    fps_val: float = float(cam.fps if cam.fps is not None else 30.0)
+    bitrate_val: float = 4096.0
+    dropped_val: int = 0
+    last_hb_iso = None
+
+    if latest_hb is not None:
+        raw_fps = getattr(latest_hb, "fps_observed", None)
+        if raw_fps is not None:
+            try:
+                fps_val = float(raw_fps)
+            except (TypeError, ValueError):
+                pass
+        raw_bitrate = getattr(latest_hb, "bitrate_kbps", None)
+        if raw_bitrate is not None:
+            try:
+                bitrate_val = float(raw_bitrate)
+            except (TypeError, ValueError):
+                pass
+        raw_dropped = getattr(latest_hb, "dropped_frames", 0)
+        if raw_dropped is not None:
+            try:
+                dropped_val = int(raw_dropped)
+            except (TypeError, ValueError):
+                pass
+        if getattr(latest_hb, "received_at", None) is not None:
+            last_hb_iso = latest_hb.received_at.isoformat()
+    elif cam.last_heartbeat_at is not None:
+        last_hb_iso = cam.last_heartbeat_at.isoformat()
+
     return CameraTelemetryResponse(
-        cameraId=cam.camera_id,
-        status=cam.status,
-        fpsObserved=float(latest_hb.fps_observed) if (latest_hb and latest_hb.fps_observed) else float(cam.fps or 30.0),
-        bitrateKbps=float(latest_hb.bitrate_kbps) if (latest_hb and latest_hb.bitrate_kbps) else 4096.0,
-        droppedFrames=int(getattr(latest_hb, "dropped_frames", 0) or 0) if latest_hb else 0,
-        lastHeartbeatAt=latest_hb.received_at.isoformat() if latest_hb else (cam.last_heartbeat_at.isoformat() if cam.last_heartbeat_at else None),
+        cameraId=str(cam.camera_id),
+        status=str(cam.status),
+        fpsObserved=fps_val,
+        bitrateKbps=bitrate_val,
+        droppedFrames=dropped_val,
+        lastHeartbeatAt=last_hb_iso,
     )
 
 

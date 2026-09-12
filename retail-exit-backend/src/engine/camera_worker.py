@@ -179,7 +179,14 @@ class CameraIngestionWorker:
             ]
 
             vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, catalog_products=catalog)
-            face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(obj_bytes or frame_bytes, roster)
+            face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
+                frame_bytes=obj_bytes or frame_bytes,
+                enrolled_employees=roster,
+                prior_detections_count=len(vis_res.detections),
+                cases_detected=vis_res.cases_detected,
+                units_detected=vis_res.vision_count,
+                raw_frame_bytes=frame_bytes,
+            )
             annotated_bytes = final_bytes or obj_bytes or frame_bytes
 
             carrier_label = face_res.employee_name if face_res.matched_employee_id else "UNVERIFIED"
@@ -303,6 +310,10 @@ class CameraIngestionWorker:
         face_result, final_annotated_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
             frame_bytes=annotated_bytes,
             enrolled_employees=roster,
+            prior_detections_count=len(vision_result.detections),
+            cases_detected=vision_result.cases_detected,
+            units_detected=vision_result.vision_count,
+            raw_frame_bytes=frame_bytes,
         )
 
         # 4. Multi-Sensor Consensus Fusion (Degrades cleanly to Vision count when RFID/Scale absent)

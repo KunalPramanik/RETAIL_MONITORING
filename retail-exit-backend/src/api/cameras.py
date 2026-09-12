@@ -508,7 +508,14 @@ async def test_camera_connection(
             from src.ml.vision_service import VisionInferenceService
             from src.ml.face_service import FaceRecognitionService
             vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, [])
-            face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(obj_bytes or frame_bytes, [])
+            face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
+                frame_bytes=obj_bytes or frame_bytes,
+                enrolled_employees=[],
+                prior_detections_count=len(vis_res.detections),
+                cases_detected=vis_res.cases_detected,
+                units_detected=vis_res.vision_count,
+                raw_frame_bytes=frame_bytes,
+            )
             frame_bytes = final_bytes or obj_bytes or frame_bytes
         except Exception:
             pass
@@ -614,7 +621,14 @@ async def get_camera_snapshot(
                 ]
 
                 vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, catalog_products=catalog)
-                face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(obj_bytes or frame_bytes, roster)
+                face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
+                    frame_bytes=obj_bytes or frame_bytes,
+                    enrolled_employees=roster,
+                    prior_detections_count=len(vis_res.detections),
+                    cases_detected=vis_res.cases_detected,
+                    units_detected=vis_res.vision_count,
+                    raw_frame_bytes=frame_bytes,
+                )
                 annotated_bytes = final_bytes or obj_bytes or frame_bytes
             except Exception:
                 pass

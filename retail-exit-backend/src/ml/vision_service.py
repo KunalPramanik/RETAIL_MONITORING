@@ -53,8 +53,8 @@ class VisionInferenceService:
 
     # COCO Class mapping to retail exit monitoring classes
     # 0 = person
-    # Case / container classes: backpack(24), handbag(26), suitcase(28), tv(62), laptop(63), microwave(68), refrigerator(72)
-    CASE_CLASSES = {24, 26, 28, 62, 63, 68, 72}
+    # Wholesale case / container classes: suitcase/luggage container(28)
+    CASE_CLASSES = {28}
     # Single retail item classes: bottle(39), wine glass(40), cup(41), fork(42), knife(43), spoon(44),
     # bowl(45), banana(46), apple(47), sandwich(48), orange(49), broccoli(50), carrot(51), hot dog(52),
     # pizza(53), donut(54), cake(55), mouse(64), remote(65), keyboard(66), cell phone(67), book(73),
@@ -298,14 +298,25 @@ class VisionInferenceService:
             class_scores = np.max(scores, axis=-1)
 
             # Multi-threshold candidate filter:
-            # Person detection floor 0.08 to capture seated/portrait/occluded persons cleanly
-            # General objects (cases, units): confidence_floor
-            pos_mask = ((class_ids == 0) & (class_scores >= 0.08)) | ((class_ids != 0) & (class_scores >= confidence_floor))
-            cand_boxes = boxes_xyxy[pos_mask]
-            cand_scores = class_scores[pos_mask]
-            cand_cls = class_ids[pos_mask]
+            # Person detection floor 0.10 to capture seated/portrait/occluded persons cleanly
+            # Wholesale case classes: 0.25
+            # Single retail items: 0.12
+            cand_indices = []
+            for i in range(len(class_ids)):
+                cid = int(class_ids[i])
+                sc = float(class_scores[i])
+                if cid == 0 and sc >= 0.10:
+                    cand_indices.append(i)
+                elif cid in cls.CASE_CLASSES and sc >= 0.25:
+                    cand_indices.append(i)
+                elif cid in cls.SINGLE_ITEM_CLASSES and sc >= 0.12:
+                    cand_indices.append(i)
 
-            if len(cand_boxes) > 0:
+            if len(cand_indices) > 0:
+                cand_boxes = boxes_xyxy[cand_indices]
+                cand_scores = class_scores[cand_indices]
+                cand_cls = class_ids[cand_indices]
+
                 # Convert center-xywh to top-left xywh in resized space
                 x_center = cand_boxes[:, 0]
                 y_center = cand_boxes[:, 1]
@@ -323,21 +334,31 @@ class VisionInferenceService:
                 w_orig = np.clip(w_orig, 1, orig_w - x1)
                 h_orig = np.clip(h_orig, 1, orig_h - y1)
 
-                nms_boxes = [[int(x1[i]), int(y1[i]), int(w_orig[i]), int(h_orig[i])] for i in range(len(x1))]
+                nms_boxes = [[int(x1[k]), int(y1[k]), int(w_orig[k]), int(h_orig[k])] for k in range(len(x1))]
                 nms_scores = [float(s) for s in cand_scores]
 
-                # IoU threshold 0.50 so overlapping / partially occluded persons are preserved
-                indices = cv2.dnn.NMSBoxes(nms_boxes, nms_scores, 0.08, 0.50)
-                keep_indices = [int(i) for i in np.asarray(indices).flatten()] if len(indices) > 0 else []
+                # IoU threshold 0.45 so overlapping / partially occluded persons are preserved
+                indices = cv2.dnn.NMSBoxes(nms_boxes, nms_scores, 0.08, 0.45)
+                keep_indices = [int(k) for k in np.asarray(indices).flatten()] if len(indices) > 0 else []
 
                 for idx in keep_indices:
                     bx, by, bw, bh = nms_boxes[idx]
                     cid = int(cand_cls[idx])
                     conf = round(float(nms_scores[idx]), 3)
-                    track_id_seq += 1
+
+                    # Ignore gigantic boxes covering >85% of width and >70% of height (room/wall background false positives)
+                    if bw > 0.85 * orig_w and bh > 0.70 * orig_h:
+                        continue
 
                     # Map COCO classes to retail exit classes
                     if cid == 0:
+                        # Hand/finger filter:
+                        # Isolated hands/fingers have small height (bh < 0.20 * orig_h) or flat aspect ratio (bw/bh > 1.6) with low conf (< 0.45)
+                        if bh < 0.20 * orig_h and conf < 0.45:
+                            continue
+                        if (bw / max(1, bh)) > 1.6 and bh < 120 and conf < 0.50:
+                            continue
+
                         class_label = "person"
                         pack_size = 1
                     elif cid in cls.CASE_CLASSES:
@@ -345,12 +366,15 @@ class VisionInferenceService:
                         pack_size = default_pack
                         total_cases += 1
                         total_units += pack_size
-                    else:
+                    elif cid in cls.SINGLE_ITEM_CLASSES:
                         class_label = "single_unit"
                         pack_size = 1
                         total_singles += 1
                         total_units += 1
+                    else:
+                        continue
 
+                    track_id_seq += 1
                     conf_scores.append(conf)
                     detections.append(
                         DetectedBox(
@@ -410,9 +434,7 @@ class VisionInferenceService:
 
         (bw_t, bh_t), _ = cv2.getTextSize(status_banner, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
         banner_y = min(orig_h - 12, max(40, 44))
-        overlay = img.copy()
-        cv2.rectangle(overlay, (8, banner_y - bh_t - 4), (min(orig_w - 4, 8 + bw_t + 10), banner_y + 4), (10, 15, 20), -1)
-        cv2.addWeighted(overlay, 0.75, img, 0.25, 0, img)
+        cv2.rectangle(img, (8, banner_y - bh_t - 6), (min(orig_w - 4, 8 + bw_t + 12), banner_y + 4), (10, 15, 20), -1)
         cv2.putText(
             img,
             status_banner,

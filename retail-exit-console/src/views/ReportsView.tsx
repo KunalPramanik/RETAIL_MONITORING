@@ -3,6 +3,7 @@ import { useAppData } from '../context/AppDataContext';
 import type { ExitEvent, Alert, Product, SensorLane } from '../types';
 import { FileBarChart, Download, Printer, AlertTriangle, Calendar, Clock } from 'lucide-react';
 import { SignaturePad, type SignatureData } from '../components/common/SignaturePad';
+import { ExportDropdown } from '../components/common/ExportDropdown';
 import jsPDF from 'jspdf';
 
 export const ReportsView: React.FC = () => {
@@ -224,6 +225,7 @@ export const ReportsView: React.FC = () => {
               <Download className="w-3.5 h-3.5" />
               Download Signed PDF
             </button>
+            <ExportDropdown dataset="events" startDate={selectedDate} endDate={selectedDate} />
           </div>
         </div>
 

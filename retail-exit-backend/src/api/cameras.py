@@ -41,6 +41,8 @@ from src.realtime.hub import ws_hub
 from src.engine.camera_worker import camera_worker
 from src.cache import cache_service
 from src.api.deps_auth import require_roles
+from pydantic import BaseModel, Field
+from src.engine.ptz_service import ptz_service, PTZNotSupportedError
 
 router = APIRouter(prefix="/cameras", tags=["Camera Fleet Management"])
 
@@ -330,6 +332,7 @@ def serialize_camera(c: Camera) -> CameraResponse:
         offlineSince=c.offline_since.isoformat() if c.offline_since else None,
         addedAt=c.added_at.isoformat() if c.added_at else datetime.now(timezone.utc).isoformat(),
         removedAt=c.removed_at.isoformat() if c.removed_at else None,
+        ptzCapable=ptz_service.is_ptz_capable(c),
     )
 
 
@@ -1297,3 +1300,86 @@ async def pair_camera_device(
     return resp
 
 
+class PTZMovePayload(BaseModel):
+    pan: float = Field(0.0, description="Pan velocity/direction (-1.0 to 1.0)")
+    tilt: float = Field(0.0, description="Tilt velocity/direction (-1.0 to 1.0)")
+    zoom: float = Field(0.0, description="Zoom velocity/direction (-1.0 to 1.0)")
+    velocity: float = Field(1.0, ge=0.1, le=2.0)
+
+
+@router.post("/{camera_id}/ptz/move")
+async def ptz_move(
+    camera_id: str,
+    body: PTZMovePayload,
+    session: AsyncSession = Depends(get_db),
+):
+    """Executes continuous/velocity PTZ motion on a PTZ-capable camera."""
+    stmt = select(Camera).where(Camera.camera_id == camera_id, Camera.removed_at.is_(None))
+    res = await session.execute(stmt)
+    cam = res.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera {camera_id} not found")
+
+    try:
+        return await ptz_service.continuous_move(
+            camera=cam,
+            pan_velocity=body.pan,
+            tilt_velocity=body.tilt,
+            zoom_velocity=body.zoom,
+        )
+    except PTZNotSupportedError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/{camera_id}/ptz/stop")
+async def ptz_stop(
+    camera_id: str,
+    session: AsyncSession = Depends(get_db),
+):
+    """Halts all ongoing PTZ motion."""
+    stmt = select(Camera).where(Camera.camera_id == camera_id, Camera.removed_at.is_(None))
+    res = await session.execute(stmt)
+    cam = res.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera {camera_id} not found")
+
+    try:
+        return await ptz_service.stop(camera=cam)
+    except PTZNotSupportedError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/{camera_id}/ptz/preset/{preset_id}")
+async def ptz_goto_preset(
+    camera_id: str,
+    preset_id: int,
+    session: AsyncSession = Depends(get_db),
+):
+    """Commands PTZ camera to navigate to a predefined preset position (1..4)."""
+    stmt = select(Camera).where(Camera.camera_id == camera_id, Camera.removed_at.is_(None))
+    res = await session.execute(stmt)
+    cam = res.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera {camera_id} not found")
+
+    try:
+        return await ptz_service.goto_preset(camera=cam, preset_id=preset_id)
+    except PTZNotSupportedError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{camera_id}/ptz/status")
+async def ptz_get_status(
+    camera_id: str,
+    session: AsyncSession = Depends(get_db),
+):
+    """Retrieves current PTZ coordinates, moving status, and available presets."""
+    stmt = select(Camera).where(Camera.camera_id == camera_id, Camera.removed_at.is_(None))
+    res = await session.execute(stmt)
+    cam = res.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera {camera_id} not found")
+
+    return ptz_service.get_status(cam)

@@ -134,3 +134,60 @@ async def download_daily_report_pdf(
         headers={"Content-Disposition": f"attachment; filename=Loss_Prevention_{report_id}.pdf"},
     )
 
+
+@router.get("/export/xlsx")
+async def export_excel_report(
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    lane_id: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    actor_id: Optional[str] = Query("OPERATOR"),
+    session: AsyncSession = Depends(get_db),
+):
+    """Streams a comprehensive multi-tab .xlsx workbook of all exit telemetry and logs."""
+    from src.engine.export_engine import AuditExportEngine
+
+    excel_buffer = await AuditExportEngine.generate_multi_tab_excel(
+        session=session,
+        start_date=start_date,
+        end_date=end_date,
+        lane_id=lane_id,
+        severity=severity,
+        actor_id=actor_id,
+    )
+
+    filename = f"secops_audit_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.xlsx"
+    return Response(
+        content=excel_buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/export/csv")
+async def export_csv_report(
+    dataset: str = Query("events"),
+    lane_id: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    actor_id: Optional[str] = Query("OPERATOR"),
+    session: AsyncSession = Depends(get_db),
+):
+    """Streams a flat CSV dataset export with audit trail tracking."""
+    from src.engine.export_engine import AuditExportEngine
+
+    csv_data = await AuditExportEngine.generate_flat_csv(
+        session=session,
+        dataset=dataset,
+        lane_id=lane_id,
+        severity=severity,
+        actor_id=actor_id,
+    )
+
+    filename = f"secops_{dataset}_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+

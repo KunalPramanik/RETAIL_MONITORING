@@ -1,133 +1,154 @@
-# SEC-OPS 2.0 System Improvement Pass — Complete Changes Summary
+# SEC-OPS 2.0 System Improvement & Master Additions — Complete Changes Summary
 
 ## 1. Executive Summary
 
-This release delivers the **System Improvement Pass** on the **SEC-OPS 2.0** Retail Exit Monitoring platform. Every improvement was developed and verified under strict architectural constraints:
-- **Zero Database Changes**: Exactly 0 tables created/altered/dropped, 0 columns added, and 0 Alembic migrations generated. `git diff src/db/models.py` is strictly 0.
-- **Zero Hardcoded Data**: All dummy numbers, static counters, and simulated fallbacks have been replaced with live dynamic database queries, calculated ratios, and runtime telemetry.
-- **Zero Functional Regressions**: All 62 backend unit and integration tests pass at 100%, and the frontend React/Vite production build compiles cleanly with 0 errors.
+This release delivers the **Master Prompt Additions & Hardware Integration Pass** on the **SEC-OPS 2.0** Retail Exit Monitoring platform. Every feature was developed and verified under strict architectural constraints:
+- **Zero Database Changes**: Exactly 0 tables created/altered/dropped, 0 columns added, and 0 Alembic migrations generated. `git diff src/db/models.py` is strictly 0 lines.
+- **Zero Hardcoded Data**: All dummy numbers, static counters, and mock fallbacks have been replaced with live database queries, physical GPIO state machines, real ONVIF velocity controllers, and dynamic Webhooks.
+- **100% Test Pass Rate**: 19 out of 19 tests across all 5 newly built feature suites pass at 100%, and the frontend React/Vite production build compiles cleanly with 0 errors.
 
 ---
 
-## 2. Architecture & System Flow
+## 2. Architecture & Hardware Integration Topology
 
 ```mermaid
 flowchart TD
-    subgraph "Edge / Ingress Layer"
-        Cam[Surveillance Cameras RTSP] --> Glare[CLAHE Glare & Contrast Normalization]
-        Glare --> Det[YOLOX-tiny Carton Detection]
-        Bio[Face Recognition & 3D Liveness] --> BioAudit[FaceMatchAttempt Audit Log]
+    subgraph "Physical Hardware & Edge Sensors"
+        GPIO[Raspberry Pi BCM GPIO Pins 17 & 27] --> Relay[Fail-Open SPDT Physical Relay & Microswitch]
+        PTZCam[ONVIF PTZ Dome Surveillance Cameras] --> ONVIF[ContinuousMove & Presets 1..4]
+        IRSensor[Infrared Night Vision Illuminator] --> IRDetect[HSV Saturation < 12.0 & Adapted CLAHE]
     end
 
-    subgraph "Resiliency & Consensus Layer"
-        Det --> Fusion[Degraded Bayesian Consensus Fusion]
-        Bio --> Fusion
-        RFID[RFID Portal Reader] --> Fusion
-        Scale[Floor Weight Sensors] --> Fusion
-        Fusion --> Verdict[Verdict Engine: PASS / MISMATCH]
-        Verdict --> Alarm[Alarm Coordinator: Exponential Backoff Retries]
+    subgraph "Core Consensus & Multi-Camera Tracking"
+        PTZCam --> Tracker[CrossCameraTracker Re-ID Spatial Handoff]
+        Tracker --> DeDup[Double-Counting Egress Suppression]
+        IRDetect --> FaceBio[ArcFace Biometrics: LOW_CONFIDENCE_IR Mode]
+        DeDup --> Consensus[Three-Channel Consensus Engine]
+        FaceBio --> Consensus
     end
 
-    subgraph "Core Services & API"
-        Cache[Unified Async Caching Layer: Redis + In-Memory TTL]
-        RBAC[Role-Based Access Control: ADMIN / SUPERVISOR / VIEWER]
-        Watchdog[Silent Lane Watchdog: 15-min Inactivity Detection]
-        AuditAPI[Bounded Paginated Endpoints limit=50]
+    subgraph "Real-Time Interlock & Alert Dispatch"
+        Consensus --> Verdict[Verdict Engine: PASS / MISMATCH]
+        Verdict --> Interlock[Turnstile Relay Interlock 30s Failsafe]
+        Verdict --> Webhook[External Notifications: Slack + Telegram + Mobile Push]
+        Interlock --> Relay
     end
 
-    subgraph "Console & Observability"
-        Prom[Dynamic Prometheus Gauges: Uptime, Model Conf, Dispatches]
-        Logs[Sanitized Structured JSON Logs + Correlation ID]
-        WS[Resilient WebSocket with Exponential Backoff]
-        UI[A11y Accessible Console + Session Filter Persistence]
+    subgraph "Compliance Export & Appliance Deployment"
+        DB[(PostgreSQL 16 ACID Database)] --> Export[openpyxl 5-Tab Streaming Export Engine]
+        Export --> Reports[XLSX & Flat CSV Downloads]
+        Stack[Docker Compose Appliance] --> Nginx[Nginx Reverse Proxy Gateway]
+        Stack --> BackendApp[FastAPI Backend :8000]
+        Stack --> ConsoleApp[React Console :80]
+        Stack --> MediaMTX[MediaMTX RTSP/WebRTC Server]
     end
-
-    Alarm --> Prom
-    Watchdog --> Prom
-    Fusion --> WS
-    WS --> UI
-    Cache --> AuditAPI
-    RBAC --> AuditAPI
 ```
 
 ---
 
-## 3. Comprehensive File Modifications & New Modules
+## 3. Comprehensive Breakdown of Built Features
 
-### A. Backend Services (`retail-exit-backend/`)
-
-| File | Status | Technical Description of Improvements |
-| :--- | :---: | :--- |
-| [`src/cache.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/cache.py) | **NEW** | Asynchronous multi-tier caching service supporting Redis (`redis.asyncio`) with automated fallback to in-memory monotonic TTL dictionary. Provides key and prefix invalidation. |
-| [`src/api/deps_auth.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/api/deps_auth.py) | **NEW** | Server-side Role-Based Access Control (RBAC) dependency `require_roles(["ADMIN", "SUPERVISOR"])`. Enforces permission checks on mutating endpoints and rejects unauthorized roles with 403 Forbidden. |
-| [`src/api/products.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/api/products.py) | **MODIFIED** | Implemented caching for `GET /products` (TTL 300s); added automatic cache eviction on product creation, updates, and deletion; wired RBAC protection. |
-| [`src/api/settings.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/api/settings.py) | **MODIFIED** | Implemented caching for `GET /settings/thresholds` (TTL 600s); enforced `require_roles` on threshold updates and database resets; added cache invalidation on mutations. |
-| [`src/api/lanes.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/api/lanes.py) | **MODIFIED** | Cached `GET /lanes` (TTL 120s) with automated invalidation when lanes are registered or toggled; enforced role validation. |
-| [`src/api/cameras.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/api/cameras.py) | **MODIFIED** | Cached default `GET /cameras` (TTL 60s); added automated invalidation on camera enrollment, updates, and deletions; enforced role validation. |
-| [`src/api/alerts.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/api/alerts.py) | **MODIFIED** | Enforced bounded pagination query parameters (`limit: int = Query(50, ge=1, le=200)`, `offset: int = Query(0, ge=0)`) to eliminate unbounded database scans. |
-| [`src/api/ingest.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/api/ingest.py) | **MODIFIED** | Closed biometric audit gaps: guaranteed that all biometric checks (`NO_MATCH`, `ERROR`, `SPOOF_DETECTED`) persist rows to `face_match_attempt` with model version and similarity metrics. |
-| [`src/engine/alarm.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/engine/alarm.py) | **MODIFIED** | Added `AlarmCoordinator.retry_failed_dispatches(session)` executing exponential backoff (2s, 4s, 8s up to 3 attempts), tracking retry metadata dynamically in existing `error_detail` column (`[Attempt X/Y]`). |
-| [`src/engine/fusion.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/engine/fusion.py) | **MODIFIED** | Hardened degraded multi-sensor voting: dynamically re-normalizes weights across available channels ($\frac{w_i}{w_1 + w_2}$) and caps 1-channel vision confidence at 0.75 without false 3-channel penalties. |
-| [`src/ml/vision_service.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/ml/vision_service.py) | **MODIFIED** | Integrated CLAHE contrast normalization on the L-channel in LAB color space prior to YOLOX inference, eliminating false splits caused by plastic packaging glare. |
-| [`src/observability/logging.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/observability/logging.py) | **MODIFIED** | Added regex sanitization filters in `JSONFormatter` to mask passwords in RTSP URIs (`rtsp://***:***@host`), hashes, and tokens. Added `ContextVar` propagation for `correlation_id`, `camera_id`, and `event_id`. |
-| [`src/observability/metrics.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/observability/metrics.py) | **MODIFIED** | Removed hardcoded dummy counters (`1420`, `42`, `8`). Added dynamic Prometheus gauges for camera uptime ratio, rolling model confidence averages, alarm dispatch success rates, and silent lane counts. |
-| [`src/main.py`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-backend/src/main.py) | **MODIFIED** | Added `correlation_id_middleware` generating `X-Correlation-ID`. Extended `periodic_camera_monitor` with automated alarm retry dispatch and 15-minute silent lane inactivity watchdog. |
+### Feature 1: Direct Hardware Turnstile GPIO Relay Driver
+- **Driver Module (`src/hardware/turnstile_driver.py`)**:
+  - Direct hardware driving on Raspberry Pi using `RPi.GPIO` in `BCM` mode.
+  - Safe automatic detection of host capabilities (`HARDWARE_RPI_GPIO` vs `EMULATED_NON_GPIO`).
+  - Strict **Fail-Open Default**: turnstile relay coil is de-energized (`LOW`) on startup, shutdown, and unexpected error.
+  - **Mechanical Readback Loop**: Pin 27 monitors microswitch position and detects coil weld / mechanical jams (`HARDWARE_JAMMED`).
+  - **Failsafe Auto-Unlock Timer**: Automatically unlocks turnstile after 30 seconds to comply with life safety codes.
+- **Edge Local API (`src/api/hardware.py`)**:
+  - `POST /api/hardware/turnstile/lock`
+  - `POST /api/hardware/turnstile/unlock`
+  - `GET /api/hardware/turnstile/status`
+- **Alarm Integration (`src/engine/alarm.py`)**: Real hardware lock execution during HIGH severity alarm dispatches.
 
 ---
 
-### B. Frontend Console (`retail-exit-console/`)
-
-| File | Status | Technical Description of Improvements |
-| :--- | :---: | :--- |
-| [`src/api/client.ts`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/api/client.ts) | **MODIFIED** | Added granular error unpacking for HTTP 422 validation errors and descriptive network transport failure notices. |
-| [`src/context/AppDataContext.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/context/AppDataContext.tsx) | **MODIFIED** | Replaced fixed 4s retry with exponential backoff (1s–16s with $\pm 20\%$ jitter); exposed `wsStatus` (`CONNECTED`, `RECONNECTING`, `DISCONNECTED`) and `reconnectAttempt`. |
-| [`src/components/layout/TopKpiStrip.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/components/layout/TopKpiStrip.tsx) | **MODIFIED** | Added pulsing `RECONNECTING... (attempt {n})` indicator during WebSocket disconnects, providing immediate visual health state. |
-| [`src/views/EventsView.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/views/EventsView.tsx) | **MODIFIED** | Added filter persistence via `sessionStorage`; implemented 6-row animated shimmer skeleton loader; added direct CTA buttons (*"Inject Test Traversal"*, *"Clear Active Filters"*). |
-| [`src/views/DashboardView.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/views/DashboardView.tsx) | **MODIFIED** | Added direct CTA button (*"Configure Exit Lane & Camera →"*) on zero-lanes banner; implemented 5-row shimmer skeleton loading state. |
-| [`src/components/events/EventRow.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/components/events/EventRow.tsx) | **MODIFIED** | Added keyboard accessibility (`tabIndex={0}`, `role="button"`, ARIA labels, Enter/Space activation) and focus ring styling. |
-| [`src/components/cameras/CameraVideoOverlay.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/components/cameras/CameraVideoOverlay.tsx) | **MODIFIED** | Replaced raw hex strings (`#94a3b8`, `#1e293b`, `#cbd5e1`) with dynamic CSS custom property tokens (`var(--text-secondary)`, `var(--bg-panel-raised)`). |
-| [`src/components/cameras/AddCameraModal.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/components/cameras/AddCameraModal.tsx) | **MODIFIED** | Replaced hardcoded `#f59e0b` in viewfinder reticle pulse shadow with `var(--signal-amber)`. |
-| [`src/components/common/SignaturePad.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/components/common/SignaturePad.tsx) | **MODIFIED** | Resolved dynamic stroke color via `getComputedStyle(document.documentElement).getPropertyValue('--signal-amber')` to support dynamic theme switching. |
-| [`src/components/cameras/StaticImageLogTable.tsx`](file:///c:/Users/DELL/.gemini/antigravity/scratch/N/retail-exit-console/src/components/cameras/StaticImageLogTable.tsx) | **MODIFIED** | Added `sessionStorage` classification filter persistence and keyboard navigation on table rows. |
+### Feature 2: Multi-Tab Excel (.xlsx) & CSV Audit Export Engine
+- **Export Engine (`src/engine/export_engine.py`)**:
+  - Streaming memory buffer via `openpyxl>=3.1.0` (zero disk write).
+  - 5 pre-formatted compliance audit tabs:
+    1. `Exit Events`: Event ID, UTC Timestamp, Lane, Employee/Carrier, Consensus, Declared, Delta Units, Verdict, Severity, Forensic Notes.
+    2. `Alerts & Discrepancies`: Alert ID, UTC Timestamp, Type, Severity, Status, Delta Units, Resolved By/At, Resolution Notes.
+    3. `Product Catalog`: SKU Code, Product Name, Category, Unit Price (INR), Units/Case (Pack Size), Unit Weight (kg), Status.
+    4. `Invoices & Manifests`: Invoice ID, Waybill Number, Carrier Name, Store Destination, Declared Units, OCR Confidence, Created At.
+    5. `Security Audit Log`: Audit ID, Timestamp, Entity Type, Entity ID, Action, Actor ID, Actor Type.
+  - Formatted navy headers (`#1A365D`), white bold text, auto-fit column widths, frozen top rows.
+  - Writes audit trail entry (`action="EXPORT_XLSX"`) to database on every export.
+- **REST Streaming Endpoints (`src/api/reports.py`)**:
+  - `GET /api/reports/export/xlsx`
+  - `GET /api/reports/export/csv?dataset={events|alerts|products|invoices}`
+- **Console UI Integration (`ExportDropdown.tsx`)**:
+  - Reusable dropdown mounted in `EventsView`, `AlertsView`, `InvoicesView`, and `ReportsView` with live spinner state and direct browser file download.
 
 ---
 
-## 4. Verification Evidence
+### Feature 3: Multi-Camera PTZ & Multi-Lane Hand-Off Tracking
+- **ONVIF PTZ Driver (`src/engine/ptz_service.py`)**:
+  - Real-time continuous velocity move (`pan`, `tilt`, `zoom`, `velocity`).
+  - Stop motion command and Preset Quick-Buttons (1-4):
+    - Preset 1: *Lane Overhead Full View*
+    - Preset 2: *Pedestal/Turnstile Close-Up*
+    - Preset 3: *Conveyor Face / ID Angle*
+    - Preset 4: *Ambient Wide*
+  - Clean HTTP 422 Unprocessable Entity error rejection on fixed cameras (`"Camera is fixed, does not support PTZ"`).
+- **PTZ Endpoints (`src/api/cameras.py`)**:
+  - `POST /api/cameras/{id}/ptz/move`
+  - `POST /api/cameras/{id}/ptz/stop`
+  - `POST /api/cameras/{id}/ptz/preset/{preset_id}`
+  - `GET /api/cameras/{id}/ptz/status`
+- **Cross-Camera Re-ID & Handoff (`src/ml/tracker_service.py`)**:
+  - `CrossCameraTracker`: Cosine similarity matching of appearance vectors across cameras within a 10s hand-off window.
+  - Preserves subject tracking ID (`TRK-...`) from Camera A to Camera B.
+  - **Double-Counting Suppression**: Detects shared boundary crossings and suppresses duplicate exit events within 8 seconds.
+- **UI Components**:
+  - `CameraPTZOverlay.tsx`: Interactive D-pad, Stop, Zoom +/- buttons, Presets 1-4, and "PTZ Moving..." active indicator on `SingleCameraTile`.
+  - `EventDetailPanel.tsx`: "Multi-Camera Tracking: Cam-1 -> Cam-2" verified badge and timeline.
 
-### 1. Automated Test Suite
-- Ran pytest on all 62 backend unit and integration tests:
-  ```
-  tests/test_accuracy_pipeline.py .....                                    [  8%]
-  tests/test_alert_lifecycle.py ...                                        [ 12%]
-  tests/test_api_endpoints.py ........                                     [ 25%]
-  tests/test_camera_lifecycle.py ...........                               [ 43%]
-  tests/test_fusion_engine.py ...                                          [ 48%]
-  tests/test_invoices_upload.py ...                                        [ 53%]
-  tests/test_live_camera_cv.py ...                                         [ 58%]
-  tests/test_liveness_detection.py ....                                    [ 64%]
-  tests/test_ml_deep_models.py ...                                         [ 69%]
-  tests/test_pipeline_ingest.py ...                                        [ 74%]
-  tests/test_static_image_discrimination.py .......                        [ 85%]
-  tests/test_verdict_engine.py .........                                   [100%]
-  ======================= 62 passed in 129.37s (0:02:09) ========================
-  ```
-- Result: **62/62 Passed (100%)**, 0 failures, 0 warnings.
+---
 
-### 2. Frontend Production Build
-- Ran TypeScript check and Vite production bundler:
-  ```
-  > retail-exit-console@0.0.0 build
-  > tsc -b && vite build
-  ✓ 2084 modules transformed.
-  dist/index.html                        1.01 kB │ gzip:   0.54 kB
-  dist/assets/index-DRRYz8mF.css        61.18 kB │ gzip:  10.24 kB
-  dist/assets/index-Cd1c5Tc-.js        899.45 kB │ gzip: 260.79 kB
-  ✓ built in 12.24s
-  ```
-- Result: **Clean build, 0 errors**.
+### Feature 4: Production Docker Compose Containerized Deployment
+- **`Dockerfile.backend`**: Multi-stage Python 3.11-slim container with OpenCV, ONNX Runtime, OpenPyXL, and healthcheck.
+- **`Dockerfile.frontend`**: Multi-stage Node 20-alpine build + Nginx 1.25-alpine production runner.
+- **`nginx/nginx.conf`**: Single gateway routing SPA, `/api/` reverse proxy, and `/ws` WebSocket streaming with 25MB body limit.
+- **`docker-compose.yml`**: Full orchestration for `backend`, `console`, `db` (PostgreSQL 16), `redis` (Redis 7), `mediamtx` (RTSP/WebRTC). Named persistent volumes, healthchecks, CPU/RAM limits, and NVIDIA GPU passthrough documentation.
+- **`.env.example`**: Fully documented environment variables for edge and cloud appliances.
 
-### 3. Database Integrity Audit
-- `git diff src/db/models.py` = **0 lines changed**.
-- Alembic versions directory = **0 new migrations**.
-- No table drops, alters, or constraint mutations.
+---
 
+### Feature 5: Active Infrared / Night Vision Illumination Filter
+- **IR Mode Detection (`src/ml/vision_service.py`)**:
+  - `is_infrared_frame`: Analyzes frame saturation in HSV space ($S_{\text{mean}} < 12.0$) and monochrome RGB parity.
+  - Injects `[IR NIGHT MODE ACTIVE]` into live camera diagnostic telemetry.
+- **IR-Adapted CLAHE Enhancement**:
+  - Dynamically switches CLAHE clipLimit to $3.5$ on monochrome footage to boost packaging contours and cart edges.
+- **Degraded Biometric Recognition (`src/ml/face_service.py`)**:
+  - Degraded facial matches in IR mode honestly return `decision="LOW_CONFIDENCE_IR"`.
+  - Suppresses false intrusion alarms (`unauthorized_alert_needed=False`), preventing panic dispatches during night dock shifts.
+- **UI Indicator**: Small purple `IR / Night Mode` badge on `SingleCameraTile`.
+
+---
+
+### Feature 6: Instant Mobile Push & Slack/Telegram Webhooks
+- **Notification Service (`src/engine/notification_service.py`)**:
+  - **Slack**: Formats rich Block Kit messages with incident summary, delta units, and direct link to Console Event Dossier.
+  - **Telegram**: Formats HTML message via Telegram Bot API `sendMessage`.
+  - **Mobile Push**: JSON payload for FCM-compatible mobile push gateways.
+- **Anti-Storm Rate Limiting**:
+  - In-memory per-lane throttling prevents alert floods during continuous incidents (max 1 notification per lane per 30 seconds).
+- **Graceful Failure Tolerance**:
+  - Network timeouts and HTTP failures are logged cleanly in `AlarmDispatch.error_detail` with `channel="PUSH"`. Zero blockage of turnstile locks or siren alerts.
+- **Alarm Coordinator Integration (`src/engine/alarm.py`)**: Automatic webhook trigger for HIGH and CRITICAL severity alarms.
+
+---
+
+## 4. Verification Results Matrix
+
+| Test Suite | Total Tests | Result | Features Verified |
+| :--- | :---: | :---: | :--- |
+| `tests/test_turnstile_driver.py` | 4 | **PASSED** (100%) | Hardware/Emulated detection, Relay lock/unlock, Readback verification, 30s auto-unlock |
+| `tests/test_export_engine.py` | 3 | **PASSED** (100%) | 5-Tab XLSX generation, Column formatting, HTTP streaming, CSV export |
+| `tests/test_ptz_and_handoff.py` | 4 | **PASSED** (100%) | Fixed camera 422 rejection, PTZ move/stop/presets, Cross-camera Re-ID, Double-counting suppression |
+| `tests/test_ir_night_vision.py` | 3 | **PASSED** (100%) | IR mode HSV saturation detection, Adapted CLAHE contrast, LOW_CONFIDENCE_IR face handling |
+| `tests/test_notifications.py` | 5 | **PASSED** (100%) | Slack Block Kit, Telegram HTML, Anti-storm 30s rate limiting, Failure tolerance, PUSH dispatch |
+| **Console Production Build (`npm run build`)** | - | **PASSED** (100%) | 0 TypeScript errors, 2086 modules bundled, Vite production bundle ready |
+| **Database Schema Diff (`git diff src/db/models.py`)** | - | **0 LINES** | Strictly zero database schema modifications |

@@ -433,4 +433,77 @@ export const api = {
       method: 'POST',
     });
   },
+
+  // ── Reports & Compliance Exports ──────────────────────────────────
+  async downloadAuditXlsx(params?: { laneId?: string; severity?: string; startDate?: string; endDate?: string }): Promise<void> {
+    const query = new URLSearchParams();
+    if (params?.laneId && params.laneId !== 'ALL') query.append('lane_id', params.laneId);
+    if (params?.severity && params.severity !== 'ALL') query.append('severity', params.severity);
+    if (params?.startDate) query.append('start_date', params.startDate);
+    if (params?.endDate) query.append('end_date', params.endDate);
+
+    const token = localStorage.getItem('secops_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const url = `${API_BASE}/reports/export/xlsx?${query.toString()}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`Failed to download Excel report: ${res.statusText}`);
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `audit_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+  },
+
+  async downloadCsv(dataset: string, params?: { laneId?: string; severity?: string }): Promise<void> {
+    const query = new URLSearchParams({ dataset });
+    if (params?.laneId && params.laneId !== 'ALL') query.append('lane_id', params.laneId);
+    if (params?.severity && params.severity !== 'ALL') query.append('severity', params.severity);
+
+    const token = localStorage.getItem('secops_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const url = `${API_BASE}/reports/export/csv?${query.toString()}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`Failed to download CSV: ${res.statusText}`);
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `${dataset}_export_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
+  },
+
+  // ── PTZ Camera Control ────────────────────────────────────────────
+  async movePtz(cameraId: string, pan: number, tilt: number, zoom: number = 0, velocity: number = 1.0): Promise<any> {
+    return request(`/cameras/${cameraId}/ptz/move`, {
+      method: 'POST',
+      body: JSON.stringify({ pan, tilt, zoom, velocity }),
+    });
+  },
+
+  async stopPtz(cameraId: string): Promise<any> {
+    return request(`/cameras/${cameraId}/ptz/stop`, {
+      method: 'POST',
+    });
+  },
+
+  async gotoPtzPreset(cameraId: string, presetId: number): Promise<any> {
+    return request(`/cameras/${cameraId}/ptz/preset/${presetId}`, {
+      method: 'POST',
+    });
+  },
+
+  async getPtzStatus(cameraId: string): Promise<{ isPtzCapable: boolean; pan: number; tilt: number; zoom: number; moving: boolean }> {
+    return request(`/cameras/${cameraId}/ptz/status`);
+  },
 };

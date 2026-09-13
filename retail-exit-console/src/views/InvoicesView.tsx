@@ -14,6 +14,7 @@ import {
   FileCheck,
   Upload,
 } from 'lucide-react';
+import { ExportDropdown } from '../components/common/ExportDropdown';
 
 export const InvoicesView: React.FC = () => {
   const { invoices, events, setSelectedEventId } = useAppData();
@@ -63,6 +64,7 @@ export const InvoicesView: React.FC = () => {
               <Upload className="w-3.5 h-3.5" />
               Upload Hard-Copy Bill
             </button>
+            <ExportDropdown dataset="invoices" />
           </div>
         </div>
 

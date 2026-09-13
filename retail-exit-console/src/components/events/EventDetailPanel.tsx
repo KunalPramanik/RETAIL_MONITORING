@@ -15,6 +15,7 @@ import {
   AlertOctagon,
   Clock,
   Printer,
+  GitMerge,
 } from 'lucide-react';
 
 interface EventDetailPanelProps {
@@ -132,6 +133,17 @@ export const EventDetailPanel: React.FC<EventDetailPanelProps> = ({ event, onClo
             <span className="text-amber font-semibold">CONSENSUS: {event.consensusUnits} UNITS</span>
           </div>
         </div>
+
+        {/* Multi-Camera Re-ID Hand-Off Timeline Indicator */}
+        {event.notes && event.notes.includes('Multi-Camera Tracking:') && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-blue-950/30 border border-blue-500/40 rounded-sm text-xs-tech">
+            <span className="flex items-center gap-1.5 font-mono text-blue-400 font-semibold">
+              <GitMerge className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              {event.notes.match(/Multi-Camera Tracking:[^;,\n]+/)?.[0] || 'Multi-Camera Tracking Hand-Off'}
+            </span>
+            <span className="text-[10px] text-text-sec font-mono ml-auto">Cross-Camera Re-ID Verified</span>
+          </div>
+        )}
 
         {/* Section: Packaging Arithmetic Breakdown */}
         <MathBreakdown event={event} />

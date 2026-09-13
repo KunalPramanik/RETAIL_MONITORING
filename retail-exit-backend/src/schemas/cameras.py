@@ -24,6 +24,8 @@ class CameraResponse(BaseModel):
     offlineSince: Optional[str] = None
     addedAt: str
     removedAt: Optional[str] = None
+    ptzCapable: Optional[bool] = False
+    isIrMode: Optional[bool] = False
 
 
 class CameraCreate(BaseModel):

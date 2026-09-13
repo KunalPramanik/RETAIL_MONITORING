@@ -119,6 +119,8 @@ export interface Camera {
   offlineSince?: string;
   addedAt: string;
   removedAt?: string;
+  ptzCapable?: boolean;
+  isIrMode?: boolean;
 }
 
 export interface QRDecodeResult {

@@ -24,7 +24,9 @@ import {
   Activity,
   RefreshCw,
   Clock,
+  Moon,
 } from 'lucide-react';
+import { CameraPTZOverlay } from './CameraPTZOverlay';
 
 export interface CameraOrientation {
   rotation: number; // 0, 90, 180, 270
@@ -661,6 +663,12 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
                 {assignedLane.laneId}
               </span>
             )}
+            {camera.isIrMode && (
+              <span className="px-1.5 py-0.5 rounded bg-purple-950/85 text-purple-300 border border-purple-500/50 flex items-center gap-1 font-bold shadow">
+                <Moon className="w-2.5 h-2.5 text-purple-300" />
+                IR / Night Mode
+              </span>
+            )}
           </div>
         )}
 
@@ -691,6 +699,9 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
             {camera.ipAddress}
           </span>
         </div>
+
+        {/* PTZ Directional Controller Pop-out */}
+        <CameraPTZOverlay cameraId={camera.cameraId} isPtzCapable={camera.ptzCapable} />
       </div>
 
       {/* ── 9 Player Controls Toolbar ── */}

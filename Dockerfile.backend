@@ -1,0 +1,64 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SEC-OPS 2.0 Backend Production Dockerfile
+# Python 3.11 with OpenCV headless, ONNX Runtime, OpenPyXL, and Audio Drivers
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install system compilation dependencies and OpenCV C libraries
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies via wheels
+COPY retail-exit-backend/pyproject.toml .
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir openpyxl>=3.1.0 && \
+    pip install --no-cache-dir .
+
+# ── Production Runtime Stage ──────────────────────────────────────────────────
+FROM python:3.11-slim AS runner
+
+WORKDIR /app
+
+# Install runtime libraries for OpenCV, image codecs, and healthcheck curl
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    libgl1 \
+    libglib2.0-0 \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed python site-packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy backend application source code
+COPY retail-exit-backend/src ./src
+COPY retail-exit-backend/pyproject.toml ./
+
+# Create media and weights directories
+RUN mkdir -p /app/media/snapshots /app/media/signatures /app/media/invoices /app/src/ml/weights
+
+# Environment defaults
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8000 \
+    HOST=0.0.0.0 \
+    APP_ENV=production
+
+EXPOSE 8000
+
+# Healthcheck testing FastAPI live router
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8000/api/lanes || exit 1
+
+# Production entrypoint with Uvicorn ASGI server
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--proxy-headers"]
+

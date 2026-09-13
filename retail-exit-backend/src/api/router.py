@@ -13,6 +13,7 @@ from src.api.settings import router as settings_router
 from src.api.lanes import router as lanes_router
 from src.api.ingest import router as ingest_router
 from src.api.cameras import router as cameras_router
+from src.api.hardware import router as hardware_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -27,3 +28,4 @@ api_router.include_router(settings_router)
 api_router.include_router(lanes_router)
 api_router.include_router(ingest_router)
 api_router.include_router(cameras_router)
+api_router.include_router(hardware_router)

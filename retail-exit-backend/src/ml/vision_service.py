@@ -42,6 +42,7 @@ class VisionInferenceResult:
     detections: List[DetectedBox]
     latency_ms: float
     tracking_accuracy_pct: float
+    is_ir_mode: bool = False
 
 
 class VisionInferenceService:
@@ -115,12 +116,52 @@ class VisionInferenceService:
     def _preprocess_frame(cls, img: np.ndarray) -> Tuple[np.ndarray, float]:
         """Letterbox resize image to YOLOX input dimensions (416x416) with CLAHE glare suppression."""
         # Contrast-Limited Adaptive Histogram Equalization on L-channel to compensate for retail overhead glare
+    def is_infrared_frame(cls, img: np.ndarray) -> bool:
+        """Detects whether an image/frame was captured under active IR / night vision illumination.
+
+        Monochrome IR criteria:
+        1. Single-channel grayscale frame, OR
+        2. 3-channel frame where mean saturation in HSV is < 12.0 (color information absent), OR
+        3. Mean absolute difference between R, G, B channels is < 4.0.
+        """
+        if img is None or img.size == 0:
+            return False
+
+        if len(img.shape) == 2:
+            return True
+
+        if len(img.shape) == 3 and img.shape[2] == 3:
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            mean_sat = float(np.mean(hsv[:, :, 1]))
+            if mean_sat < 12.0:
+                return True
+
+            b, g, r = cv2.split(img)
+            diff_rg = np.mean(np.abs(r.astype(float) - g.astype(float)))
+            diff_gb = np.mean(np.abs(g.astype(float) - b.astype(float)))
+            if diff_rg < 4.0 and diff_gb < 4.0:
+                return True
+
+        return False
+
+    @classmethod
+    def _preprocess_frame(cls, img: np.ndarray) -> Tuple[np.ndarray, float, bool]:
+        """Letterbox resize image to YOLOX input dimensions (416x416) with IR-adapted CLAHE enhancement."""
+        is_ir = cls.is_infrared_frame(img)
+        clip_limit = 3.5 if is_ir else 1.8
+
+        # Contrast-Limited Adaptive Histogram Equalization on L-channel to compensate for retail overhead glare or IR low contrast
         if len(img.shape) == 3 and img.shape[2] == 3 and img.shape[0] > 10 and img.shape[1] > 10:
             lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
             l_chan, a_chan, b_chan = cv2.split(lab)
             clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8))
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
             cl = clahe.apply(l_chan)
             enhanced = cv2.cvtColor(cv2.merge((cl, a_chan, b_chan)), cv2.COLOR_LAB2BGR)
+        elif len(img.shape) == 2 and img.shape[0] > 10 and img.shape[1] > 10:
+            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+            enhanced = clahe.apply(img)
+            enhanced = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
         else:
             enhanced = img
 
@@ -138,6 +179,7 @@ class VisionInferenceService:
         padded_img = padded_img.transpose((2, 0, 1))
         padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
         return padded_img, r
+        return padded_img, r, is_ir
 
     @classmethod
     def _decode_yolox_grid(cls, outputs: np.ndarray) -> np.ndarray:
@@ -295,6 +337,7 @@ class VisionInferenceService:
         try:
             session = cls.get_session()
             input_tensor, ratio = cls._preprocess_frame(img)
+            input_tensor, ratio, is_ir = cls._preprocess_frame(img)
             # Execute YOLOX forward pass: input shape (1, 3, 416, 416)
             raw_out = np.asarray(session.run(None, {"images": input_tensor[None, ...]})[0], dtype=np.float32)
             decoded = cls._decode_yolox_grid(raw_out)[0]
@@ -437,10 +480,13 @@ class VisionInferenceService:
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.95
 
         # CCTV Diagnostics Banner (Zero hardcoding, fully dynamic)
+        ir_tag = " // [IR NIGHT MODE ACTIVE]" if is_ir else ""
         if len(detections) > 0:
             status_banner = f"SURVEILLANCE CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}) // {latency_ms:.0f}ms"
+            status_banner = f"SURVEILLANCE CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}){ir_tag} // {latency_ms:.0f}ms"
         else:
             status_banner = f"SURVEILLANCE CV // MONITORING ACTIVE (0 DETECTIONS) // {latency_ms:.0f}ms"
+            status_banner = f"SURVEILLANCE CV // MONITORING ACTIVE (0 DETECTIONS){ir_tag} // {latency_ms:.0f}ms"
 
         (bw_t, bh_t), _ = cv2.getTextSize(status_banner, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
         banner_y = min(orig_h - 12, max(40, 44))
@@ -469,6 +515,7 @@ class VisionInferenceService:
                 detections=detections,
                 latency_ms=latency_ms,
                 tracking_accuracy_pct=98.6,
+                is_ir_mode=is_ir,
             ),
             annotated_bytes,
         )

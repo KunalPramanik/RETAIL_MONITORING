@@ -4,6 +4,7 @@ import { AlertCard } from '../components/alerts/AlertCard';
 import { ResolveAlertModal } from '../components/alerts/ResolveAlertModal';
 import type { Alert, Severity } from '../types';
 import { AlertOctagon, CheckCircle2, Filter } from 'lucide-react';
+import { ExportDropdown } from '../components/common/ExportDropdown';
 
 export const AlertsView: React.FC = () => {
   const { alerts, selectedEvent } = useAppData();
@@ -46,6 +47,7 @@ export const AlertsView: React.FC = () => {
             <span className="font-mono text-xs-tech text-amber px-2 py-1 bg-yellow-950/30 border border-status-low/40 rounded-sm font-semibold">
               {mediumAlerts.filter((a: Alert) => a.status !== 'RESOLVED').length + lowAlerts.filter((a: Alert) => a.status !== 'RESOLVED').length} Active Med/Low
             </span>
+            <ExportDropdown dataset="alerts" severity={severityFilter} />
           </div>
         </div>
 

@@ -95,6 +95,7 @@ class FaceRecognitionService:
         probe_embedding: Union[List[float], List[List[float]]],
         enrolled_employees: List[Dict[str, Any]],
         match_threshold: Optional[float] = None,
+        is_ir_mode: bool = False,
     ) -> FaceMatchResult:
         """Runs 1:N cosine similarity search with multi-frame temporal voting across active roster."""
         threshold = match_threshold or cls.MATCH_THRESHOLD
@@ -104,9 +105,9 @@ class FaceRecognitionService:
                 matched_employee_id=None,
                 employee_name=None,
                 similarity=0.0,
-                decision="NO_MATCH",
+                decision="LOW_CONFIDENCE_IR" if is_ir_mode else "NO_MATCH",
                 model_version=cls.MODEL_VERSION,
-                unauthorized_alert_needed=True,
+                unauthorized_alert_needed=False if is_ir_mode else True,
                 frames_evaluated=0,
             )
 
@@ -156,6 +157,29 @@ class FaceRecognitionService:
                 best_employee = emp
 
         best_score = max(0.0, min(1.0, best_score))
+
+        # IR Night Vision degradation handling
+        if is_ir_mode:
+            if best_score >= threshold and best_employee:
+                return FaceMatchResult(
+                    matched_employee_id=best_employee.get("employee_id"),
+                    employee_name=best_employee.get("name"),
+                    similarity=round(best_score, 4),
+                    decision="MATCHED",
+                    model_version=cls.MODEL_VERSION,
+                    unauthorized_alert_needed=False,
+                    frames_evaluated=len(frames),
+                )
+            else:
+                return FaceMatchResult(
+                    matched_employee_id=best_employee.get("employee_id") if best_employee else None,
+                    employee_name=best_employee.get("name") if best_employee else "Unidentified (IR Mode)",
+                    similarity=round(best_score, 4),
+                    decision="LOW_CONFIDENCE_IR",
+                    model_version=cls.MODEL_VERSION,
+                    unauthorized_alert_needed=False,
+                    frames_evaluated=len(frames),
+                )
 
         if best_score >= threshold and best_employee:
             return FaceMatchResult(
@@ -332,11 +356,21 @@ class FaceRecognitionService:
             pass
 
         # Match against enrolled roster
+        is_ir_frame = False
+        if img is not None:
+            if len(img.shape) == 2:
+                is_ir_frame = True
+            elif len(img.shape) == 3 and img.shape[2] == 3:
+                hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+                if float(np.mean(hsv[:, :, 1])) < 12.0:
+                    is_ir_frame = True
+
         if probe_embeddings and enrolled_employees:
             match_res = cls.match_carrier(
                 probe_embedding=probe_embeddings,
                 enrolled_employees=enrolled_employees,
                 match_threshold=match_threshold,
+                is_ir_mode=is_ir_frame,
             )
             match_res.liveness_score = best_liveness_score
             match_res.liveness_decision = "LIVE"

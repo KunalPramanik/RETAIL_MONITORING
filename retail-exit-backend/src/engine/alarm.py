@@ -14,6 +14,9 @@ import re
 from datetime import timedelta
 from sqlalchemy import select, and_
 
+from src.hardware.turnstile_driver import turnstile_driver
+from src.engine.notification_service import notification_service
+
 logger = logging.getLogger("secops.alarm")
 
 
@@ -39,15 +42,19 @@ class AlarmCoordinator:
         # 1. HIGH Severity Alarms: Immediate Physical Interlock & Audio/Strobe
         if sev == "HIGH":
             if auto_lock_turnstile:
+                lock_res = await turnstile_driver.lock()
+                is_ok = bool(lock_res.get("success", False))
+                mode = lock_res.get("hardwareMode", "UNKNOWN")
                 lock_disp = AlarmDispatch(
                     alert_id=alert_id_str,
                     channel="TURNSTILE_LOCK",
-                    status="ACKED",  # Edge controller acknowledge
+                    status="ACKED" if is_ok else "FAILED",
                     attempted_at=now,
+                    error_detail=f"Relay confirmed={is_ok} mode={mode}" if is_ok else f"Relay lock failed: {lock_res.get('error', 'Readback mismatch')}",
                 )
                 dispatches.append(lock_disp)
                 lane_id_str = str(lane.lane_id) if lane else "UNKNOWN"
-                logger.warning(f"TURNSTILE INTERLOCK ENGAGED on Lane {lane_id_str} for Alert {alert_id_str}")
+                logger.warning(f"TURNSTILE INTERLOCK on Lane {lane_id_str} for Alert {alert_id_str}: {lock_disp.status}")
 
             if audio_alarm_enabled:
                 siren_disp = AlarmDispatch(
@@ -58,12 +65,17 @@ class AlarmCoordinator:
                 )
                 dispatches.append(siren_disp)
 
-            # High severity push notification
+            # High severity push notification (Slack, Telegram, Mobile Webhook)
+            notif_res = await notification_service.send_external_notifications(
+                alert=alert,
+                lane=lane,
+            )
             push_disp = AlarmDispatch(
                 alert_id=alert_id_str,
                 channel="PUSH",
-                status="SENT",
+                status="SENT" if notif_res.get("status") in ("DELIVERED", "RATE_LIMITED") else "FAILED",
                 attempted_at=now,
+                error_detail=notif_res.get("detail", "Sent"),
             )
             dispatches.append(push_disp)
 

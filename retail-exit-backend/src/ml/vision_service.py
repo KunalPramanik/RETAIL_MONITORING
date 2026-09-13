@@ -328,6 +328,7 @@ class VisionInferenceService:
         total_singles = 0
         total_units = 0
         track_id_seq = 300
+        is_ir = False
 
         try:
             session = cls.get_session()
@@ -476,10 +477,8 @@ class VisionInferenceService:
         # CCTV Diagnostics Banner (Zero hardcoding, fully dynamic)
         ir_tag = " // [IR NIGHT MODE ACTIVE]" if is_ir else ""
         if len(detections) > 0:
-            status_banner = f"SURVEILLANCE CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}) // {latency_ms:.0f}ms"
             status_banner = f"SURVEILLANCE CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}){ir_tag} // {latency_ms:.0f}ms"
         else:
-            status_banner = f"SURVEILLANCE CV // MONITORING ACTIVE (0 DETECTIONS) // {latency_ms:.0f}ms"
             status_banner = f"SURVEILLANCE CV // MONITORING ACTIVE (0 DETECTIONS){ir_tag} // {latency_ms:.0f}ms"
 
         (bw_t, bh_t), _ = cv2.getTextSize(status_banner, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)

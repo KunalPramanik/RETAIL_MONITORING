@@ -5,8 +5,9 @@ Provides RESTful APIs, real-time WebSocket streams, telemetry metrics, and edge 
 """
 
 import os
+import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, and_
@@ -17,13 +18,14 @@ from datetime import datetime, timezone, timedelta
 
 from src.config import settings
 from src.db.session import init_db, close_db, AsyncSessionLocal
-from src.db.models import Camera, Alert, ThresholdConfig, get_utc_now
+from src.db.models import Camera, Alert, ThresholdConfig, Lane, get_utc_now
 from src.db.init_config import init_baseline_configuration
 from src.api.router import api_router
 from src.realtime.hub import ws_hub
 from src.observability.metrics import metrics
-from src.observability.logging import configure_logging
+from src.observability.logging import configure_logging, correlation_id_ctx
 from src.engine.camera_worker import camera_worker
+from src.engine.alarm import AlarmCoordinator
 
 configure_logging()
 logger = logging.getLogger("secops.main")
@@ -157,6 +159,31 @@ async def periodic_camera_monitor():
 
                 if stale_cameras:
                     await session.commit()
+
+                # Periodic Alarm Dispatch Retry Loop
+                try:
+                    await AlarmCoordinator.retry_failed_dispatches(session)
+                except Exception as retry_err:
+                    logger.debug(f"Alarm retry pass error: {retry_err}")
+
+                # Silent Lane Watchdog Check (>15 min silence on ONLINE lanes)
+                try:
+                    lane_cutoff = now - timedelta(minutes=15)
+                    silent_stmt = select(Lane).where(
+                        and_(
+                            Lane.status == "ONLINE",
+                            Lane.last_heartbeat_at.isnot(None),
+                            Lane.last_heartbeat_at < lane_cutoff,
+                        )
+                    )
+                    silent_res = await session.execute(silent_stmt)
+                    silent_lanes = silent_res.scalars().all()
+                    metrics.silent_lanes_total = len(silent_lanes)
+                    for sl in silent_lanes:
+                        logger.warning(f"LANE_SILENT: Exit Lane {sl.lane_id} ({sl.label}) heartbeat timed out (>15 min silent).")
+                except Exception as lane_err:
+                    logger.debug(f"Silent lane check pass error: {lane_err}")
+
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -174,6 +201,20 @@ app = FastAPI(
     description="Control-room backend, database & ML inference platform for retail loss prevention.",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def correlation_id_middleware(request: Request, call_next):
+    """Injects or extracts end-to-end correlation ID for full request-event chain traceability."""
+    corr_id = request.headers.get("X-Correlation-ID") or f"corr_{uuid.uuid4().hex[:12]}"
+    token = correlation_id_ctx.set(corr_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Correlation-ID"] = corr_id
+        return response
+    finally:
+        correlation_id_ctx.reset(token)
+
 
 # CORS Middleware
 app.add_middleware(

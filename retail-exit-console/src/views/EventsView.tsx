@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import { EventRow } from '../components/events/EventRow';
 import { EventDetailPanel } from '../components/events/EventDetailPanel';
@@ -6,12 +6,41 @@ import { Search, Download, Layers, X } from 'lucide-react';
 import type { Verdict, Severity, ExitEvent, Product } from '../types';
 
 export const EventsView: React.FC = () => {
-  const { events, lanes, selectedEventId, setSelectedEventId, selectedEvent, products } = useAppData();
+  const {
+    events,
+    lanes,
+    selectedEventId,
+    setSelectedEventId,
+    selectedEvent,
+    products,
+    isLoading,
+    injectSimulatedScenario,
+  } = useAppData();
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [laneFilter, setLaneFilter] = useState('ALL');
-  const [verdictFilter, setVerdictFilter] = useState<'ALL' | Verdict>('ALL');
-  const [severityFilter, setSeverityFilter] = useState<'ALL' | Severity>('ALL');
+  const [searchQuery, setSearchQuery] = useState(() => {
+    return typeof window !== 'undefined' ? sessionStorage.getItem('secops_events_search') || '' : '';
+  });
+  const [laneFilter, setLaneFilter] = useState(() => {
+    return typeof window !== 'undefined' ? sessionStorage.getItem('secops_events_lane') || 'ALL' : 'ALL';
+  });
+  const [verdictFilter, setVerdictFilter] = useState<'ALL' | Verdict>(() => {
+    return typeof window !== 'undefined' ? (sessionStorage.getItem('secops_events_verdict') as any) || 'ALL' : 'ALL';
+  });
+  const [severityFilter, setSeverityFilter] = useState<'ALL' | Severity>(() => {
+    return typeof window !== 'undefined' ? (sessionStorage.getItem('secops_events_severity') as any) || 'ALL' : 'ALL';
+  });
+
+  // Sync active filters to sessionStorage
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('secops_events_search', searchQuery);
+      sessionStorage.setItem('secops_events_lane', laneFilter);
+      sessionStorage.setItem('secops_events_verdict', verdictFilter);
+      sessionStorage.setItem('secops_events_severity', severityFilter);
+    } catch {
+      // ignore storage quota errors
+    }
+  }, [searchQuery, laneFilter, verdictFilter, severityFilter]);
 
   // Filtered Events
   const filteredEvents = useMemo(() => {
@@ -205,7 +234,21 @@ export const EventsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.length > 0 ? (
+                {isLoading && events.length === 0 ? (
+                  Array.from({ length: 6 }).map((_, idx) => (
+                    <tr key={`skel-${idx}`} className="border-b border-hairline animate-pulse">
+                      <td className="py-3 px-3"><div className="h-3 w-16 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-3 w-20 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-3 w-28 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-3 w-8 bg-hairline/60 rounded ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-3 w-10 bg-hairline/60 rounded ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-3 w-8 bg-hairline/60 rounded ml-auto" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-14 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-12 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-2"></td>
+                    </tr>
+                  ))
+                ) : filteredEvents.length > 0 ? (
                   filteredEvents.map((ev: ExitEvent) => (
                     <EventRow
                       key={ev.eventId}
@@ -217,17 +260,40 @@ export const EventsView: React.FC = () => {
                 ) : events.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="py-16 text-center text-xs-tech text-text-sec">
-                      <div className="flex flex-col items-center justify-center gap-1.5">
-                        <Layers className="w-6 h-6 text-hairline" />
-                        <span className="text-text-pri font-medium">No exit events recorded</span>
-                        <span className="text-[11px]">Active camera feeds and edge sensors will populate traversal events in real time.</span>
+                      <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
+                        <Layers className="w-8 h-8 text-amber/60" />
+                        <span className="text-text-pri font-semibold text-sm-tech">No Exit Events Logged</span>
+                        <span className="text-xs-tech text-text-sec">
+                          Live camera feeds and edge sensors will log exit traversals in real time. You can also inject a simulated test traversal.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => injectSimulatedScenario('CLEAN_PASS')}
+                          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber hover:bg-amber/90 text-black text-xs-tech font-bold rounded-sm transition-colors cursor-pointer"
+                        >
+                          Inject Test Traversal (Clean Pass)
+                        </button>
                       </div>
                     </td>
                   </tr>
                 ) : (
                   <tr>
                     <td colSpan={9} className="py-12 text-center text-xs-tech text-text-sec">
-                      No events matched the selected search criteria.
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <span>No events matched the selected search criteria.</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchQuery('');
+                            setLaneFilter('ALL');
+                            setVerdictFilter('ALL');
+                            setSeverityFilter('ALL');
+                          }}
+                          className="px-3 py-1 bg-panel-raised hover:bg-hairline text-text-pri border border-hairline text-xs-tech rounded-sm transition-colors cursor-pointer"
+                        >
+                          Clear Active Filters
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )}
@@ -250,4 +316,3 @@ export const EventsView: React.FC = () => {
     </div>
   );
 };
-

@@ -76,14 +76,39 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     ...(options.headers || {}),
   };
 
-  const res = await fetch(url, { ...options, headers });
+  let res: Response;
+  try {
+    res = await fetch(url, { ...options, headers });
+  } catch (err: any) {
+    if (err instanceof TypeError && err.message.toLowerCase().includes('fetch')) {
+      throw new Error(
+        `Unable to reach SEC-OPS backend service at ${API_BASE}. Please verify edge server is running on port 8000.`
+      );
+    }
+    throw new Error(`Network transport failure calling ${endpoint}: ${err.message || err}`);
+  }
+
   if (!res.ok) {
     let errorDetail = res.statusText;
     try {
       const errJson = await res.json();
-      errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+      if (Array.isArray(errJson.detail)) {
+        // FastAPI 422 validation error unpacking
+        errorDetail = errJson.detail
+          .map((d: any) => `${d.loc ? d.loc.slice(1).join('.') : 'field'}: ${d.msg}`)
+          .join('; ');
+      } else {
+        errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+      }
     } catch {
       // ignore
+    }
+
+    if (res.status === 403) {
+      throw new Error(`Insufficient Permissions (403): ${errorDetail || 'Action requires ADMIN or SUPERVISOR role.'}`);
+    }
+    if (res.status === 404) {
+      throw new Error(`Resource Not Found (404): ${errorDetail || endpoint}`);
     }
     throw new Error(errorDetail || `HTTP error ${res.status}`);
   }

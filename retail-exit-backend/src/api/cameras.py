@@ -38,6 +38,9 @@ from src.schemas.cameras import (
     PairCameraRequest,
 )
 from src.realtime.hub import ws_hub
+from src.engine.camera_worker import camera_worker
+from src.cache import cache_service
+from src.api.deps_auth import require_roles
 
 router = APIRouter(prefix="/cameras", tags=["Camera Fleet Management"])
 
@@ -337,7 +340,14 @@ async def list_cameras(
     include_removed: bool = Query(False, alias="includeRemoved"),
     session: AsyncSession = Depends(get_db),
 ):
-    """Lists registered exit surveillance cameras."""
+    """Lists registered exit surveillance cameras with caching on default query."""
+    cache_key = "cameras:all"
+    is_default_query = not lane_id and not status and not include_removed
+    if is_default_query:
+        cached = await cache_service.get(cache_key)
+        if cached is not None:
+            return [CameraResponse(**item) for item in cached]
+
     stmt = select(Camera)
     if not include_removed:
         stmt = stmt.where(Camera.removed_at.is_(None))
@@ -349,7 +359,10 @@ async def list_cameras(
     stmt = stmt.order_by(Camera.label)
     result = await session.execute(stmt)
     cameras = result.scalars().all()
-    return [serialize_camera(c) for c in cameras]
+    serialized = [serialize_camera(c) for c in cameras]
+    if is_default_query:
+        await cache_service.set(cache_key, [c.model_dump() for c in serialized], ttl_seconds=60)
+    return serialized
 
 
 @router.get("/{camera_id}", response_model=CameraResponse)
@@ -369,6 +382,7 @@ async def get_camera(
 async def register_camera(
     body: CameraCreate,
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Registers a new camera in PENDING_SETUP state and triggers edge media server registration."""
     # Check if lane exists if provided
@@ -426,6 +440,7 @@ async def register_camera(
         },
     )
     await session.commit()
+    await cache_service.invalidate("cameras")
 
     resp = serialize_camera(new_cam)
     await ws_hub.broadcast_event("camera_status_changed", resp.model_dump())
@@ -942,6 +957,7 @@ async def get_camera_telemetry(
 async def remove_camera(
     camera_id: str,
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Soft-deletes a camera, unbinds it from its assigned lane, and preserves forensic audit history."""
     result = await session.execute(
@@ -980,6 +996,7 @@ async def remove_camera(
         },
     )
     await session.commit()
+    await cache_service.invalidate("cameras")
 
     resp = serialize_camera(cam)
     await ws_hub.broadcast_event("camera_status_changed", resp.model_dump())

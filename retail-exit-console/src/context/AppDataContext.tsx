@@ -51,6 +51,8 @@ interface AppDataContextType {
   camerasOnlineCount: number;
   camerasTotalCount: number;
   wsConnected: boolean;
+  wsStatus: 'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED';
+  reconnectAttempt: number;
   isLoading: boolean;
   apiError: string | null;
   activeView: ViewType;
@@ -108,6 +110,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [latestHighAlertId, setLatestHighAlertId] = useState<string | null>(null);
   const [isStreaming, setIsStreaming] = useState<boolean>(false);
   const [wsConnected, setWsConnected] = useState<boolean>(false);
+  const [wsStatus, setWsStatus] = useState<'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED'>('DISCONNECTED');
+  const [reconnectAttempt, setReconnectAttempt] = useState<number>(0);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [apiError, setApiError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
@@ -251,10 +255,11 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [openAlertsBySeverity.high]);
 
-  // ── WebSocket Live Connection Layer ─────────────────────────────────────
+  // ── WebSocket Live Connection Layer with Exponential Backoff ──────────────
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    let attempt = 0;
 
     const connectWebSocket = () => {
       try {
@@ -264,7 +269,10 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          attempt = 0;
+          setReconnectAttempt(0);
           setWsConnected(true);
+          setWsStatus('CONNECTED');
         };
 
         ws.onmessage = (event) => {
@@ -333,17 +341,31 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         };
 
-        ws.onclose = () => {
+        const scheduleReconnect = () => {
           setWsConnected(false);
-          reconnectTimeout = setTimeout(connectWebSocket, 4000);
+          setWsStatus('RECONNECTING');
+          attempt += 1;
+          setReconnectAttempt(attempt);
+          // Exponential backoff: min(1000 * 1.8^attempt, 16000) with jitter
+          const delay = Math.min(1000 * Math.pow(1.8, attempt), 16000) * (0.8 + Math.random() * 0.4);
+          reconnectTimeout = setTimeout(connectWebSocket, Math.round(delay));
+        };
+
+        ws.onclose = () => {
+          scheduleReconnect();
         };
 
         ws.onerror = () => {
           setWsConnected(false);
+          setWsStatus('RECONNECTING');
         };
       } catch {
         setWsConnected(false);
-        reconnectTimeout = setTimeout(connectWebSocket, 4000);
+        setWsStatus('RECONNECTING');
+        attempt += 1;
+        setReconnectAttempt(attempt);
+        const delay = Math.min(1000 * Math.pow(1.8, attempt), 16000);
+        reconnectTimeout = setTimeout(connectWebSocket, Math.round(delay));
       }
     };
 
@@ -525,6 +547,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         camerasOnlineCount,
         camerasTotalCount,
         wsConnected,
+        wsStatus,
+        reconnectAttempt,
         isLoading,
         apiError,
         activeView,

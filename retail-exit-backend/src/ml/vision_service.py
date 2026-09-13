@@ -113,14 +113,24 @@ class VisionInferenceService:
 
     @classmethod
     def _preprocess_frame(cls, img: np.ndarray) -> Tuple[np.ndarray, float]:
-        """Letterbox resize image to YOLOX input dimensions (416x416)."""
+        """Letterbox resize image to YOLOX input dimensions (416x416) with CLAHE glare suppression."""
+        # Contrast-Limited Adaptive Histogram Equalization on L-channel to compensate for retail overhead glare
+        if len(img.shape) == 3 and img.shape[2] == 3 and img.shape[0] > 10 and img.shape[1] > 10:
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            l_chan, a_chan, b_chan = cv2.split(lab)
+            clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8))
+            cl = clahe.apply(l_chan)
+            enhanced = cv2.cvtColor(cv2.merge((cl, a_chan, b_chan)), cv2.COLOR_LAB2BGR)
+        else:
+            enhanced = img
+
         input_h, input_w = cls.INPUT_SIZE
-        h, w = img.shape[:2]
+        h, w = enhanced.shape[:2]
         r = min(input_h / h, input_w / w)
         resized_w = int(w * r)
         resized_h = int(h * r)
 
-        resized_img = cv2.resize(img, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
+        resized_img = cv2.resize(enhanced, (resized_w, resized_h), interpolation=cv2.INTER_LINEAR)
         padded_img = np.ones((input_h, input_w, 3), dtype=np.uint8) * 114
         padded_img[:resized_h, :resized_w] = resized_img
 

@@ -19,7 +19,8 @@ export const TopKpiStrip: React.FC<TopKpiStripProps> = ({ onOpenSimulator }) => 
     camerasTotalCount,
     isStreaming,
     setIsStreaming,
-    wsConnected,
+    wsStatus,
+    reconnectAttempt,
     setActiveView,
   } = useAppData();
 
@@ -120,13 +121,27 @@ export const TopKpiStrip: React.FC<TopKpiStripProps> = ({ onOpenSimulator }) => 
       {/* 6. Stream Control & Simulation Action */}
       <div className="flex flex-col justify-between px-3.5 py-3 bg-panel border border-hairline rounded-sm col-span-2 sm:col-span-1">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-text-sec flex items-center gap-1">
-            <Wifi className={`w-3 h-3 ${wsConnected ? 'text-status-ok' : 'text-text-sec'}`} />
+          <span className="text-xs-tech text-text-sec flex items-center gap-1">
+            <Wifi className={`w-3 h-3 ${wsStatus === 'CONNECTED' ? 'text-status-ok' : wsStatus === 'RECONNECTING' ? 'text-amber animate-pulse' : 'text-status-high'}`} />
             Edge WebSocket
           </span>
-          <span className="flex items-center gap-1 font-mono text-[10px] text-status-ok">
-            <span className={`w-1.5 h-1.5 rounded-full ${isStreaming ? 'bg-status-ok animate-pulse' : 'bg-text-sec'}`} />
-            {isStreaming ? 'STREAMING' : 'PAUSED'}
+          <span className="flex items-center gap-1 font-mono text-[11px]">
+            {wsStatus === 'CONNECTED' ? (
+              <span className="flex items-center gap-1 text-status-ok">
+                <span className={`w-1.5 h-1.5 rounded-full ${isStreaming ? 'bg-status-ok animate-pulse' : 'bg-text-sec'}`} />
+                {isStreaming ? 'STREAMING' : 'PAUSED'}
+              </span>
+            ) : wsStatus === 'RECONNECTING' ? (
+              <span className="flex items-center gap-1 text-amber font-semibold animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber" />
+                RETRY {reconnectAttempt}
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 text-status-high">
+                <span className="w-1.5 h-1.5 rounded-full bg-status-high" />
+                OFFLINE
+              </span>
+            )}
           </span>
         </div>
 

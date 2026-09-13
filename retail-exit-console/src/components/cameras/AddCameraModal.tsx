@@ -517,7 +517,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                     {/* Scanning reticle overlay */}
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                       <div className="w-48 h-48 border-2 border-amber/70 rounded-lg relative">
-                        <div className="absolute inset-x-0 h-0.5 bg-amber animate-pulse shadow-[0_0_8px_#f59e0b]" />
+                        <div className="absolute inset-x-0 h-0.5 bg-amber animate-pulse shadow-[0_0_8px_var(--signal-amber)]" />
                       </div>
                     </div>
                     <button

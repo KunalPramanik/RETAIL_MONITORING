@@ -32,8 +32,17 @@ export const EventRow: React.FC<EventRowProps> = ({ event, isSelected, onSelect 
 
   return (
     <tr
+      tabIndex={0}
+      role="button"
+      aria-label={`Exit Event ${event.eventId} on lane ${event.laneId} with verdict ${event.verdict}`}
       onClick={onSelect}
-      className={`group cursor-pointer transition-colors border-b border-hairline/60 ${borderSeverityClass} ${
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onSelect?.();
+        }
+      }}
+      className={`group cursor-pointer transition-colors border-b border-hairline/60 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber ${borderSeverityClass} ${
         isSelected ? 'bg-panel-raised font-medium' : 'hover:bg-panel-raised/50 bg-panel'
       }`}
     >

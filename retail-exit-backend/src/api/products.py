@@ -9,6 +9,8 @@ from src.db.session import get_db
 from src.db.models import Product, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.products import ProductResponse, ProductCreate, ProductUpdate
+from src.cache import cache_service
+from src.api.deps_auth import require_roles
 
 router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -32,7 +34,13 @@ async def list_products(
     query: Optional[str] = Query(None),
     session: AsyncSession = Depends(get_db),
 ):
-    """Lists all registered products and case pack configurations."""
+    """Lists all registered products and case pack configurations with cached reads."""
+    cache_key = "products:all"
+    if not query:
+        cached = await cache_service.get(cache_key)
+        if cached is not None:
+            return [ProductResponse(**item) for item in cached]
+
     stmt = select(Product).order_by(Product.sku_code)
     result = await session.execute(stmt)
     products = result.scalars().all()
@@ -43,14 +51,18 @@ async def list_products(
             p for p in products
             if q in str(p.name).lower() or q in str(p.sku_code).lower() or q in str(p.category).lower()
         ]
+        return [serialize_product(p) for p in products]
 
-    return [serialize_product(p) for p in products]
+    serialized = [serialize_product(p) for p in products]
+    await cache_service.set(cache_key, [p.model_dump() for p in serialized], ttl_seconds=300)
+    return serialized
 
 
 @router.post("", response_model=ProductResponse, status_code=201)
 async def create_product(
     body: ProductCreate,
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Creates a new product with case pack configuration."""
     # Check if SKU exists
@@ -80,6 +92,7 @@ async def create_product(
         after_state=body.model_dump(),
     )
     await session.commit()
+    await cache_service.invalidate("products")
 
     return serialize_product(product)
 
@@ -89,6 +102,7 @@ async def update_product(
     product_id: str,
     body: ProductUpdate,
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Updates product details or case pack multiplier."""
     result = await session.execute(select(Product).where(Product.product_id == product_id))
@@ -133,6 +147,7 @@ async def update_product(
         after_state=body.model_dump(exclude_unset=True),
     )
     await session.commit()
+    await cache_service.invalidate("products")
 
     return serialize_product(product)
 
@@ -141,6 +156,7 @@ async def update_product(
 async def delete_product(
     product_id: str,
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Deletes a product from the master catalog."""
     result = await session.execute(select(Product).where(Product.product_id == product_id))
@@ -161,5 +177,6 @@ async def delete_product(
 
     await session.delete(product)
     await session.commit()
+    await cache_service.invalidate("products")
     return {"status": "DELETED", "productId": product_id}
 

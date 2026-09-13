@@ -11,6 +11,8 @@ from src.db.models import Lane, Store, Camera, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.lanes import SensorLaneSchema, LaneCreate
 from src.realtime.hub import ws_hub
+from src.cache import cache_service
+from src.api.deps_auth import require_roles
 
 router = APIRouter(prefix="/lanes", tags=["Lanes"])
 
@@ -43,7 +45,12 @@ def serialize_lane(l: Any, cam: Any = None) -> SensorLaneSchema:
 
 @router.get("", response_model=List[SensorLaneSchema])
 async def list_lanes(session: AsyncSession = Depends(get_db)):
-    """Lists all registered sensor lanes and dynamically linked edge hardware."""
+    """Lists all registered sensor lanes and dynamically linked edge hardware with cached reads."""
+    cache_key = "lanes:all"
+    cached = await cache_service.get(cache_key)
+    if cached is not None:
+        return [SensorLaneSchema(**item) for item in cached]
+
     stmt = select(Lane).order_by(Lane.lane_id)
     result = await session.execute(stmt)
     lanes = result.scalars().all()
@@ -52,13 +59,16 @@ async def list_lanes(session: AsyncSession = Depends(get_db)):
     cams_res = await session.execute(select(Camera).where(Camera.removed_at.is_(None)))
     cams_by_lane = {str(c.lane_id): c for c in cams_res.scalars().all() if c.lane_id}
 
-    return [serialize_lane(l, cams_by_lane.get(str(l.lane_id))) for l in lanes]
+    serialized = [serialize_lane(l, cams_by_lane.get(str(l.lane_id))) for l in lanes]
+    await cache_service.set(cache_key, [item.model_dump() for item in serialized], ttl_seconds=120)
+    return serialized
 
 
 @router.post("", response_model=SensorLaneSchema, status_code=201)
 async def create_lane(
     body: LaneCreate,
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Creates a new physical exit portal lane inline."""
     lane_id = body.laneId or f"LANE-{random.randint(5, 99):02d}"
@@ -92,6 +102,7 @@ async def create_lane(
         after_state={"lane_id": str(new_lane.lane_id), "label": str(new_lane.label), "status": str(new_lane.status)},
     )
     await session.commit()
+    await cache_service.invalidate("lanes")
 
     return serialize_lane(new_lane, None)
 
@@ -100,6 +111,7 @@ async def create_lane(
 async def toggle_lane_turnstile(
     lane_id: str,
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Toggles electromagnetic turnstile interlock lock status."""
     is_locked = lane_lock_state.get(lane_id, False)

@@ -18,7 +18,14 @@ export const StaticImageLogTable: React.FC<StaticImageLogTableProps> = ({
   onRefresh,
   isLoading = false,
 }) => {
-  const [filterClass, setFilterClass] = useState<string>('ALL');
+  const [filterClass, setFilterClass] = useState<string>(() => {
+    return sessionStorage.getItem('secops_static_log_filter') || 'ALL';
+  });
+
+  const handleFilterChange = (val: string) => {
+    setFilterClass(val);
+    sessionStorage.setItem('secops_static_log_filter', val);
+  };
 
   const filtered = records.filter((r) => {
     if (filterClass === 'ALL') return true;
@@ -70,7 +77,7 @@ export const StaticImageLogTable: React.FC<StaticImageLogTableProps> = ({
           <span className="text-text-sec font-mono text-[11px]">FILTER CLASSIFICATION:</span>
           <select
             value={filterClass}
-            onChange={(e) => setFilterClass(e.target.value)}
+            onChange={(e) => handleFilterChange(e.target.value)}
             className="px-2 py-1 bg-canvas border border-hairline rounded-sm text-xs-tech text-text-pri focus-visible:outline-2 focus-visible:outline-amber"
           >
             <option value="ALL">All Static Classifications ({records.length})</option>
@@ -114,7 +121,8 @@ export const StaticImageLogTable: React.FC<StaticImageLogTableProps> = ({
               filtered.map((row) => (
                 <tr
                   key={row.detectionId}
-                  className="border-b border-hairline/60 hover:bg-panel/40 transition-colors"
+                  tabIndex={0}
+                  className="border-b border-hairline/60 hover:bg-panel/40 transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-amber"
                 >
                   <td className="p-2.5 text-text-sec whitespace-nowrap">
                     {new Date(row.frameTs).toLocaleTimeString()} ·{' '}

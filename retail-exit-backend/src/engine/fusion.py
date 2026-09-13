@@ -113,7 +113,13 @@ class MultiSensorFusionEngine:
         else:
             readings["scale"] = {"units": None, "confidence": 0.0, "status": "OFFLINE"}
 
-        # Majority Consensus Override:
+        # Determine active channel count and nominal weight sum
+        active_channels = [c for c in ["vision", "rfid", "scale"] if readings[c]["status"] != "OFFLINE"]
+        num_active = len(active_channels)
+        active_nominal_weight = sum(cls.DEFAULT_WEIGHTS[c] for c in active_channels)
+        total_weight = sum(active_weights)
+
+        # Majority Consensus Override (3-channel):
         # If Vision and Scale agree and RFID is attenuated -> consensus adopts Vision/Scale
         if (
             rfid_count is not None
@@ -131,8 +137,26 @@ class MultiSensorFusionEngine:
         ):
             consensus_units = vision_count
             aggregate_confidence = 0.9950
+        elif num_active == 1:
+            # Degraded single-channel mode (e.g. Vision only, no RFID gate or Scale)
+            # Mathematically cap confidence at 0.75 reflecting lack of multi-sensor redundancy
+            consensus_units = vision_count
+            aggregate_confidence = round(min(0.75, v_conf * 0.85), 4)
+        elif num_active == 2:
+            # Two-channel mode (e.g. Vision + RFID, or Vision + Scale)
+            fused_float = sum(weighted_values) / max(0.01, total_weight)
+            consensus_units = int(round(fused_float))
+            # Normalized weight against active pair
+            norm_ratio = total_weight / max(0.01, active_nominal_weight)
+            pair_agree = (
+                (rfid_count is not None and vision_count == rfid_count)
+                or (weight_estimated_units is not None and vision_count == weight_estimated_units)
+            )
+            if pair_agree:
+                aggregate_confidence = round(min(0.95, norm_ratio * 0.92), 4)
+            else:
+                aggregate_confidence = round(max(0.35, norm_ratio * 0.65), 4)
         else:
-            total_weight = sum(active_weights)
             if total_weight > 0:
                 fused_float = sum(weighted_values) / total_weight
                 consensus_units = int(round(fused_float))

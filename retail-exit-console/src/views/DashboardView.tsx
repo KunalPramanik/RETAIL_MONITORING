@@ -9,7 +9,18 @@ import type { Alert, ExitEvent } from '../types';
 import { Filter, Layers, AlertOctagon, Radio } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
-  const { events, alerts, lanes, cameras, selectedEventId, setSelectedEventId, selectedEvent, refreshAllData } = useAppData();
+  const {
+    events,
+    alerts,
+    lanes,
+    cameras,
+    selectedEventId,
+    setSelectedEventId,
+    selectedEvent,
+    refreshAllData,
+    setActiveView,
+    isLoading,
+  } = useAppData();
   const [resolvingAlert, setResolvingAlert] = useState<Alert | null>(null);
   const [laneFilter, setLaneFilter] = useState<string>('ALL');
 
@@ -31,16 +42,25 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="p-4 space-y-4">
-      {/* Zero Lanes Banner per Part I */}
+      {/* Zero Lanes Banner per Part I with Actionable Next Step */}
       {lanes.length === 0 && (
-        <div className="flex items-center justify-between p-3.5 bg-panel-raised border-l-4 border-amber border-hairline rounded-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-panel-raised border-l-4 border-amber border-hairline rounded-sm">
           <div className="flex items-center gap-2.5">
-            <Radio className="w-4 h-4 text-amber animate-pulse" />
+            <Radio className="w-4 h-4 text-amber animate-pulse shrink-0" />
             <span className="text-xs-tech text-text-pri font-medium">
-              No exit lanes configured. Add your first camera in Settings to begin monitoring.
+              No exit lanes configured. Enroll your surveillance cameras and edge sensors to activate autonomous monitoring.
             </span>
           </div>
-          <span className="text-[11px] text-text-sec font-mono">STANDBY MODE</span>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setActiveView('settings')}
+              className="px-3 py-1 bg-amber hover:bg-amber/90 text-black text-xs-tech font-bold rounded-sm transition-colors cursor-pointer"
+            >
+              Configure Exit Lane & Camera →
+            </button>
+            <span className="text-xs-tech text-text-sec font-mono">STANDBY MODE</span>
+          </div>
         </div>
       )}
 
@@ -102,7 +122,21 @@ export const DashboardView: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredEvents.length > 0 ? (
+                {isLoading && events.length === 0 ? (
+                  Array.from({ length: 5 }).map((_, idx) => (
+                    <tr key={`skel-dash-${idx}`} className="border-b border-hairline animate-pulse">
+                      <td className="py-3 px-3"><div className="h-3 w-16 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-3 w-20 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-3 w-28 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-3 w-8 bg-hairline/60 rounded ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-3 w-10 bg-hairline/60 rounded ml-auto" /></td>
+                      <td className="py-3 px-3 text-right"><div className="h-3 w-8 bg-hairline/60 rounded ml-auto" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-14 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-3"><div className="h-4 w-12 bg-hairline/60 rounded" /></td>
+                      <td className="py-3 px-2"></td>
+                    </tr>
+                  ))
+                ) : filteredEvents.length > 0 ? (
                   filteredEvents.map((ev: ExitEvent) => (
                     <EventRow
                       key={ev.eventId}
@@ -117,7 +151,7 @@ export const DashboardView: React.FC = () => {
                       <div className="flex flex-col items-center justify-center gap-1.5">
                         <Layers className="w-6 h-6 text-hairline" />
                         <span className="text-text-pri font-medium">No exit events recorded</span>
-                        <span className="text-[11px]">Active camera feeds and edge sensors will populate traversal events in real time.</span>
+                        <span className="text-xs-tech">Active camera feeds and edge sensors will populate traversal events in real time.</span>
                       </div>
                     </td>
                   </tr>

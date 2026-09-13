@@ -61,7 +61,10 @@ export const SignaturePad: React.FC<SignaturePadProps> = ({
     ctx.moveTo(x, y);
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
-    ctx.strokeStyle = '#d97706'; // Amber accent
+    const computedAmber = typeof window !== 'undefined'
+      ? getComputedStyle(document.documentElement).getPropertyValue('--signal-amber').trim() || '#E8A33D'
+      : '#E8A33D';
+    ctx.strokeStyle = computedAmber;
     setIsDrawing(true);
   };
 

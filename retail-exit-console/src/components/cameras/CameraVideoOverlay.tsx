@@ -74,11 +74,11 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
       case 'static':
       default:
         return {
-          stroke: '#94a3b8', // Subtle slate/cyan low-emphasis outline
-          fill: 'rgba(148, 163, 184, 0.08)',
-          bg: '#1e293b',
-          text: '#cbd5e1',
-          border: 'rgba(148, 163, 184, 0.3)',
+          stroke: 'var(--text-secondary, #8B93A1)', // Subtle secondary text/slate outline
+          fill: 'rgba(139, 147, 161, 0.08)',
+          bg: 'var(--bg-panel-raised, #20252F)',
+          text: 'var(--text-primary, #E7E9EC)',
+          border: 'var(--border-hairline, #2C323D)',
           dash: '5 3',
         };
     }

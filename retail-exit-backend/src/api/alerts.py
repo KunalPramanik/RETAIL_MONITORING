@@ -33,9 +33,11 @@ def serialize_alert(a: Any) -> AlertResponse:
 async def list_alerts(
     status: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_db),
 ):
-    """Lists alerts with status and severity filters. Open HIGH alerts are prioritized."""
+    """Lists alerts with status, severity filters, and bounded pagination. Open HIGH alerts are prioritized."""
     query = select(Alert).order_by(desc(Alert.created_at))
 
     if status and status != "ALL":
@@ -46,7 +48,7 @@ async def list_alerts(
     result = await session.execute(query)
     alerts = result.scalars().all()
 
-    # Sort in memory: HIGH severity on top, then MEDIUM, then LOW
+    # Sort in memory: Open/Acked on top, then HIGH severity, then newest timestamp
     severity_order = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
     sorted_alerts = sorted(
         alerts,
@@ -58,7 +60,8 @@ async def list_alerts(
         reverse=True,
     )
 
-    return [serialize_alert(a) for a in sorted_alerts]
+    paginated_alerts = sorted_alerts[offset : offset + limit]
+    return [serialize_alert(a) for a in paginated_alerts]
 
 
 @router.post("/{alert_id}/acknowledge", response_model=AlertResponse)

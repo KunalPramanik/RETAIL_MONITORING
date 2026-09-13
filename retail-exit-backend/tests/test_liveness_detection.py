@@ -117,3 +117,4 @@ def test_synthetic_living_face_evaluation():
     assert result.is_live is True, f"Mock 3D human face should be LIVE, got reason: {result.reason}"
     assert result.liveness_score >= 0.50
     assert result.z_std >= 15.0
+

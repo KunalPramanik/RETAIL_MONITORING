@@ -51,7 +51,7 @@ export const SimulatorDrawer: React.FC<SimulatorDrawerProps> = ({ isOpen, onClos
     {
       type: 'REPEAT_OFFENDER_HIGH' as const,
       title: '5. High-Risk Repeat Offender Anomaly',
-      description: 'Carrier Marcus Vance (4 prior 30d mismatches) carries 8 cases vs 4 declared (+24 units). Triggers HIGH Siren.',
+      description: 'Carrier with 4 prior 30d mismatches carries 8 cases vs 4 declared (+24 units). Triggers HIGH Siren.',
       icon: Users,
       color: 'text-status-high',
       border: 'border-status-high/40',

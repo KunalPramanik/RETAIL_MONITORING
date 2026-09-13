@@ -13,6 +13,8 @@ import random
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
+from collections import deque
+import uuid
 import httpx
 import cv2
 import numpy as np
@@ -26,6 +28,7 @@ from src.db.models import (
     ExitEventLineItem,
     VisionDetection,
     FaceMatchAttempt,
+    StaticImageDetection,
     Alert,
     Employee,
     Product,
@@ -51,6 +54,8 @@ class CameraIngestionWorker:
         self._last_frames: Dict[str, np.ndarray] = {}
         self._last_event_time: Dict[str, float] = {}
         self._last_detections: Dict[str, Dict[str, Any]] = {}
+        self._camera_logs: Dict[str, deque] = {}
+        self._active_transactions: Dict[str, Dict[str, Any]] = {}
 
     def start(self):
         """Starts the background camera ingestion worker."""
@@ -191,7 +196,123 @@ class CameraIngestionWorker:
             annotated_bytes = final_bytes or obj_bytes or frame_bytes
 
             carrier_label = face_res.employee_name if face_res.matched_employee_id else "UNVERIFIED"
+
+            # Determine frame dimensions for SVG viewport alignment
+            frame_w, frame_h = 1280, 720
+            try:
+                nparr = np.frombuffer(frame_bytes, np.uint8)
+                dec = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+                if dec is not None:
+                    frame_h, frame_w = dec.shape[:2]
+            except Exception:
+                pass
+
+            overlay_boxes = []
+
+            # 1. Recognized authorized employees (Green)
+            if face_res.decision == "MATCHED" and face_res.matched_employee_id:
+                for fb in face_boxes:
+                    overlay_boxes.append({
+                        "box": fb,
+                        "type": "PERSON_MATCHED",
+                        "label": f"Recognized: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
+                        "confidence": round(float(face_res.similarity), 4),
+                        "color": "green",
+                        "entity": face_res.employee_name,
+                    })
+
+            # 2. Live unrecognized persons (Red)
+            for pb in getattr(face_res, "live_person_boxes", []):
+                if face_res.decision != "MATCHED" or not face_res.matched_employee_id:
+                    conf = pb.get("confidence", 0.85)
+                    overlay_boxes.append({
+                        "box": pb["box"],
+                        "type": "PERSON_UNMATCHED",
+                        "label": f"Unknown Person ({int(conf * 100)}%)",
+                        "confidence": round(float(conf), 4),
+                        "color": "red",
+                        "entity": None,
+                    })
+
+            # 3. Detected items and cases (Neutral / Amber)
+            for d in vis_res.detections:
+                tag_prefix = "Case" if "case" in d.class_label.lower() else "Item"
+                overlay_boxes.append({
+                    "box": d.bbox,
+                    "type": "ITEM",
+                    "label": f"{tag_prefix}: {d.class_label} ({int(d.confidence * 100)}%)",
+                    "confidence": round(float(d.confidence), 4),
+                    "color": "amber",
+                    "entity": d.class_label,
+                })
+
+            # 4. Static images (Low-emphasis outline, e.g. Religious Image, Poster, Screen)
+            for s in getattr(face_res, "static_detections", []):
+                overlay_boxes.append({
+                    "box": s["box"],
+                    "type": "STATIC_IMAGE",
+                    "label": s["friendly_label"],
+                    "confidence": round(float(s["confidence"]), 4),
+                    "color": "static",
+                    "entity": s["classification"],
+                })
+                # Persist static image detection to database
+                try:
+                    static_entry = StaticImageDetection(
+                        camera_id=cam.camera_id,
+                        frame_ts=now,
+                        bbox=s["box"],
+                        liveness_score=s["liveness_score"],
+                        classification=s["classification"],
+                        classification_confidence=s["confidence"],
+                        model_version="static-classifier-v1.0",
+                        suppressed_alert=True,
+                    )
+                    session.add(static_entry)
+                except Exception as ex:
+                    logger.debug("Failed to record static detection: %s", ex)
+
+            # Update rolling activity logs for this camera HUD
+            if cam.camera_id not in self._camera_logs:
+                self._camera_logs[cam.camera_id] = deque(maxlen=10)
+            cam_logs = self._camera_logs[cam.camera_id]
+            cam_name = cam.label or f"Camera {cam.camera_id}"
+            time_str = now.strftime("%H:%M:%S")
+
+            if overlay_boxes:
+                if any(b["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED") for b in overlay_boxes):
+                    person_desc = face_res.employee_name if (face_res.decision == "MATCHED" and face_res.matched_employee_id) else "Person"
+                    msg = f"{cam_name} — {person_desc} Detected — {time_str}"
+                    if not cam_logs or cam_logs[-1]["text"] != msg:
+                        cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "PERSON"})
+
+                if any(b["type"] == "ITEM" for b in overlay_boxes):
+                    msg = f"{cam_name} — {vis_res.cases_detected} Cases / {vis_res.vision_count} Units Detected — {time_str}"
+                    if not cam_logs or cam_logs[-1]["text"] != msg:
+                        cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "ITEM"})
+
+                if any(b["type"] == "STATIC_IMAGE" for b in overlay_boxes):
+                    for sb in [b for b in overlay_boxes if b["type"] == "STATIC_IMAGE"]:
+                        class_title = str(sb["entity"]).replace("_", " ").title()
+                        msg = f"{cam_name} — Static: {class_title} — {time_str}"
+                        if not cam_logs or cam_logs[-1]["text"] != msg:
+                            cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "STATIC"})
+
+            # In-progress compliance tag
+            active_tx = self._active_transactions.get(cam.camera_id)
+            if active_tx is None and (vis_res.vision_count > 0 or len(vis_res.detections) > 0 or face_res.matched_employee_id):
+                active_tx = {
+                    "eventId": f"TX-{cam.camera_id[:4]}",
+                    "status": "CONSENSUS_PENDING",
+                    "displayText": f"TX-{cam.camera_id[:4]} | Consensus Pending",
+                }
+
             detection_data.update({
+                "frameTs": now.isoformat(),
+                "frameWidth": frame_w,
+                "frameHeight": frame_h,
+                "boxes": overlay_boxes,
+                "entityCount": len(overlay_boxes),
                 "casesDetected": vis_res.cases_detected,
                 "unitsDetected": vis_res.vision_count,
                 "carrierName": carrier_label,
@@ -199,7 +320,9 @@ class CameraIngestionWorker:
                 "livenessDecision": face_res.liveness_decision,
                 "livenessScore": round(face_res.liveness_score * 100, 1),
                 "confidence": round(vis_res.vision_confidence * 100, 1) if vis_res.vision_confidence else 95.0,
-                "boxesCount": len(vis_res.detections) + len(face_boxes),
+                "boxesCount": len(overlay_boxes),
+                "activeTransaction": active_tx,
+                "recentLogs": list(cam_logs),
             })
         except Exception as e:
             logger.warning("Preview CV annotation error on %s: %s", cam.camera_id, e)
@@ -215,6 +338,9 @@ class CameraIngestionWorker:
             logger.warning("Could not write preview snapshot: %s", e)
 
         await session.commit()
+
+        # Broadcast real-time detection overlay to WebSocket clients
+        await ws_hub.broadcast_event("detection_update", detection_data)
 
         # Motion detection to automatically generate exit events
         should_trigger = self._check_motion(cam.camera_id, frame_bytes)
@@ -465,6 +591,30 @@ class CameraIngestionWorker:
         await ws_hub.broadcast_event("new_event", event_payload)
         if alert_payload:
             await ws_hub.broadcast_event("new_alert", alert_payload)
+
+        # Update active transaction compliance tag for camera HUD & overlay
+        tx_label = (
+            f"PASS ({int(event.vision_confidence * 100 if event.vision_confidence else 98)}%)"
+            if event.verdict == "PASS"
+            else f"MISMATCH — {event.severity} (Δ {event.delta_units} units)"
+        )
+        self._active_transactions[cam.camera_id] = {
+            "eventId": event.event_id,
+            "status": "RESOLVED",
+            "verdict": event.verdict,
+            "severity": event.severity,
+            "deltaUnits": event.delta_units,
+            "displayText": f"TX-{event.event_id} | {tx_label}",
+        }
+
+        # Add transaction log to camera HUD
+        cam_logs = self._camera_logs.setdefault(cam.camera_id, deque(maxlen=10))
+        cam_logs.append({
+            "id": str(uuid.uuid4()),
+            "timestamp": now.strftime("%H:%M:%S"),
+            "text": f"{cam.label} — TX {event.event_id}: {tx_label} — {now.strftime('%H:%M:%S')}",
+            "type": "TRANSACTION",
+        })
 
         logger.info("Created real ExitEvent %s on %s (Units: %d, Verdict: %s)", event_id, lane_id, event.units_detected, event.verdict)
         return event

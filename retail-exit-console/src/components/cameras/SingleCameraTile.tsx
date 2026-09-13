@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Camera, SensorLane } from '../../types';
 import { api, getCameraSnapshotUrl } from '../../api/client';
+import { useAppData } from '../../context/AppDataContext';
+import { CameraVideoOverlay } from './CameraVideoOverlay';
+import { CameraOperationsHud } from './CameraOperationsHud';
 import {
   Camera as CameraIcon,
   Radio,
@@ -20,6 +23,7 @@ import {
   VolumeX,
   Activity,
   RefreshCw,
+  Clock,
 } from 'lucide-react';
 
 export interface CameraOrientation {
@@ -316,7 +320,19 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
   });
 
   // ── 8b. Real-Time AI Detections & Biometric Overlay ───────────────
+  const { latestDetections } = useAppData();
+  const camDetection = latestDetections[camera.cameraId] || null;
+  const [isHudOpen, setIsHudOpen] = useState(false);
   const [showAiDetections, setShowAiDetections] = useState(true);
+  const [liveClock, setLiveClock] = useState(() => new Date().toTimeString().split(' ')[0]);
+
+  useEffect(() => {
+    const clockInterval = setInterval(() => {
+      setLiveClock(new Date().toTimeString().split(' ')[0]);
+    }, 1000);
+    return () => clearInterval(clockInterval);
+  }, []);
+
   const [liveDetection, setLiveDetection] = useState<{
     casesDetected: number;
     unitsDetected: number;
@@ -330,12 +346,12 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
     try {
       const data = await api.getCameraLiveDetection(camera.cameraId);
       setLiveDetection({
-        casesDetected: data.casesDetected,
-        unitsDetected: data.unitsDetected,
-        carrierName: data.carrierName,
-        faceDecision: data.faceDecision,
-        confidence: data.confidence,
-        boxesCount: data.boxesCount,
+        casesDetected: data.casesDetected ?? 0,
+        unitsDetected: data.unitsDetected ?? 0,
+        carrierName: data.carrierName ?? 'UNVERIFIED',
+        faceDecision: data.faceDecision ?? 'NO_PERSON',
+        confidence: data.confidence ?? 0,
+        boxesCount: data.boxesCount ?? 0,
       });
     } catch {
       // ignore
@@ -503,7 +519,7 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
         >
           {/* Orientation (Rotate & Flip) Container */}
           <div
-            className="w-full h-full flex items-center justify-center"
+            className="w-full h-full flex items-center justify-center relative"
             style={{
               transform: `rotate(${orientation.rotation}deg) scale(${orientation.flipH ? -1 : 1}, ${
                 orientation.flipV ? -1 : 1
@@ -524,7 +540,27 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
                 (e.target as HTMLElement).style.display = 'block';
               }}
             />
+
+            {/* Live Video Overlay Layer (Bounding boxes, employee tags, live consensus pill) */}
+            {showAiDetections && (
+              <CameraVideoOverlay
+                detectionData={camDetection}
+                frameWidth={imgRef.current?.naturalWidth || 1280}
+                frameHeight={imgRef.current?.naturalHeight || 720}
+              />
+            )}
           </div>
+        </div>
+
+        {/* Collapsible Operations HUD Sliding Panel */}
+        <div className="absolute top-0 bottom-0 right-0 z-25 pointer-events-auto flex">
+          <CameraOperationsHud
+            camera={camera}
+            assignedLane={assignedLane}
+            detectionData={camDetection}
+            isOpen={isHudOpen}
+            onToggle={() => setIsHudOpen((prev) => !prev)}
+          />
         </div>
 
         {/* Reconnecting Overlay */}
@@ -585,8 +621,8 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
           </div>
         )}
 
-        {/* Real-time AI Detections Overlay HUD (Matches EventDetailPanel) */}
-        {showAiDetections && (
+        {/* Real-time AI Detections Overlay HUD Banner (When not obscured by HUD) */}
+        {showAiDetections && !isHudOpen && (
           <>
             {/* Top Center: Live CV Tracking Mode Banner */}
             <div className="absolute top-2 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded bg-black/85 text-status-ok border border-status-ok/40 font-mono text-[11px] font-bold tracking-wider backdrop-blur-sm pointer-events-none shadow-lg">
@@ -598,43 +634,60 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
             <div className="absolute inset-x-2 bottom-8 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
               <div className="flex items-center gap-2">
                 <span className="px-2 py-0.5 bg-black/85 border border-status-ok/70 text-status-ok font-mono text-[11px] rounded-sm font-semibold shadow-md">
-                  DETECTED: {liveDetection?.casesDetected ?? 0} CASES · {liveDetection?.unitsDetected ?? 0} UNITS
+                  DETECTED: {camDetection?.casesDetected ?? liveDetection?.casesDetected ?? 0} CASES · {camDetection?.unitsDetected ?? liveDetection?.unitsDetected ?? 0} UNITS
                 </span>
                 <span className="px-2 py-0.5 bg-black/85 border border-hairline text-text-pri font-mono text-[11px] rounded-sm shadow-md">
-                  CARRIER: {liveDetection?.carrierName ?? 'UNVERIFIED'}
+                  CARRIER: {camDetection?.carrierName ?? liveDetection?.carrierName ?? 'UNVERIFIED'}
                 </span>
               </div>
               <span className="px-2 py-0.5 bg-black/85 border border-amber/60 text-amber font-mono text-[11px] rounded-sm font-semibold shadow-md">
-                CONSENSUS: {liveDetection?.unitsDetected ?? 0} UNITS
+                CONSENSUS: {camDetection?.unitsDetected ?? liveDetection?.unitsDetected ?? 0} UNITS
               </span>
             </div>
           </>
         )}
 
-        {/* Viewport Top Overlay: Status & Stream Resolution */}
+        {/* Viewport Top Left Overlay: Status & Camera Label & Lane */}
         {!isRecording && (
-          <div className="absolute top-2 left-2 flex items-center gap-1.5 text-[10px] font-mono pointer-events-none">
-            <span className="px-1.5 py-0.5 rounded bg-black/80 text-status-ok border border-status-ok/30 flex items-center gap-1">
+          <div className="absolute top-2 left-2 flex items-center gap-1.5 text-[10px] font-mono pointer-events-none z-10">
+            <span className="px-1.5 py-0.5 rounded bg-black/85 text-status-ok border border-status-ok/40 flex items-center gap-1 font-bold shadow">
               ● {camera.status}
             </span>
+            <span className="px-1.5 py-0.5 rounded bg-black/85 text-text-pri border border-hairline font-bold shadow">
+              {camera.label}
+            </span>
+            {assignedLane && (
+              <span className="px-1.5 py-0.5 rounded bg-black/85 text-amber border border-amber/40 font-bold shadow">
+                {assignedLane.laneId}
+              </span>
+            )}
           </div>
         )}
 
-        {!showHealthHud && (
-          <div className="absolute top-2 right-2 flex items-center gap-1 text-[10px] font-mono pointer-events-none">
-            <span className="px-1.5 py-0.5 rounded bg-black/80 text-text-sec border border-hairline">
+        {/* Viewport Top Right Overlay: Live Surveillance Clock & Resolution/FPS */}
+        {!showHealthHud && !isHudOpen && (
+          <div className="absolute top-2 right-2 flex items-center gap-1.5 text-[10px] font-mono pointer-events-none z-10">
+            <span className="px-1.5 py-0.5 rounded bg-black/85 text-text-pri border border-hairline font-bold flex items-center gap-1 shadow">
+              <Clock className="w-3 h-3 text-amber" />
+              {liveClock} UTC
+            </span>
+            <span className="px-1.5 py-0.5 rounded bg-black/85 text-text-sec border border-hairline shadow">
               {quality === 'main' ? camera.resolution || '1080p' : '640x360 (Sub)'} @ {camera.fps || 30} FPS
             </span>
           </div>
         )}
 
-        {/* Viewport Bottom Overlay: Lane and IP */}
-        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[10px] font-mono pointer-events-none">
-          <span className="px-1.5 py-0.5 rounded bg-black/80 text-text-pri border border-hairline flex items-center gap-1">
+        {/* Viewport Bottom Overlay: Lane and Telemetry / IP */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between text-[10px] font-mono pointer-events-none z-10">
+          <span className="px-1.5 py-0.5 rounded bg-black/85 text-text-sec border border-hairline flex items-center gap-1.5 shadow">
             <Radio className="w-3 h-3 text-amber" />
-            {assignedLane ? assignedLane.laneId : 'UNBOUND'}
+            <span className="text-text-pri font-bold">{assignedLane ? assignedLane.laneId : 'UNBOUND'}</span>
+            <span className="text-hairline">|</span>
+            <span>{telemetry.bitrateKbps} kbps</span>
+            <span className="text-hairline">|</span>
+            <span>{telemetry.fpsObserved.toFixed(1)} fps</span>
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-black/80 text-text-sec border border-hairline">
+          <span className="px-1.5 py-0.5 rounded bg-black/85 text-text-sec border border-hairline shadow">
             {camera.ipAddress}
           </span>
         </div>
@@ -795,6 +848,21 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
           >
             <Zap className={`w-3 h-3 ${showAiDetections ? 'text-status-ok fill-current' : 'text-text-sec'}`} />
             <span>AI DETECT: {showAiDetections ? 'ON' : 'OFF'}</span>
+          </button>
+
+          {/* Operations HUD Toggle */}
+          <button
+            type="button"
+            onClick={() => setIsHudOpen(!isHudOpen)}
+            className={`px-2 py-1 rounded border transition-colors flex items-center gap-1 font-mono text-[10px] ${
+              isHudOpen
+                ? 'bg-amber/20 text-amber border-amber/40 font-bold'
+                : 'text-text-sec hover:text-text-pri bg-panel hover:bg-panel-raised border-hairline'
+            }`}
+            title="Toggle Operations HUD Panel (Tracked Entities, Real-Time Activity Log)"
+          >
+            <Activity className={`w-3 h-3 ${isHudOpen ? 'text-amber' : 'text-text-sec'}`} />
+            <span>HUD: {isHudOpen ? 'OPEN' : 'OFF'}</span>
           </button>
 
           {/* Health HUD Toggle */}

@@ -9,6 +9,8 @@ import type {
   SystemSettings,
   Camera,
   ViewType,
+  CameraDetectionUpdate,
+  StaticImageRecord,
 } from '../types';
 import { api, type TestConnectionResult } from '../api/client';
 import { playAlarmSound } from '../utils/audioAlarm';
@@ -52,9 +54,12 @@ interface AppDataContextType {
   isLoading: boolean;
   apiError: string | null;
   activeView: ViewType;
+  latestDetections: Record<string, CameraDetectionUpdate>;
+  staticImages: StaticImageRecord[];
 
   // Actions
   setActiveView: (view: ViewType) => void;
+  refreshStaticImages: () => Promise<void>;
   setSelectedEventId: (id: string | null) => void;
   resolveAlert: (alertId: string, note: string, resolvedBy?: string) => Promise<void>;
   acknowledgeAlert: (alertId: string, acknowledgedBy?: string) => Promise<void>;
@@ -106,6 +111,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [apiError, setApiError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<ViewType>('dashboard');
+  const [latestDetections, setLatestDetections] = useState<Record<string, CameraDetectionUpdate>>({});
+  const [staticImages, setStaticImages] = useState<StaticImageRecord[]>([]);
+
+  const refreshStaticImages = useCallback(async () => {
+    try {
+      const records = await api.getStaticImages();
+      setStaticImages(records);
+    } catch (err) {
+      console.warn('Could not fetch static images:', err);
+    }
+  }, []);
 
   // Selected event lookup
   const selectedEvent = useMemo(() => {
@@ -203,6 +219,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (evtRes.length > 0) {
         setSelectedEventId(evtRes[0].eventId);
       }
+      refreshStaticImages().catch(console.warn);
     } catch (err: any) {
       console.error('Fatal initialization error:', err);
       setApiError(err.message || 'Failed to connect to SEC-OPS backend');
@@ -299,6 +316,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
             } else if (data.type === 'invoice_uploaded') {
               api.getInvoices().then(setInvoices).catch(console.warn);
               api.getEvents().then(setEvents).catch(console.warn);
+            } else if (data.type === 'detection_update') {
+              const payload = data.payload;
+              if (payload?.cameraId) {
+                setLatestDetections((prev) => ({
+                  ...prev,
+                  [payload.cameraId]: payload,
+                }));
+                if (payload.boxes?.some((b: any) => b.type === 'STATIC_IMAGE')) {
+                  refreshStaticImages().catch(console.warn);
+                }
+              }
             }
           } catch (e) {
             console.error('Error parsing WebSocket message:', e);
@@ -500,6 +528,9 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         isLoading,
         apiError,
         activeView,
+        latestDetections,
+        staticImages,
+        refreshStaticImages,
         setActiveView,
         setSelectedEventId,
         resolveAlert,

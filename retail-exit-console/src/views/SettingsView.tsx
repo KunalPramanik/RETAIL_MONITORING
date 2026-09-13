@@ -1,15 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import { useTheme } from '../context/ThemeContext';
 import type { SensorLane } from '../types';
 import { CameraManagementPanel } from '../components/cameras/CameraManagementPanel';
-import { Settings, Sliders, Volume2, ShieldAlert, Radio, Sun, Moon, Check, Clock } from 'lucide-react';
+import { StaticImageLogTable } from '../components/cameras/StaticImageLogTable';
+import { Settings, Sliders, Volume2, ShieldAlert, Radio, Sun, Moon, Check, Clock, Image as ImageIcon } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
-  const { settings, updateSettings, resetDatabase, testAlarmSound, lanes } = useAppData();
+  const { settings, updateSettings, resetDatabase, testAlarmSound, lanes, staticImages, refreshStaticImages } = useAppData();
   const { theme, setTheme } = useTheme();
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
+
+  useEffect(() => {
+    refreshStaticImages();
+  }, [refreshStaticImages]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -349,6 +354,28 @@ export const SettingsView: React.FC = () => {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Section 5b: Static Image & Spoof Prevention Audit Log */}
+        <div className="p-4 bg-panel border border-hairline rounded-sm space-y-3">
+          <div className="flex items-center justify-between border-b border-hairline pb-2">
+            <h2 className="text-xs-tech font-bold text-text-pri uppercase tracking-wider flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-amber" />
+              5b. Static Image & Spoof Prevention Audit Log
+            </h2>
+            <span className="font-mono text-xs-tech text-text-sec">
+              {staticImages.length} Detections Logged · Suppressed False Alarms
+            </span>
+          </div>
+
+          <p className="text-xs-tech text-text-sec">
+            Two-stage anti-spoofing engine continuously identifies static representations (religious frames, employee wall photos, posters, and digital displays). Detections recorded here have alarms suppressed (<span className="font-mono text-status-ok font-bold">suppressed_alert = true</span>) to prevent false alerts.
+          </p>
+
+          <StaticImageLogTable
+            records={staticImages}
+            onRefresh={refreshStaticImages}
+          />
         </div>
 
         {/* Section 6: Part I Compliance — Zero-Data Audit Purge */}

@@ -163,3 +163,61 @@ export type ViewType =
   | 'invoices'
   | 'reports'
   | 'settings';
+
+export type DetectionBoxType = 'PERSON_MATCHED' | 'PERSON_UNMATCHED' | 'ITEM' | 'STATIC_IMAGE';
+
+export interface DetectionBox {
+  box: [number, number, number, number]; // [x, y, w, h]
+  type: DetectionBoxType;
+  label: string;
+  confidence: number;
+  color: 'green' | 'red' | 'amber' | 'static';
+  entity?: string;
+}
+
+export interface CameraDetectionUpdate {
+  cameraId: string;
+  laneId?: string;
+  frameTs: string;
+  frameWidth: number;
+  frameHeight: number;
+  boxes: DetectionBox[];
+  entityCount: number;
+  casesDetected?: number;
+  unitsDetected?: number;
+  carrierName?: string;
+  faceDecision?: string;
+  livenessDecision?: string;
+  livenessScore?: number;
+  confidence?: number;
+  boxesCount?: number;
+  activeTransaction?: {
+    eventId: string;
+    status: string; // 'CONSENSUS_PENDING' | 'RESOLVED'
+    displayText: string;
+    verdict?: string;
+    severity?: string;
+    deltaUnits?: number;
+  };
+  recentLogs: Array<{
+    id: string;
+    timestamp: string;
+    text: string;
+    type: string;
+  }>;
+  timestamp?: string;
+}
+
+export interface StaticImageRecord {
+  detectionId: string;
+  cameraId: string;
+  cameraLabel: string;
+  frameTs: string;
+  bbox: [number, number, number, number];
+  livenessScore: number;
+  classification: string;
+  classificationConfidence: number;
+  modelVersion: string;
+  suppressedAlert: boolean;
+  createdAt: string;
+}

@@ -12,7 +12,7 @@ Features:
 import os
 import cv2
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union, Tuple
 from insightface.app import FaceAnalysis
 from src.ml.liveness_service import LivenessDetectionService, LivenessResult
@@ -29,6 +29,8 @@ class FaceMatchResult:
     frames_evaluated: int = 1
     liveness_score: float = 1.0
     liveness_decision: str = "LIVE"   # 'LIVE' | 'STATIC_PHOTO' | 'SPOOF' | 'NO_FACE'
+    static_detections: List[Dict[str, Any]] = field(default_factory=list)
+    live_person_boxes: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class FaceRecognitionService:
@@ -223,6 +225,8 @@ class FaceRecognitionService:
         detected_boxes: List[List[int]] = []
         probe_embeddings: List[List[float]] = []
         box_annotations: List[Tuple[List[int], str, Tuple[int, int, int]]] = []
+        static_detections: List[Dict[str, Any]] = []
+        live_person_boxes: List[Dict[str, Any]] = []
         best_liveness_score = 0.0
         any_static_detected = False
 
@@ -284,13 +288,17 @@ class FaceRecognitionService:
 
                     if not liveness.is_live:
                         any_static_detected = True
-                        # If filtering static imagery (default True): ignore static wall pictures / photos
-                        if filter_static:
-                            continue
-                        else:
-                            # Inspection / audit mode: badge photo
-                            lbl = f"PHOTO {int(det_score * 100)}%"
-                            color = (120, 120, 120)
+                        static_item = {
+                            "box": [int(x1), int(y1), int(w_face), int(h_face)],
+                            "classification": liveness.static_classification or "UNCLASSIFIED_STATIC",
+                            "confidence": liveness.static_confidence if liveness.static_confidence > 0 else det_score,
+                            "friendly_label": liveness.static_friendly_label or f"Static: Image ({int(det_score * 100)}%)",
+                            "liveness_score": liveness.liveness_score,
+                            "suppressed_alert": True,
+                        }
+                        static_detections.append(static_item)
+                        lbl = liveness.static_friendly_label or f"Static: Image ({int(det_score * 100)}%)"
+                        color = (140, 140, 140)
                     else:
                         # Genuine living human detected
                         gender = getattr(face, "gender", 1)
@@ -298,6 +306,12 @@ class FaceRecognitionService:
                         conf_pct = int(det_score * 100)
                         lbl = f"LIVE {gender_str} {conf_pct}%"
                         color = (0, 255, 120) if gender == 1 else (255, 100, 255)
+                        live_person_boxes.append({
+                            "box": [int(x1), int(y1), int(w_face), int(h_face)],
+                            "gender": gender_str,
+                            "confidence": float(det_score),
+                            "label": lbl,
+                        })
 
                     kept_faces.append((face, lbl, color, liveness))
 
@@ -338,6 +352,9 @@ class FaceRecognitionService:
                 liveness_score=best_liveness_score if any_static_detected or probe_embeddings else 0.0,
                 liveness_decision="LIVE" if probe_embeddings else ("STATIC_PHOTO" if any_static_detected else "NO_FACE"),
             )
+
+        match_res.static_detections = static_detections
+        match_res.live_person_boxes = live_person_boxes
 
         # Annotate face detections on the frame
         orig_h, orig_w = img.shape[:2]

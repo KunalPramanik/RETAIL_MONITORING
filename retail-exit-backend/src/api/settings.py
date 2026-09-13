@@ -98,11 +98,13 @@ async def reset_database(session: AsyncSession = Depends(get_db)):
         Product,
         AuditLog,
         CameraPairingToken,
+        StaticImageDetection,
     )
     from src.realtime.hub import ws_hub
 
     # Delete in FK dependency order
     await session.execute(delete(CameraPairingToken))
+    await session.execute(delete(StaticImageDetection))
     await session.execute(delete(ExitEventLineItem))
     await session.execute(delete(VisionDetection))
     await session.execute(delete(RfidRead))

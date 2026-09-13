@@ -32,6 +32,9 @@ class LivenessResult:
     ear: float                         # Current Eye Aspect Ratio
     confidence: float                  # Model detection confidence
     reason: str                        # Forensic diagnostic rationale
+    static_classification: Optional[str] = None
+    static_confidence: float = 0.0
+    static_friendly_label: Optional[str] = None
 
 
 class TemporalFaceTrack:
@@ -312,6 +315,21 @@ class LivenessDetectionService:
 
         is_live = bool(raw_liveness >= cls.LIVENESS_PASS_THRESHOLD and spoof_type is None)
 
+        static_class = None
+        static_conf = 0.0
+        static_label = None
+        if not is_live:
+            from src.ml.static_image_service import StaticImageClassifier
+            static_res = StaticImageClassifier.classify_image_region(
+                full_image=img,
+                bbox=bbox,
+                liveness_score=round(raw_liveness, 3),
+                has_face_geometry=True,
+            )
+            static_class = static_res.classification
+            static_conf = static_res.confidence
+            static_label = static_res.friendly_label
+
         return LivenessResult(
             is_live=is_live,
             liveness_score=round(raw_liveness, 3),
@@ -326,4 +344,8 @@ class LivenessDetectionService:
             ear=round(current_ear, 3),
             confidence=round(det_score, 3),
             reason=reason,
+            static_classification=static_class,
+            static_confidence=static_conf,
+            static_friendly_label=static_label,
         )
+

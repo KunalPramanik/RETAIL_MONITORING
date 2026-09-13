@@ -185,6 +185,7 @@ class Camera(Base):
     heartbeats = relationship("CameraHeartbeat", back_populates="camera", cascade="all, delete-orphan")
     vision_detections = relationship("VisionDetection", back_populates="camera")
     alerts = relationship("Alert", back_populates="camera")
+    static_image_detections = relationship("StaticImageDetection", back_populates="camera", cascade="all, delete-orphan")
 
 
 class CameraPairingToken(Base):
@@ -296,6 +297,31 @@ class VisionDetection(Base):
     event = relationship("ExitEvent", back_populates="vision_detections")
     camera = relationship("Camera", back_populates="vision_detections")
     product = relationship("Product", back_populates="vision_detections")
+
+
+class StaticImageDetection(Base):
+    __tablename__ = "static_image_detection"
+
+    detection_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id", ondelete="CASCADE"), nullable=False)
+    frame_ts: Any = Column(DateTime(timezone=True), nullable=False)
+    bbox: Any = Column(JSONType, nullable=False)  # [x, y, w, h]
+    liveness_score: Any = Column(Numeric(5, 4), nullable=False)
+    classification: Any = Column(String(64), nullable=False)
+    classification_confidence: Any = Column(Numeric(5, 4), nullable=False)
+    model_version: Any = Column(String(64), nullable=False)
+    suppressed_alert: Any = Column(Boolean, nullable=False, default=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "classification IN ('RELIGIOUS_IMAGE','PERSON_PHOTO','POSTER_OR_SIGNAGE','SCREEN_DISPLAY','UNCLASSIFIED_STATIC')",
+            name="chk_static_classification",
+        ),
+        Index("idx_static_cam_time", "camera_id", "frame_ts"),
+    )
+
+    camera = relationship("Camera", back_populates="static_image_detections")
 
 
 class RfidRead(Base):

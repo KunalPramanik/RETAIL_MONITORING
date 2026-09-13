@@ -21,7 +21,7 @@ import urllib.parse
 from datetime import datetime, timezone
 
 from src.db.session import get_db
-from src.db.models import Camera, CameraPairingToken, CameraHeartbeat, Lane, Store, Alert, get_utc_now
+from src.db.models import Camera, CameraPairingToken, CameraHeartbeat, Lane, Store, Alert, StaticImageDetection, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.cameras import (
     CameraResponse,
@@ -688,6 +688,44 @@ async def get_camera_snapshot(
             "Expires": "0",
         },
     )
+
+
+@router.get("/static-images")
+async def get_static_images(
+    camera_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    session: AsyncSession = Depends(get_db),
+):
+    """Retrieves logged static image detections (wall portraits, religious images, posters)
+    with liveness scores and alert suppression status for audit inspection."""
+    query = select(StaticImageDetection).order_by(desc(StaticImageDetection.frame_ts)).limit(limit)
+    if camera_id:
+        query = select(StaticImageDetection).where(StaticImageDetection.camera_id == camera_id).order_by(desc(StaticImageDetection.frame_ts)).limit(limit)
+    res = await session.execute(query)
+    rows = res.scalars().all()
+
+    cam_ids = {r.camera_id for r in rows}
+    cam_map = {}
+    if cam_ids:
+        c_res = await session.execute(select(Camera).where(Camera.camera_id.in_(cam_ids)))
+        cam_map = {c.camera_id: c.label for c in c_res.scalars().all()}
+
+    return [
+        {
+            "detectionId": r.detection_id,
+            "cameraId": r.camera_id,
+            "cameraLabel": cam_map.get(r.camera_id, f"Camera {r.camera_id}"),
+            "frameTs": r.frame_ts.isoformat(),
+            "bbox": r.bbox,
+            "livenessScore": float(r.liveness_score),
+            "classification": r.classification,
+            "classificationConfidence": float(r.classification_confidence),
+            "modelVersion": r.model_version,
+            "suppressedAlert": bool(r.suppressed_alert),
+            "createdAt": r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
 
 
 @router.get("/{camera_id}/detection")

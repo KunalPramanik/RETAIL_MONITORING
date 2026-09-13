@@ -14,6 +14,8 @@ import type {
   SensorLane,
   Camera,
   SystemSettings,
+  StaticImageRecord,
+  CameraDetectionUpdate,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
@@ -279,18 +281,16 @@ export const api = {
     return request(`/cameras/${cameraId}/telemetry`);
   },
 
-  async getCameraLiveDetection(cameraId: string): Promise<{
-    cameraId: string;
-    laneId?: string;
-    casesDetected: number;
-    unitsDetected: number;
-    carrierName: string;
-    faceDecision: string;
-    confidence: number;
-    boxesCount: number;
-    timestamp: string;
-  }> {
-    return request(`/cameras/${cameraId}/detection`);
+  async getCameraLiveDetection(cameraId: string): Promise<CameraDetectionUpdate> {
+    return request<CameraDetectionUpdate>(`/cameras/${cameraId}/detection`);
+  },
+
+  async getStaticImages(params?: { cameraId?: string; limit?: number }): Promise<StaticImageRecord[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.cameraId) searchParams.set('camera_id', params.cameraId);
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    const qs = searchParams.toString() ? `?${searchParams.toString()}` : '';
+    return request<StaticImageRecord[]>(`/cameras/static-images${qs}`);
   },
 
   async updateCamera(cameraId: string, data: Partial<Camera>): Promise<Camera> {

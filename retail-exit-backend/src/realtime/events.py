@@ -22,6 +22,7 @@ class WebSocketEnvelope(BaseModel):
         "heartbeat",
         "database_reset",
         "invoice_uploaded",
+        "detection_update",
     ]
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     payload: Dict[str, Any]

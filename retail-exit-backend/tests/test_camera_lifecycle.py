@@ -294,4 +294,14 @@ async def test_camera_telemetry_endpoint(client):
     assert data["droppedFrames"] == 2
 
 
+@pytest.mark.asyncio
+async def test_get_static_images_endpoint_not_captured_by_camera_id_wildcard(client):
+    """GET /api/cameras/static-images must return 200 and not match /{camera_id} with 404."""
+    resp = await client.get("/api/cameras/static-images")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, list)
+
+
+
 

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import { EventRow } from '../components/events/EventRow';
 import { EventDetailPanel } from '../components/events/EventDetailPanel';
-import { Search, Layers, X } from 'lucide-react';
+import { Search, Download, Layers, X } from 'lucide-react';
 import { ExportDropdown } from '../components/common/ExportDropdown';
 import type { Verdict, Severity, ExitEvent, Product } from '../types';
 
@@ -72,6 +72,53 @@ export const EventsView: React.FC = () => {
     });
   }, [events, laneFilter, verdictFilter, severityFilter, searchQuery, products]);
 
+  // Export to CSV
+  const handleExportCsv = () => {
+    const headers = [
+      'Event ID',
+      'Timestamp',
+      'Lane ID',
+      'Employee ID',
+      'Cases Detected',
+      'Consensus Units',
+      'Declared Units',
+      'Delta Units',
+      'Verdict',
+      'Severity',
+      'Vision Count',
+      'RFID Count',
+      'Weight (kg)',
+    ];
+
+    const rows = filteredEvents.map((e: ExitEvent) => [
+      e.eventId,
+      e.timestamp,
+      e.laneId,
+      e.employeeId || 'N/A',
+      e.casesDetected,
+      e.consensusUnits,
+      e.declaredUnits ?? 'N/A',
+      e.deltaUnits ?? 0,
+      e.verdict,
+      e.severity,
+      e.visionCount,
+      e.rfidCount,
+      e.weightKg,
+    ]);
+
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `exit_events_audit_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="p-4 space-y-4">
       {/* Header and Search Filters */}
@@ -87,6 +134,14 @@ export const EventsView: React.FC = () => {
             </p>
           </div>
 
+          <button
+            onClick={handleExportCsv}
+            disabled={filteredEvents.length === 0}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-panel-raised border border-hairline hover:bg-hairline/40 rounded-sm text-xs-tech text-text-pri font-medium transition-colors disabled:opacity-40"
+          >
+            <Download className="w-3.5 h-3.5 text-amber" />
+            Export Audit CSV
+          </button>
           <ExportDropdown
             dataset="events"
             laneId={laneFilter}

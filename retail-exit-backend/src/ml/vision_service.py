@@ -113,9 +113,6 @@ class VisionInferenceService:
         return angle_deg <= angle_tolerance_deg
 
     @classmethod
-    def _preprocess_frame(cls, img: np.ndarray) -> Tuple[np.ndarray, float]:
-        """Letterbox resize image to YOLOX input dimensions (416x416) with CLAHE glare suppression."""
-        # Contrast-Limited Adaptive Histogram Equalization on L-channel to compensate for retail overhead glare
     def is_infrared_frame(cls, img: np.ndarray) -> bool:
         """Detects whether an image/frame was captured under active IR / night vision illumination.
 
@@ -154,7 +151,6 @@ class VisionInferenceService:
         if len(img.shape) == 3 and img.shape[2] == 3 and img.shape[0] > 10 and img.shape[1] > 10:
             lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
             l_chan, a_chan, b_chan = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=1.8, tileGridSize=(8, 8))
             clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
             cl = clahe.apply(l_chan)
             enhanced = cv2.cvtColor(cv2.merge((cl, a_chan, b_chan)), cv2.COLOR_LAB2BGR)
@@ -178,7 +174,6 @@ class VisionInferenceService:
         # Transpose HWC -> CHW float32
         padded_img = padded_img.transpose((2, 0, 1))
         padded_img = np.ascontiguousarray(padded_img, dtype=np.float32)
-        return padded_img, r
         return padded_img, r, is_ir
 
     @classmethod
@@ -336,7 +331,6 @@ class VisionInferenceService:
 
         try:
             session = cls.get_session()
-            input_tensor, ratio = cls._preprocess_frame(img)
             input_tensor, ratio, is_ir = cls._preprocess_frame(img)
             # Execute YOLOX forward pass: input shape (1, 3, 416, 416)
             raw_out = np.asarray(session.run(None, {"images": input_tensor[None, ...]})[0], dtype=np.float32)

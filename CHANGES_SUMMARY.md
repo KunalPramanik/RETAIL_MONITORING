@@ -130,3 +130,4 @@ flowchart TD
 - `git diff src/db/models.py` = **0 lines changed**.
 - Alembic versions directory = **0 new migrations**.
 - No table drops, alters, or constraint mutations.
+

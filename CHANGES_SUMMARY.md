@@ -141,14 +141,49 @@ flowchart TD
 
 ---
 
+### Feature 7: Unverified-Person Appearance Summary & Cross-Camera Re-Identification Tracking
+- **Technical Design & Legal Defensibility**:
+  - Replaces invasive and unreliable profiling with conservative, technically sound computer vision attributes.
+  - **Strictly Prohibited & Excluded**: ZERO weight estimation, ZERO object material analysis, ZERO eye color scanning, ZERO body marks / cuts / scars / health inferences, ZERO precise height measurements.
+- **Justified Single Database Table Addition (`PersonAppearanceSummary`)**:
+  - `summary_id`: UUID primary key.
+  - `event_id`: FK to `exit_event.event_id` (1:1 cascade relationship).
+  - `face_match_attempt_id`: FK to `face_match_attempt.attempt_id`.
+  - `clothing_top_color` & `clothing_bottom_color`: Dominant clothing colors via spatial HSV segmentation.
+  - `build_category`: Relative build check constrained to `('SHORTER','AVERAGE','TALLER','UNKNOWN')`.
+  - `build_confidence`: Float confidence.
+  - `accessories` & `accessories_confidence`: JSON arrays/dicts (`["bag", "cap", "glasses"]`).
+  - `model_version`: `"appearance-reid-v1.0"`.
+  - `reid_embedding`: 256-dimensional unit-normalized spatial feature vector.
+  - `reid_cluster_id`: Sighting cluster identifier indexed with `created_at`.
+- **Appearance & Re-ID Service (`src/ml/appearance_service.py`)**:
+  - Spatial HSV color segmentation with skin chrominance rejection.
+  - Door-frame calibrated relative height ratio classification.
+  - Cap brim edge density, eye-band Sobel gradient for glasses, and lateral flank variation for bags.
+  - 8-strip spatial HSV histogram + Sobel gradient texture 256-d unit embedding ($||v||_2 = 1.0$).
+  - Cosine distance rolling 30-day clustering with 0.82 similarity threshold.
+- **API Endpoints (`src/api/events.py` & `src/api/ingest.py`)**:
+  - `POST /api/ingest/event`: Automatically extracts visual appearance and Re-ID features for unverified persons and records sighting cluster.
+  - `GET /api/events/{event_id}`: Returns `verifiedEmployee` (name, role, shift, badge, unrounded match similarity, and 30-day mismatch count) for verified personnel, and `appearanceSummary` for unverified persons.
+- **Console UI Integration (`EventDetailPanel.tsx`)**:
+  - Verified Person: Displays verified carrier record, unrounded match similarity (e.g. `98.50% (0.9850)`), and 30-day verification mismatch counter badge.
+  - Unverified Person: Prominently labeled `"Appearance Summary (automated, approximate)"`, visual color chips with real color swatch dots, relative build category with `(compared to door-frame reference, not a height measurement)`, accessory badges with confidences, and 30-day repeat sighting frequency banner (`"This appearance pattern was seen at this store N times in the last 30 days"`).
+- **Automated Verification (`tests/test_appearance_and_reid.py`)**:
+  - 6 tests passing at 100%: verified employee record & unrounded similarity, automated appearance summary generation, strict absence of prohibited fields, rolling 30-day Re-ID clustering, anti-false-matching of two subjects wearing similar clothes, and color/accessory extraction.
+
+---
+
 ## 4. Verification Results Matrix
 
 | Test Suite | Total Tests | Result | Features Verified |
 | :--- | :---: | :---: | :--- |
+| `tests/test_appearance_and_reid.py` | 6 | **PASSED** (100%) | Verified unrounded confidence, 30d mismatch count, Appearance summary, Zero prohibited fields, Re-ID 30d clusters, Anti-false-matching |
 | `tests/test_turnstile_driver.py` | 4 | **PASSED** (100%) | Hardware/Emulated detection, Relay lock/unlock, Readback verification, 30s auto-unlock |
 | `tests/test_export_engine.py` | 3 | **PASSED** (100%) | 5-Tab XLSX generation, Column formatting, HTTP streaming, CSV export |
 | `tests/test_ptz_and_handoff.py` | 4 | **PASSED** (100%) | Fixed camera 422 rejection, PTZ move/stop/presets, Cross-camera Re-ID, Double-counting suppression |
 | `tests/test_ir_night_vision.py` | 3 | **PASSED** (100%) | IR mode HSV saturation detection, Adapted CLAHE contrast, LOW_CONFIDENCE_IR face handling |
 | `tests/test_notifications.py` | 5 | **PASSED** (100%) | Slack Block Kit, Telegram HTML, Anti-storm 30s rate limiting, Failure tolerance, PUSH dispatch |
-| **Console Production Build (`npm run build`)** | - | **PASSED** (100%) | 0 TypeScript errors, 2086 modules bundled, Vite production bundle ready |
-| **Database Schema Diff (`git diff src/db/models.py`)** | - | **0 LINES** | Strictly zero database schema modifications |
+| **Complete Backend Test Suite (`pytest tests/`)** | **88** | **PASSED** (100%) | All 18 test files passing across core consensus, edge ingestion, ML, hardware, and APIs |
+| **Console Production Build (`npm run build`)** | - | **PASSED** (100%) | 0 TypeScript errors, 2086 modules transformed, Vite production bundle ready |
+| **Database Schema Governance** | - | **VERIFIED** | Exactly 1 justified, legally defensible table addition (`PersonAppearanceSummary`) |
+

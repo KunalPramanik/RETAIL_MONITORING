@@ -38,6 +38,31 @@ class ExitEventResponse(ExitEventBase):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
+class EmployeeVerificationDetail(BaseModel):
+    employeeId: str
+    name: str
+    role: str
+    shift: str
+    rfidBadgeId: str
+    activeFlag: bool
+    similarity: float
+    mismatchCount30d: int
+
+
+class AppearanceSummaryResponse(BaseModel):
+    summaryId: str
+    clothingTopColor: str
+    clothingBottomColor: str
+    buildCategory: str  # 'SHORTER' | 'AVERAGE' | 'TALLER' | 'UNKNOWN'
+    buildConfidence: float
+    accessories: List[str] = []
+    accessoriesConfidence: Dict[str, float] = {}
+    modelVersion: str = "appearance-reid-v1.0"
+    recentSightingsCount: int = 1
+    reidClusterId: Optional[str] = None
+    createdAt: str
+
+
 class ExitEventDetailResponse(ExitEventResponse):
     employeeName: Optional[str] = None
     employeeRole: Optional[str] = None
@@ -48,6 +73,8 @@ class ExitEventDetailResponse(ExitEventResponse):
     rawRfidReads: List[Dict[str, Any]] = []
     rawWeightReadings: List[Dict[str, Any]] = []
     faceMatchDecision: Optional[str] = None
+    verifiedEmployee: Optional[EmployeeVerificationDetail] = None
+    appearanceSummary: Optional[AppearanceSummaryResponse] = None
 
 
 class IngestEventRequest(BaseModel):
@@ -59,5 +86,11 @@ class IngestEventRequest(BaseModel):
     declaredUnits: Optional[int] = None
     simulateRfidAttenuation: bool = False
     rawScaleWeightKg: Optional[float] = None
+    clothingTopColor: Optional[str] = None
+    clothingBottomColor: Optional[str] = None
+    buildCategory: Optional[str] = None
+    accessories: Optional[List[str]] = None
+    reidEmbedding: Optional[List[float]] = None
+    personCropBase64: Optional[str] = None
 
 

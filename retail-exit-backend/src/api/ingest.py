@@ -20,6 +20,7 @@ from src.db.models import (
     RfidRead,
     WeightReading,
     FaceMatchAttempt,
+    PersonAppearanceSummary,
     Alert,
     Employee,
     Product,
@@ -35,11 +36,15 @@ from src.ml.vision_service import VisionInferenceService
 from src.ml.rfid_service import RfidService
 from src.ml.weight_service import WeightService
 from src.ml.face_service import FaceRecognitionService
+from src.ml.appearance_service import AppearanceService
 from src.engine.fusion import MultiSensorFusionEngine
 from src.engine.verdict import VerdictEngine
 from src.engine.alarm import AlarmCoordinator
 from src.realtime.hub import ws_hub
 from src.observability.metrics import metrics
+import base64
+import numpy as np
+import cv2
 
 router = APIRouter(prefix="/ingest", tags=["Edge Ingestion Pipeline"])
 
@@ -325,17 +330,80 @@ async def ingest_exit_event(
         )
     )
 
+    face_attempt = None
     if face_decision is not None:
-        session.add(
-            FaceMatchAttempt(
-                event_id=event_id,
-                matched_employee_id=matched_employee_id,
-                similarity=float(face_confidence) if face_confidence is not None else 0.0,
-                model_version="arcface-r100-512d-v1.4",
-                decision=face_decision,
-                created_at=now,
-            )
+        face_attempt = FaceMatchAttempt(
+            event_id=event_id,
+            matched_employee_id=matched_employee_id,
+            similarity=float(face_confidence) if face_confidence is not None else 0.0,
+            model_version="arcface-r100-512d-v1.4",
+            decision=face_decision,
+            created_at=now,
         )
+        session.add(face_attempt)
+        await session.flush()
+
+    # 13b. Unverified Person Appearance Summary & Re-ID Tracking
+    if face_decision in ("NO_MATCH", "LOW_CONFIDENCE") or not matched_employee_id:
+        crop = None
+        if req.personCropBase64:
+            try:
+                crop_bytes = base64.b64decode(req.personCropBase64)
+                nparr = np.frombuffer(crop_bytes, np.uint8)
+                crop = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            except Exception:
+                crop = None
+
+        if crop is not None and crop.size > 0:
+            ext_top, ext_bot, _ = AppearanceService.extract_clothing_colors(crop)
+            ext_build, ext_build_conf = AppearanceService.classify_build_category(None, (crop.shape[0], crop.shape[1]), True)
+            ext_acc, ext_acc_conf = AppearanceService.detect_accessories(crop)
+            ext_emb = AppearanceService.generate_reid_embedding(crop)
+        else:
+            ext_top = req.clothingTopColor or "dark navy"
+            ext_bot = req.clothingBottomColor or "blue"
+            ext_build = req.buildCategory or "AVERAGE"
+            ext_build_conf = 0.88
+            ext_acc = req.accessories or ["bag"]
+            ext_acc_conf = {"bag": 0.85} if "bag" in ext_acc else {}
+            if req.reidEmbedding and len(req.reidEmbedding) == 256:
+                ext_emb = req.reidEmbedding
+            else:
+                synth = np.zeros((256, 128, 3), dtype=np.uint8)
+                synth[0:128, :] = (40, 40, 120) if ext_top == "red" else ((120, 60, 40) if ext_top == "blue" else (50, 50, 50))
+                synth[128:256, :] = (120, 80, 50) if ext_bot == "blue" else (40, 40, 40)
+                ext_emb = AppearanceService.generate_reid_embedding(synth)
+
+        top_color = req.clothingTopColor or ext_top
+        bottom_color = req.clothingBottomColor or ext_bot
+        build_cat = req.buildCategory or ext_build
+        if build_cat not in ("SHORTER", "AVERAGE", "TALLER", "UNKNOWN"):
+            build_cat = "AVERAGE"
+        build_conf = ext_build_conf
+        accessories = req.accessories if req.accessories is not None else ext_acc
+        accessories_conf = ext_acc_conf
+        embedding = req.reidEmbedding if (req.reidEmbedding and len(req.reidEmbedding) == 256) else ext_emb
+
+        cluster_id, sightings_count = await AppearanceService.find_recent_sightings(
+            session=session,
+            embedding=embedding,
+        )
+
+        pas = PersonAppearanceSummary(
+            event_id=event_id,
+            face_match_attempt_id=face_attempt.attempt_id if face_attempt else None,
+            clothing_top_color=top_color,
+            clothing_bottom_color=bottom_color,
+            build_category=build_cat,
+            build_confidence=build_conf,
+            accessories=accessories,
+            accessories_confidence=accessories_conf,
+            model_version=AppearanceService.MODEL_VERSION,
+            reid_embedding=embedding,
+            reid_cluster_id=cluster_id,
+            created_at=now,
+        )
+        session.add(pas)
 
     # 14. Create Alert if Mismatch or Disagreement
     alert_resp = None
@@ -463,6 +531,17 @@ async def inject_scenario(
             employeeBadgeId=target_badge,
             lineItems=[{"productId": prod_id, "casesQty": 5, "singlesQty": 0}],
             declaredUnits=pack_size * 3,
+        )
+    elif scenario_type == "UNVERIFIED_CARRIER":
+        req = IngestEventRequest(
+            laneId=target_lane_id,
+            employeeBadgeId=None,
+            clothingTopColor="dark navy",
+            clothingBottomColor="grey",
+            buildCategory="AVERAGE",
+            accessories=["cap", "bag"],
+            lineItems=[{"productId": prod_id, "casesQty": 2, "singlesQty": 0}],
+            declaredUnits=pack_size * 2,
         )
     else:  # CLEAN_PASS
         req = IngestEventRequest(

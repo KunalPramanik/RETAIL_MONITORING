@@ -265,6 +265,7 @@ class ExitEvent(Base):
     rfid_reads = relationship("RfidRead", back_populates="event", cascade="all, delete-orphan")
     weight_readings = relationship("WeightReading", back_populates="event", cascade="all, delete-orphan")
     face_matches = relationship("FaceMatchAttempt", back_populates="event", cascade="all, delete-orphan")
+    appearance_summary = relationship("PersonAppearanceSummary", uselist=False, back_populates="event", cascade="all, delete-orphan")
     alerts = relationship("Alert", back_populates="event")
 
 
@@ -389,6 +390,36 @@ class FaceMatchAttempt(Base):
 
     event = relationship("ExitEvent", back_populates="face_matches")
     employee = relationship("Employee", back_populates="face_matches")
+
+
+class PersonAppearanceSummary(Base):
+    """Stores non-invasive visual appearance summary and Re-ID cluster embeddings for unverified persons."""
+    __tablename__ = "person_appearance_summary"
+
+    summary_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False, index=True)
+    face_match_attempt_id: Any = Column(String(36), ForeignKey("face_match_attempt.attempt_id"), nullable=True)
+    clothing_top_color: Any = Column(String(64), nullable=False)
+    clothing_bottom_color: Any = Column(String(64), nullable=False)
+    build_category: Any = Column(String(32), nullable=False)
+    build_confidence: Any = Column(Numeric(5, 4), nullable=False)
+    accessories: Any = Column(JSONType, nullable=False, default=list)  # e.g. ["bag", "cap", "glasses"]
+    accessories_confidence: Any = Column(JSONType, nullable=False, default=dict)  # {"bag": 0.88, "cap": 0.76}
+    model_version: Any = Column(String(64), nullable=False, default="appearance-reid-v1.0")
+    reid_embedding: Any = Column(JSONType, nullable=True)  # 256-d normalized float vector
+    reid_cluster_id: Any = Column(String(36), nullable=True, index=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "build_category IN ('SHORTER','AVERAGE','TALLER','UNKNOWN')",
+            name="chk_appearance_build_category",
+        ),
+        Index("idx_appearance_cluster_created", "reid_cluster_id", "created_at"),
+    )
+
+    event = relationship("ExitEvent", back_populates="appearance_summary")
+    face_match_attempt = relationship("FaceMatchAttempt")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

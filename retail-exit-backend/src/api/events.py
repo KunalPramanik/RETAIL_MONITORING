@@ -7,8 +7,15 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
 from src.db.session import get_db
-from src.db.models import ExitEvent, ExitEventLineItem, Employee, Invoice, Product
-from src.schemas.events import ExitEventResponse, ExitEventDetailResponse, EventLineItemSchema
+from datetime import timedelta
+from src.db.models import ExitEvent, ExitEventLineItem, Employee, Invoice, Product, PersonAppearanceSummary, get_utc_now
+from src.schemas.events import (
+    ExitEventResponse,
+    ExitEventDetailResponse,
+    EventLineItemSchema,
+    EmployeeVerificationDetail,
+    AppearanceSummaryResponse,
+)
 
 router = APIRouter(prefix="/events", tags=["Events"])
 
@@ -93,6 +100,7 @@ async def get_event_detail(
             selectinload(ExitEvent.face_matches),
             selectinload(ExitEvent.employee),
             selectinload(ExitEvent.invoice),
+            selectinload(ExitEvent.appearance_summary),
         )
         .where(ExitEvent.event_id == event_id)
     )
@@ -144,6 +152,59 @@ async def get_event_detail(
 
     face_decision = ev.face_matches[0].decision if ev.face_matches else None
 
+    # 1. Verified Employee Detail Display
+    verified_emp = None
+    cutoff_30d = get_utc_now() - timedelta(days=30)
+    if face_decision == "MATCHED" and ev.employee:
+        mismatches_res = await session.execute(
+            select(ExitEvent.event_id)
+            .where(ExitEvent.employee_id == ev.employee.employee_id)
+            .where(ExitEvent.verdict == "MISMATCH")
+            .where(ExitEvent.ts >= cutoff_30d)
+        )
+        mismatch_count_30d = len(mismatches_res.scalars().all())
+
+        raw_sim = float(ev.face_matches[0].similarity) if ev.face_matches else (
+            float(ev.employee_match_confidence) if ev.employee_match_confidence is not None else 1.0
+        )
+        verified_emp = EmployeeVerificationDetail(
+            employeeId=ev.employee.employee_id,
+            name=ev.employee.name,
+            role=ev.employee.role,
+            shift=str(ev.employee.shift_id or "MORNING"),
+            rfidBadgeId=ev.employee.rfid_badge_id,
+            activeFlag=bool(ev.employee.active_flag),
+            similarity=raw_sim,
+            mismatchCount30d=mismatch_count_30d,
+        )
+
+    # 2. Unverified Person Appearance Summary Display
+    appearance_data = None
+    if ev.appearance_summary:
+        pas = ev.appearance_summary
+        sighting_count = 1
+        if pas.reid_cluster_id:
+            count_res = await session.execute(
+                select(PersonAppearanceSummary.summary_id)
+                .where(PersonAppearanceSummary.reid_cluster_id == pas.reid_cluster_id)
+                .where(PersonAppearanceSummary.created_at >= cutoff_30d)
+            )
+            sighting_count = max(1, len(count_res.scalars().all()))
+
+        appearance_data = AppearanceSummaryResponse(
+            summaryId=pas.summary_id,
+            clothingTopColor=pas.clothing_top_color,
+            clothingBottomColor=pas.clothing_bottom_color,
+            buildCategory=pas.build_category,
+            buildConfidence=float(pas.build_confidence),
+            accessories=pas.accessories or [],
+            accessoriesConfidence=pas.accessories_confidence or {},
+            modelVersion=pas.model_version,
+            recentSightingsCount=sighting_count,
+            reidClusterId=pas.reid_cluster_id,
+            createdAt=pas.created_at.isoformat(),
+        )
+
     return ExitEventDetailResponse(
         eventId=ev.event_id,
         timestamp=ev.ts.isoformat(),
@@ -174,5 +235,7 @@ async def get_event_detail(
         rawRfidReads=raw_rfid,
         rawWeightReadings=raw_weight,
         faceMatchDecision=face_decision,
+        verifiedEmployee=verified_emp,
+        appearanceSummary=appearance_data,
     )
 

@@ -19,11 +19,40 @@ export interface LineItemDetection {
   unitsQty: number;
 }
 
+export interface EmployeeVerificationDetail {
+  employeeId: string;
+  name: string;
+  role: string;
+  shift: string;
+  rfidBadgeId: string;
+  activeFlag: boolean;
+  similarity: number;
+  mismatchCount30d: number;
+}
+
+export interface AppearanceSummary {
+  summaryId: string;
+  clothingTopColor: string;
+  clothingBottomColor: string;
+  buildCategory: 'SHORTER' | 'AVERAGE' | 'TALLER' | 'UNKNOWN';
+  buildConfidence: number;
+  accessories: string[];
+  accessoriesConfidence: Record<string, number>;
+  modelVersion: string;
+  recentSightingsCount: number;
+  reidClusterId?: string;
+  createdAt: string;
+}
+
 export interface ExitEvent {
   eventId: string;
   timestamp: string; // ISO 8601
   laneId: string;
   employeeId?: string;
+  employeeName?: string;
+  employeeRole?: string;
+  employeeMatchConfidence?: number;
+  faceMatchDecision?: string;
   casesDetected: number;
   unitsDetected: number;
   visionCount: number;
@@ -38,6 +67,8 @@ export interface ExitEvent {
   snapshotUrl?: string;
   lineItems: LineItemDetection[];
   notes?: string;
+  verifiedEmployee?: EmployeeVerificationDetail;
+  appearanceSummary?: AppearanceSummary;
 }
 
 export interface Alert {

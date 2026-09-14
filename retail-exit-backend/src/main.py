@@ -26,6 +26,8 @@ from src.observability.metrics import metrics
 from src.observability.logging import configure_logging, correlation_id_ctx
 from src.engine.camera_worker import camera_worker
 from src.engine.alarm import AlarmCoordinator
+from src.engine.discovery_service import discovery_service
+from src.hardware.usb_detector import usb_service
 
 configure_logging()
 logger = logging.getLogger("secops.main")
@@ -51,6 +53,8 @@ async def lifespan(app: FastAPI):
     heartbeat_task = asyncio.create_task(periodic_ws_heartbeat())
     camera_monitor_task = asyncio.create_task(periodic_camera_monitor())
     camera_worker.start()
+    discovery_service.start()
+    usb_service.start()
 
     yield
 
@@ -61,6 +65,8 @@ async def lifespan(app: FastAPI):
     heartbeat_task.cancel()
     camera_monitor_task.cancel()
     await camera_worker.stop()
+    await discovery_service.stop()
+    await usb_service.stop()
 
     await asyncio.gather(heartbeat_task, camera_monitor_task, return_exceptions=True)
 

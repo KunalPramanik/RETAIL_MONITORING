@@ -57,6 +57,12 @@ class CameraIngestionWorker:
         self._camera_logs: Dict[str, deque] = {}
         self._active_transactions: Dict[str, Dict[str, Any]] = {}
 
+    def register_camera(self, camera_record: Any) -> None:
+        """Registers a newly discovered or confirmed camera into the ingestion fleet."""
+        cam_id = getattr(camera_record, "camera_id", "unknown")
+        cam_label = getattr(camera_record, "label", "")
+        logger.info("Registered camera %s (%s) for live ingestion.", cam_id, cam_label)
+
     def start(self):
         """Starts the background camera ingestion worker."""
         if not self.is_running:

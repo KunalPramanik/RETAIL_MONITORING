@@ -1,0 +1,110 @@
+{
+  "mappings": [
+    {
+      "vid": "0403",
+      "pid": "6001",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "FTDI",
+      "model": "FT232R Industrial Scale USB-Serial Interface",
+      "default_baud": 9600,
+      "protocol": "ASCII_CONTINUOUS"
+    },
+    {
+      "vid": "0403",
+      "pid": "6010",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "FTDI",
+      "model": "FT2232 Dual Channel Scale Interface",
+      "default_baud": 9600,
+      "protocol": "ASCII_CONTINUOUS"
+    },
+    {
+      "vid": "067B",
+      "pid": "2303",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "Prolific",
+      "model": "PL2303 Platform Scale Controller",
+      "default_baud": 9600,
+      "protocol": "ASCII_CONTINUOUS"
+    },
+    {
+      "vid": "10C4",
+      "pid": "EA60",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "Silicon Labs / CAS",
+      "model": "CP210x Industrial Floor Scale Terminal",
+      "default_baud": 9600,
+      "protocol": "CAS_200A"
+    },
+    {
+      "vid": "1A86",
+      "pid": "7523",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "WCH",
+      "model": "CH340 Serial Scale Adapter",
+      "default_baud": 9600,
+      "protocol": "ASCII_CONTINUOUS"
+    },
+    {
+      "vid": "0EB8",
+      "pid": "F000",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "Mettler Toledo",
+      "model": "Mettler Toledo POS / Floor Scale Terminal",
+      "default_baud": 9600,
+      "protocol": "METTLER_TOLEDO"
+    },
+    {
+      "vid": "0922",
+      "pid": "8003",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "Dymo / Pelouze",
+      "model": "Dymo Heavy Duty Floor Scale",
+      "default_baud": 9600,
+      "protocol": "HID_SCALE"
+    },
+    {
+      "vid": "1887",
+      "pid": "0001",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "Avery Weigh-Tronix",
+      "model": "Avery Weigh-Tronix Industrial Platform Scale",
+      "default_baud": 9600,
+      "protocol": "ASCII_CONTINUOUS"
+    },
+    {
+      "vid": "046D",
+      "pid": "082D",
+      "device_type": "WEBCAM",
+      "manufacturer": "Logitech",
+      "model": "Logitech HD Pro Webcam C920",
+      "default_fps": 30,
+      "resolution": "1920x1080"
+    },
+    {
+      "vid": "046D",
+      "pid": "085E",
+      "device_type": "WEBCAM",
+      "manufacturer": "Logitech",
+      "model": "Logitech BRIO 4K Ultra HD",
+      "default_fps": 30,
+      "resolution": "3840x2160"
+    },
+    {
+      "vid": "045E",
+      "pid": "0779",
+      "device_type": "WEBCAM",
+      "manufacturer": "Microsoft",
+      "model": "LifeCam Cinema / HD-3000",
+      "default_fps": 30,
+      "resolution": "1280x720"
+    },
+    {
+      "vid": "9999",
+      "pid": "8888",
+      "device_type": "WEIGHT_SCALE",
+      "manufacturer": "Unknown",
+      "model": "Custom Load Cell Scale"
+    }
+  ]
+}

@@ -265,8 +265,15 @@ Connect the Optocoupled 5V Relay Module to the Raspberry Pi / Edge GPIO header:
 ### Q4: How do I export records for a legal or corporate audit?
 * **Answer**: Go to **Reports**, click **Export Full Audit (.xlsx)**. This generates an encrypted, tamper-evident Microsoft Excel workbook with timestamped logs across all 5 operational databases.
 
+### Q5: How do I connect a USB Weight Scale or Webcam? Does it connect automatically?
+* **Answer**: **Yes, 100% automatically (zero clicks).** Simply plug the USB cable into any USB port on the edge computer. The system immediately detects the hardware signature (VID/PID), opens the COM/serial port, auto-assigns it to Lane 1, and persists the setting across reboots. You can verify the active status in *Settings -> 5a. Zero-Click USB Hardware Auto-Detect*.
+
+### Q6: Can LAN/WiFi cameras connect without typing IP addresses?
+* **Answer**: **Yes.** The system runs continuous background discovery (ONVIF WS-Discovery, mDNS, and subnet sweep) and pre-tests reachability and RTSP video streams automatically. Discovered cameras appear in the *Auto-Discovered Network Devices* banner in *Camera Settings*. The operator simply clicks **"Confirm [Lane X]"** once to confirm the physical exit door. After that single click, the camera connects and streams automatically forever.
+
 ---
 
 **End of User Manual**  
 *System Version: SEC-OPS 2.0.0 (Build 2026.09)*  
 *Document Ref: DOC-SO2-MANUAL-V1*
+

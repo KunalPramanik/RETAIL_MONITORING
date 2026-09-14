@@ -171,19 +171,40 @@ flowchart TD
 - **Automated Verification (`tests/test_appearance_and_reid.py`)**:
   - 6 tests passing at 100%: verified employee record & unrounded similarity, automated appearance summary generation, strict absence of prohibited fields, rolling 30-day Re-ID clustering, anti-false-matching of two subjects wearing similar clothes, and color/accessory extraction.
 
+### 3.7. Maximum-Automation Device Auto-Connect (LAN/WiFi Cameras & RFID, USB Scale/Webcam)
+- **USB Zero-Click Auto-Connect Subsystem (`src/hardware/usb_detector.py` & `usb_devices.json`)**:
+  - Continuous OS-level serial/COM device scanner monitoring hotplug events.
+  - Config-driven vendor/product ID lookup (`usb_devices.json`) covering FTDI, Prolific, CP210x, CAS, CH340, Mettler Toledo, Dymo, Avery scales, and Logitech/Microsoft webcams.
+  - Automatically identifies device class, opens hardware port, and binds to exit lane (`LANE-01`) with **zero operator clicks**.
+  - State persistence in `usb_state.json` survives reboots and re-establishes port connections on launch.
+  - Non-fatal unrecognized device detection alert with inline configuration modal allowing manual class assignment (`WEIGHT_SCALE` or `WEBCAM`) and lane binding.
+- **LAN/WiFi Maximum-Achievable Continuous Discovery (`src/engine/discovery_service.py`)**:
+  - Background asynchronous discovery combining ONVIF WS-Discovery probe, mDNS service query, and local subnet sweep.
+  - Automatic reachability test and RTSP stream profile extraction executed before operator presentation.
+  - Smart lane suggestion heuristic calculating confidence scores from IP subnet alignment, chronological boot timing, and unassigned lane pools.
+  - **Zero Autonomous Silent DB Writes**: Strictly enforces that suggestions are never written to the camera database without human operator confirmation.
+  - One-Tap Lane Confirmation (`POST /api/discovery/confirm-lane`): Operator reviews reachability and smart suggestion, clicks confirm once, persisting the camera into the database and launching the background ingestion worker. Reconnects forever after one click.
+- **Console Frontend Hardware Control Hubs**:
+  - `DiscoveredDevicesTray.tsx`: Prominent discovery banner mounted directly above the Camera Registry table in `CameraManagementPanel.tsx` with smart lane suggestion tags, reachability latency badges, and single-click confirmation button. Relegates manual IP and QR flows to a secondary fallback button.
+  - `UsbHardwareManager.tsx`: Mounted in Settings Section 5a displaying connected USB scales, active COM port with "ZERO-CLICK ACTIVE" badge, detected webcams, and inline configuration form for unrecognized devices.
+- **Automated Verification (`tests/test_auto_connect_and_discovery.py`)**:
+  - 9 tests passing at 100%: zero-click FTDI/CAS scale identification, port disconnect/reconnect lifecycle, state persistence and reload, LAN discovery reachability pre-test, smart suggestion non-silent DB guarantee, 1-tap confirmation creating camera and starting worker, and discovery REST API endpoints.
+
 ---
 
 ## 4. Verification Results Matrix
 
 | Test Suite | Total Tests | Result | Features Verified |
 | :--- | :---: | :---: | :--- |
+| `tests/test_auto_connect_and_discovery.py` | 9 | **PASSED** (100%) | Zero-click USB scale auto-connect, Unrecognized device configure, State persistence, Reachability pre-test, Smart suggestion DB non-persistence guarantee, 1-tap confirmation |
 | `tests/test_appearance_and_reid.py` | 6 | **PASSED** (100%) | Verified unrounded confidence, 30d mismatch count, Appearance summary, Zero prohibited fields, Re-ID 30d clusters, Anti-false-matching |
 | `tests/test_turnstile_driver.py` | 4 | **PASSED** (100%) | Hardware/Emulated detection, Relay lock/unlock, Readback verification, 30s auto-unlock |
 | `tests/test_export_engine.py` | 3 | **PASSED** (100%) | 5-Tab XLSX generation, Column formatting, HTTP streaming, CSV export |
 | `tests/test_ptz_and_handoff.py` | 4 | **PASSED** (100%) | Fixed camera 422 rejection, PTZ move/stop/presets, Cross-camera Re-ID, Double-counting suppression |
 | `tests/test_ir_night_vision.py` | 3 | **PASSED** (100%) | IR mode HSV saturation detection, Adapted CLAHE contrast, LOW_CONFIDENCE_IR face handling |
 | `tests/test_notifications.py` | 5 | **PASSED** (100%) | Slack Block Kit, Telegram HTML, Anti-storm 30s rate limiting, Failure tolerance, PUSH dispatch |
-| **Complete Backend Test Suite (`pytest tests/`)** | **88** | **PASSED** (100%) | All 18 test files passing across core consensus, edge ingestion, ML, hardware, and APIs |
-| **Console Production Build (`npm run build`)** | - | **PASSED** (100%) | 0 TypeScript errors, 2086 modules transformed, Vite production bundle ready |
-| **Database Schema Governance** | - | **VERIFIED** | Exactly 1 justified, legally defensible table addition (`PersonAppearanceSummary`) |
+| **Complete Backend Test Suite (`pytest tests/`)** | **97** | **PASSED** (100%) | All 19 test files passing across core consensus, edge ingestion, ML, hardware, and APIs |
+| **Console Production Build (`npm run build`)** | - | **PASSED** (100%) | 0 TypeScript errors, 2088 modules transformed, Vite production bundle ready |
+| **Database Schema Governance** | - | **VERIFIED** | Zero schema changes for auto-connect; 1 justified table addition for appearance Re-ID |
+
 

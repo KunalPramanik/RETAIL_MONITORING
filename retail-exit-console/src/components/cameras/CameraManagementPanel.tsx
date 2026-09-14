@@ -5,6 +5,7 @@ import type { Camera } from '../../types';
 import { CameraStatusDot } from './CameraStatusDot';
 import { AddCameraModal } from './AddCameraModal';
 import { SingleCameraTile } from './SingleCameraTile';
+import { DiscoveredDevicesTray } from './DiscoveredDevicesTray';
 import { Modal } from '../common/Modal';
 import {
   Camera as CameraIcon,
@@ -21,7 +22,7 @@ import {
 } from 'lucide-react';
 
 export const CameraManagementPanel: React.FC = () => {
-  const { cameras, lanes, removeCamera, updateCamera, testCameraConnection } = useAppData();
+  const { cameras, lanes, removeCamera, updateCamera, testCameraConnection, refreshAllData } = useAppData();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [resumingCamera, setResumingCamera] = useState<Camera | null>(null);
@@ -162,10 +163,11 @@ export const CameraManagementPanel: React.FC = () => {
               setResumingCamera(null);
               setIsAddModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold bg-amber hover:bg-amber/90 text-black rounded-sm transition-colors shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold bg-canvas hover:bg-panel-raised text-text-pri border border-hairline hover:border-amber/50 rounded-sm transition-colors shadow-xs"
+            title="Manual IP or QR Code Pairing Fallback"
           >
-            <Plus className="w-3.5 h-3.5" />
-            Add Camera to Fleet
+            <Plus className="w-3.5 h-3.5 text-amber" />
+            Manual / Offline Fallback (QR / IP)
           </button>
         </div>
       </div>
@@ -264,6 +266,9 @@ export const CameraManagementPanel: React.FC = () => {
           </button>
         </div>
       )}
+
+      {/* Auto-Discovered Network Devices Tray */}
+      <DiscoveredDevicesTray lanes={lanes} onDeviceConfirmed={refreshAllData} />
 
       {/* Camera Registry Table */}
       <div className="overflow-x-auto border border-hairline rounded-sm">

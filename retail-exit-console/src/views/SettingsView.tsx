@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import type { SensorLane } from '../types';
 import { CameraManagementPanel } from '../components/cameras/CameraManagementPanel';
 import { StaticImageLogTable } from '../components/cameras/StaticImageLogTable';
+import { UsbHardwareManager } from '../components/hardware/UsbHardwareManager';
 import { Settings, Sliders, Volume2, ShieldAlert, Radio, Sun, Moon, Check, Clock, Image as ImageIcon } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -355,6 +356,9 @@ export const SettingsView: React.FC = () => {
             </table>
           </div>
         </div>
+
+        {/* Section 5a: Zero-Click USB Hardware Auto-Detect (Scale & Webcam) */}
+        <UsbHardwareManager lanes={lanes} />
 
         {/* Section 5b: Static Image & Spoof Prevention Audit Log */}
         <div className="p-4 bg-panel border border-hairline rounded-sm space-y-3">

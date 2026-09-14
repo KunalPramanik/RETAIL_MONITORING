@@ -254,3 +254,43 @@ export interface StaticImageRecord {
   suppressedAlert: boolean;
   createdAt: string;
 }
+
+export interface DiscoveredDevice {
+  discoveryId: string;
+  ipAddress: string;
+  deviceType: 'CAMERA' | 'RFID_GATE';
+  manufacturer: string;
+  model: string;
+  macAddress?: string;
+  rtspPath: string;
+  subStreamPath?: string;
+  credentials?: string;
+  suggestedLaneId?: string;
+  suggestedLaneName?: string;
+  suggestionConfidence?: number;
+  isReachable: boolean;
+  latencyMs?: number;
+  previewSnapshotUrl?: string;
+  status: 'UNASSIGNED' | 'CONFIRMED' | 'TESTING';
+  discoveredAt: string;
+}
+
+export interface UsbDeviceRecord {
+  port: string;
+  vid: string;
+  pid: string;
+  deviceType: 'WEIGHT_SCALE' | 'WEBCAM' | 'UNRECOGNIZED';
+  manufacturer: string;
+  model: string;
+  laneId: string;
+  isConnected: boolean;
+  status: string;
+  lastSeenAt?: string;
+  rawDescription?: string;
+}
+
+export interface UsbStatusResponse {
+  activeScalePort?: string | null;
+  devices: UsbDeviceRecord[];
+}
+

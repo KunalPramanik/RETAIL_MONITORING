@@ -16,6 +16,9 @@ import type {
   SystemSettings,
   StaticImageRecord,
   CameraDetectionUpdate,
+  DiscoveredDevice,
+  UsbDeviceRecord,
+  UsbStatusResponse,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
@@ -506,4 +509,41 @@ export const api = {
   async getPtzStatus(cameraId: string): Promise<{ isPtzCapable: boolean; pan: number; tilt: number; zoom: number; moving: boolean }> {
     return request(`/cameras/${cameraId}/ptz/status`);
   },
+
+  // ── Hardware Auto-Discovery & Auto-Connect ────────────────────────
+  async getDiscoveredDevices(): Promise<DiscoveredDevice[]> {
+    return request<DiscoveredDevice[]>('/discovery/devices');
+  },
+
+  async confirmDiscoveredDevice(data: { discoveryId: string; laneId: string; label?: string }): Promise<any> {
+    return request('/discovery/confirm-lane', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getUsbDevices(): Promise<UsbStatusResponse> {
+    return request<UsbStatusResponse>('/discovery/usb');
+  },
+
+  async configureUsbDevice(data: { port: string; deviceType: string; laneId?: string; customModel?: string }): Promise<any> {
+    return request('/discovery/usb/configure', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async scanDiscoveryNow(): Promise<{ lanDevicesDiscovered: number; usbDevicesConnected: number; lanDevices: DiscoveredDevice[]; usbDevices: UsbDeviceRecord[] }> {
+    return request('/discovery/scan-now', {
+      method: 'POST',
+    });
+  },
+
+  async simulateDiscovery(data: { deviceType: string; ipAddress?: string; port?: string; vid?: string; pid?: string; manufacturer?: string; model?: string; suggestedLaneId?: string }): Promise<any> {
+    return request('/discovery/simulate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
 };
+

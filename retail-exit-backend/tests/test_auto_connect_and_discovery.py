@@ -119,6 +119,7 @@ def test_usb_unrecognized_device_warning_and_configure():
     finally:
         usb_service.mappings = [m for m in usb_service.mappings if m.get("vid") != "9999"]
         usb_service.devices.pop("COM9", None)
+        usb_service.save_mappings()
 
 
 def test_usb_disconnect_and_reconnect():

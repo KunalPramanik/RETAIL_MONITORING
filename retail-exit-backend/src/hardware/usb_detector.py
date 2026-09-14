@@ -110,6 +110,14 @@ class UsbAutoConnectService:
         else:
             self.mappings = []
 
+    def save_mappings(self) -> None:
+        """Persists custom/recognized USB device descriptor mappings."""
+        try:
+            with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump({"mappings": self.mappings}, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Could not persist mappings to usb_devices.json: {e}")
+
     def load_state(self) -> None:
         """Loads persisted last-known device state to recover across reboots."""
         if os.path.exists(STATE_PATH):
@@ -310,11 +318,7 @@ class UsbAutoConnectService:
                 "manufacturer": dev.manufacturer,
                 "model": dev.model,
             })
-            try:
-                with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-                    json.dump({"mappings": self.mappings}, f, indent=2)
-            except Exception as e:
-                logger.warn(f"Could not persist new mapping to usb_devices.json: {e}")
+            self.save_mappings()
 
         if device_type == "WEIGHT_SCALE":
             self.active_scale_port = port

@@ -159,10 +159,9 @@ class NetworkDiscoveryService:
             device.is_reachable = True
             return True
         except Exception:
-            # Fallback simulation of reachability for mock/virtual IPs
-            device.is_reachable = True
-            device.latency_ms = 22.0
-            return True
+            device.is_reachable = False
+            device.latency_ms = None
+            return False
 
     def simulate_discovered_device(
         self,

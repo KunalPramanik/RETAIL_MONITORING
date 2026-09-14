@@ -98,13 +98,6 @@
       "model": "LifeCam Cinema / HD-3000",
       "default_fps": 30,
       "resolution": "1280x720"
-    },
-    {
-      "vid": "9999",
-      "pid": "8888",
-      "device_type": "WEIGHT_SCALE",
-      "manufacturer": "Unknown",
-      "model": "Custom Load Cell Scale"
     }
   ]
 }

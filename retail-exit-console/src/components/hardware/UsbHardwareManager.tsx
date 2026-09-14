@@ -386,3 +386,4 @@ export const UsbHardwareManager: React.FC<UsbHardwareManagerProps> = ({
     </div>
   );
 };
+

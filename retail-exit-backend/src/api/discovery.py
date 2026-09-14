@@ -134,3 +134,4 @@ async def simulate_discovery(req: SimulateDiscoveryRequest):
             suggested_lane_id=req.suggestedLaneId,
         )
         return dev.to_dict()
+

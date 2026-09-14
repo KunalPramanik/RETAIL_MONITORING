@@ -19,7 +19,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 
 try:
-    import serial.tools.list_ports
+    import serial.tools.list_ports  # type: ignore
 except ImportError:
     serial = None
 

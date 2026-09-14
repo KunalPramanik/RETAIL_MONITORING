@@ -10,6 +10,18 @@ from typing import Dict, Any
 
 class MetricsCollector:
     _instance = None
+    events_total: int
+    mismatches_total: int
+    alarms_high_total: int
+    vision_latency_sum_ms: float
+    vision_inferences_total: int
+    confidence_sum: float
+    confidence_count: int
+    dispatches_total: int
+    dispatches_success: int
+    cameras_online: int
+    cameras_total: int
+    silent_lanes_total: int
 
     def __new__(cls):
         if cls._instance is None:

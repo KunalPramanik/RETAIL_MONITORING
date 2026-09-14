@@ -248,10 +248,11 @@ class NetworkDiscoveryService:
             cam_record.last_heartbeat_at = now
 
         # Update lane's camera list if applicable
-        current_cam_ids = list(lane_obj.camera_ids or [])
+        raw_cam_ids = getattr(lane_obj, "camera_ids", None)
+        current_cam_ids: List[str] = list(raw_cam_ids) if isinstance(raw_cam_ids, (list, tuple)) else []
         if cam_record.camera_id not in current_cam_ids:
             current_cam_ids.append(cam_record.camera_id)
-            lane_obj.camera_ids = current_cam_ids
+            setattr(lane_obj, "camera_ids", current_cam_ids)
 
         await session.commit()
 

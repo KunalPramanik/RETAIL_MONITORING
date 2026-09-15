@@ -21,7 +21,20 @@ import type {
   UsbStatusResponse,
 } from '../types';
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api';
+function getEffectiveApiBase(): string {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) return envUrl;
+  if (typeof window !== 'undefined') {
+    const host =
+      window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        ? '127.0.0.1'
+        : window.location.hostname;
+    return `http://${host}:8000/api`;
+  }
+  return 'http://127.0.0.1:8000/api';
+}
+
+const API_BASE = getEffectiveApiBase();
 export const BACKEND_URL = API_BASE.replace(/\/api\/?$/, '');
 
 /** Resolves any relative media/snapshot URL against the active dynamic backend URL. */

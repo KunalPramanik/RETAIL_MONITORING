@@ -12,7 +12,7 @@ import type {
   CameraDetectionUpdate,
   StaticImageRecord,
 } from '../types';
-import { api, type TestConnectionResult } from '../api/client';
+import { api, BACKEND_URL, type TestConnectionResult } from '../api/client';
 import { playAlarmSound } from '../utils/audioAlarm';
 
 export const DEFAULT_SETTINGS: SystemSettings = {
@@ -122,8 +122,14 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try {
       const records = await api.getStaticImages();
       setStaticImages(records);
-    } catch (err) {
-      console.warn('Could not fetch static images:', err);
+    } catch (err: any) {
+      const isConnRefused =
+        err?.message?.includes('Unable to reach') ||
+        err?.message?.includes('Failed to fetch') ||
+        err?.message?.includes('NetworkError');
+      if (!isConnRefused) {
+        console.warn('Could not fetch static images:', err);
+      }
     }
   }, []);
 
@@ -175,37 +181,30 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsLoading(true);
     setApiError(null);
     try {
+      let hadNetworkFailure = false;
+      const handleFetchError = (resource: string, err: any) => {
+        const isConnRefused =
+          err?.message?.includes('Unable to reach') ||
+          err?.message?.includes('Failed to fetch') ||
+          err?.message?.includes('NetworkError');
+        if (isConnRefused) {
+          hadNetworkFailure = true;
+        } else {
+          console.warn(`Could not fetch ${resource}:`, err);
+        }
+        return [];
+      };
+
       const [prodRes, empRes, laneRes, camRes, evtRes, altRes, invRes, setRes] = await Promise.all([
-        api.getProducts().catch((err) => {
-          console.warn('Could not fetch products:', err);
-          return [];
-        }),
-        api.getEmployees().catch((err) => {
-          console.warn('Could not fetch employees:', err);
-          return [];
-        }),
-        api.getLanes().catch((err) => {
-          console.warn('Could not fetch lanes:', err);
-          return [];
-        }),
-        api.getCameras().catch((err) => {
-          console.warn('Could not fetch cameras:', err);
-          return [];
-        }),
-        api.getEvents().catch((err) => {
-          console.warn('Could not fetch events:', err);
-          return [];
-        }),
-        api.getAlerts().catch((err) => {
-          console.warn('Could not fetch alerts:', err);
-          return [];
-        }),
-        api.getInvoices().catch((err) => {
-          console.warn('Could not fetch invoices:', err);
-          return [];
-        }),
+        api.getProducts().catch((err) => handleFetchError('products', err)),
+        api.getEmployees().catch((err) => handleFetchError('employees', err)),
+        api.getLanes().catch((err) => handleFetchError('lanes', err)),
+        api.getCameras().catch((err) => handleFetchError('cameras', err)),
+        api.getEvents().catch((err) => handleFetchError('events', err)),
+        api.getAlerts().catch((err) => handleFetchError('alerts', err)),
+        api.getInvoices().catch((err) => handleFetchError('invoices', err)),
         api.getSettings().catch((err) => {
-          console.warn('Could not fetch settings:', err);
+          handleFetchError('settings', err);
           return null;
         }),
       ]);
@@ -223,14 +222,26 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (evtRes.length > 0) {
         setSelectedEventId(evtRes[0].eventId);
       }
-      refreshStaticImages().catch(console.warn);
+      refreshStaticImages().catch(() => {});
+
+      if (hadNetworkFailure) {
+        setApiError('Unable to reach SEC-OPS backend service on port 8000. Waiting for edge server...');
+      } else {
+        setApiError(null);
+      }
     } catch (err: any) {
-      console.error('Fatal initialization error:', err);
+      const isConnRefused =
+        err?.message?.includes('Unable to reach') ||
+        err?.message?.includes('Failed to fetch') ||
+        err?.message?.includes('NetworkError');
+      if (!isConnRefused) {
+        console.error('Initialization error:', err);
+      }
       setApiError(err.message || 'Failed to connect to SEC-OPS backend');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [refreshStaticImages]);
 
   useEffect(() => {
     refreshAllData();
@@ -260,22 +271,53 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let ws: WebSocket | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     let attempt = 0;
+    let isMounted = true;
 
     const connectWebSocket = () => {
+      if (!isMounted) return;
       try {
-        const defaultHost = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
-        const defaultProto = typeof window !== 'undefined' && window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = import.meta.env.VITE_WS_URL || `${defaultProto}//${defaultHost}:8000/ws/live`;
+        let wsHost = '127.0.0.1:8000';
+        let isSecure = false;
+        try {
+          if (BACKEND_URL) {
+            const parsed = new URL(BACKEND_URL);
+            const hostName =
+              parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1'
+                ? '127.0.0.1'
+                : parsed.hostname;
+            wsHost = `${hostName}${parsed.port ? `:${parsed.port}` : ''}`;
+            isSecure = parsed.protocol === 'https:';
+          } else if (typeof window !== 'undefined') {
+            const hostName =
+              window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? '127.0.0.1'
+                : window.location.hostname;
+            wsHost = `${hostName}:8000`;
+            isSecure = window.location.protocol === 'https:';
+          }
+        } catch {
+          wsHost = '127.0.0.1:8000';
+        }
+
+        const defaultProto = isSecure ? 'wss:' : 'ws:';
+        const wsUrl = import.meta.env.VITE_WS_URL || `${defaultProto}//${wsHost}/ws/live`;
         ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {
+          if (!isMounted) {
+            try { ws?.close(); } catch {}
+            return;
+          }
           attempt = 0;
           setReconnectAttempt(0);
           setWsConnected(true);
           setWsStatus('CONNECTED');
+          setApiError(null);
+          refreshAllData().catch(() => {});
         };
 
         ws.onmessage = (event) => {
+          if (!isMounted) return;
           try {
             const data = JSON.parse(event.data);
             if (data.type === 'new_event') {
@@ -312,7 +354,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 return [payload, ...prev];
               });
             } else if (data.type === 'pairing_token_used') {
-              api.getCameras().then((cList) => setCameras(cList)).catch(console.warn);
+              api.getCameras().then((cList) => setCameras(cList)).catch(() => {});
             } else if (data.type === 'turnstile_lock_changed') {
               const { laneId, isLocked } = data.payload;
               setTurnstileLocked((prev) => ({ ...prev, [laneId]: isLocked }));
@@ -322,8 +364,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 prev.map((l) => (l.laneId === payload.laneId ? { ...l, ...payload } : l))
               );
             } else if (data.type === 'invoice_uploaded') {
-              api.getInvoices().then(setInvoices).catch(console.warn);
-              api.getEvents().then(setEvents).catch(console.warn);
+              api.getInvoices().then(setInvoices).catch(() => {});
+              api.getEvents().then(setEvents).catch(() => {});
             } else if (data.type === 'detection_update') {
               const payload = data.payload;
               if (payload?.cameraId) {
@@ -332,7 +374,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   [payload.cameraId]: payload,
                 }));
                 if (payload.boxes?.some((b: any) => b.type === 'STATIC_IMAGE')) {
-                  refreshStaticImages().catch(console.warn);
+                  refreshStaticImages().catch(() => {});
                 }
               }
             }
@@ -342,12 +384,12 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
 
         const scheduleReconnect = () => {
+          if (!isMounted) return;
           setWsConnected(false);
           setWsStatus('RECONNECTING');
           attempt += 1;
           setReconnectAttempt(attempt);
-          // Exponential backoff: min(1000 * 1.8^attempt, 16000) with jitter
-          const delay = Math.min(1000 * Math.pow(1.8, attempt), 16000) * (0.8 + Math.random() * 0.4);
+          const delay = Math.min(2000 * Math.pow(1.5, attempt), 20000) * (0.8 + Math.random() * 0.4);
           reconnectTimeout = setTimeout(connectWebSocket, Math.round(delay));
         };
 
@@ -356,15 +398,17 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
 
         ws.onerror = () => {
+          if (!isMounted) return;
           setWsConnected(false);
           setWsStatus('RECONNECTING');
         };
       } catch {
+        if (!isMounted) return;
         setWsConnected(false);
         setWsStatus('RECONNECTING');
         attempt += 1;
         setReconnectAttempt(attempt);
-        const delay = Math.min(1000 * Math.pow(1.8, attempt), 16000);
+        const delay = Math.min(2000 * Math.pow(1.5, attempt), 20000);
         reconnectTimeout = setTimeout(connectWebSocket, Math.round(delay));
       }
     };
@@ -372,10 +416,20 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     connectWebSocket();
 
     return () => {
-      if (ws) ws.close();
+      isMounted = false;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      if (ws) {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close();
+        } else if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onopen = () => {
+            try { ws?.close(); } catch {}
+          };
+          ws.onerror = () => {};
+        }
+      }
     };
-  }, [settings.audioAlarmEnabled, settings.alarmVolume]);
+  }, [settings.audioAlarmEnabled, settings.alarmVolume, refreshAllData, refreshStaticImages]);
 
   // ── Actions Wired to Real Backend ───────────────────────────────────────
 

@@ -210,8 +210,8 @@ class CameraIngestionWorker:
                 dec = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
                 if dec is not None:
                     frame_h, frame_w = dec.shape[:2]
-            except Exception:
-                pass
+            except Exception as _fdim_err:
+                logger.debug("Frame dimension extraction failed (non-fatal): %s", _fdim_err)
 
             conf_floor = get_vision_config().confidence_floor
             overlay_boxes = []

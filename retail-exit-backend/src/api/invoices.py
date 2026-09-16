@@ -109,7 +109,7 @@ async def upload_invoice_bill(
     file: UploadFile = File(...),
     invoiceNumber: Optional[str] = Form(None),
     carrierName: Optional[str] = Form(None),
-    storeDestination: Optional[str] = Form("Store #402 - Metro Central"),
+    storeDestination: Optional[str] = Form(None),
     linkedEventId: Optional[str] = Form(None),
     lineItemsJson: Optional[str] = Form(None),
     session: AsyncSession = Depends(get_db),

@@ -434,16 +434,21 @@ async def register_camera(
             raise HTTPException(status_code=400, detail=f"Lane '{body.laneId}' does not exist")
 
     now = get_utc_now()
+    # Auto-normalise: ensure rtsp_path always has a leading slash (unless it is a full URL)
+    rtsp_path_norm = body.rtspPath
+    if rtsp_path_norm and not rtsp_path_norm.startswith(("/", "http://", "https://", "rtsp://")):
+        rtsp_path_norm = "/" + rtsp_path_norm
+
     if body.streamUrl:
         stream_url = body.streamUrl
-    elif body.rtspPath.startswith("http://") or body.rtspPath.startswith("https://") or body.rtspPath.startswith("rtsp://"):
-        stream_url = body.rtspPath
-    elif ":8080" in body.rtspPath or body.rtspPath.endswith("/video"):
+    elif rtsp_path_norm.startswith("http://") or rtsp_path_norm.startswith("https://") or rtsp_path_norm.startswith("rtsp://"):
+        stream_url = rtsp_path_norm
+    elif ":8080" in rtsp_path_norm or rtsp_path_norm.endswith("/video"):
         stream_url = f"http://{body.ipAddress}:8080/video"
     elif body.ipAddress in ("0", "1", "webcam"):
         stream_url = body.ipAddress
     else:
-        stream_url = f"rtsp://{body.ipAddress}:554{body.rtspPath}"
+        stream_url = f"rtsp://{body.ipAddress}:554{rtsp_path_norm}"
 
     # Idempotency check: search for active camera with matching IP + RTSP path or stream URL
     norm_ip = (body.ipAddress or "").strip().lower()
@@ -511,8 +516,8 @@ async def register_camera(
         label=body.label,
         lane_id=body.laneId,
         ip_address=body.ipAddress,
-        rtsp_path=body.rtspPath,
-        sub_stream_path=body.subStreamPath or (body.rtspPath.replace("101", "102") if "101" in body.rtspPath else None),
+        rtsp_path=rtsp_path_norm,
+        sub_stream_path=body.subStreamPath or (rtsp_path_norm.replace("101", "102") if "101" in rtsp_path_norm else None),
         credentials_ref=f"secops/cameras/{cam_id}" if body.credentials else None,
         stream_url=stream_url,
         pairing_method=body.pairingMethod or "MANUAL",
@@ -592,12 +597,8 @@ async def test_camera_connection(
         )
 
     if not rtsp.startswith("/") and not rtsp.startswith(("http://", "https://", "rtsp://")):
-        return CameraTestConnectionResponse(
-            success=False,
-            status="INVALID_RTSP_PATH",
-            errorMessage=f"Malformed RTSP path '{rtsp}' — path must start with a leading slash.",
-            latencyMs=45.0,
-        )
+        # Auto-correct: silently prepend the required leading slash
+        rtsp = "/" + rtsp
 
     now = get_utc_now()
     sub_stream_path = (

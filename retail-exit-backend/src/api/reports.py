@@ -60,10 +60,15 @@ async def get_daily_report(
     pass_count = sum(1 for e in events if str(e.verdict) == "PASS")
     parity_rate = round((pass_count / len(events)) * 100.0, 1) if events else 100.0
 
+    # Look up first active store for the store code
+    stores_res = await session.execute(select(Lane).limit(1))
+    first_lane = stores_res.scalar_one_or_none()
+    store_code = str(first_lane.store_id)[:12] if first_lane and first_lane.store_id else "SYSTEM"
+
     return {
         "reportId": f"REP-{op_date}",
         "date": op_date,
-        "storeCode": "0402-METRO",
+        "storeCode": store_code,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "status": "AUDIT_VERIFIED",
         "metrics": {
@@ -96,16 +101,26 @@ async def download_daily_report_pdf(
     session: AsyncSession = Depends(get_db),
 ):
     """Generates official downloadable PDF report document."""
+    # Pull live telemetry for the PDF
+    ev_res = await session.execute(select(ExitEvent).order_by(desc(ExitEvent.ts)))
+    events_list = list(ev_res.scalars().all())
+    pass_count = sum(1 for e in events_list if str(e.verdict) == "PASS")
+    parity_pct = round((pass_count / len(events_list)) * 100.0, 1) if events_list else 100.0
+
+    lane_res = await session.execute(select(Lane).limit(1))
+    first_lane = lane_res.scalar_one_or_none()
+    store_label = str(first_lane.store_id)[:12] if first_lane and first_lane.store_id else "Operations"
+
     buffer = io.BytesIO()
     p = canvas.Canvas(buffer, pagesize=letter)
     width, height = letter
 
     p.setFont("Helvetica-Bold", 16)
     p.drawString(50, height - 50, "RETAIL LOSS PREVENTION & EXIT INTELLIGENCE DIGEST")
-    
+
     p.setFont("Helvetica", 10)
     p.drawString(50, height - 70, f"Report Reference: {report_id} | Operations Command Center")
-    p.drawString(50, height - 85, f"SuperStore #402 - Exit Surveillance & Inventory Audit")
+    p.drawString(50, height - 85, f"Store: {store_label} — Exit Surveillance & Inventory Audit")
 
     p.line(50, height - 95, width - 50, height - 95)
 
@@ -113,7 +128,7 @@ async def download_daily_report_pdf(
     p.drawString(50, height - 120, "1. EXECUTIVE LOSS PREVENTION TELEMETRY")
     p.setFont("Helvetica", 10)
     p.drawString(50, height - 140, "Status: ACID DATABASE AUDIT VERIFIED")
-    p.drawString(50, height - 155, "Consensus Parity: 98.4%")
+    p.drawString(50, height - 155, f"Consensus Parity: {parity_pct}%")
     p.drawString(50, height - 170, "Multi-Channel Sensor Verification: Vision AI + RFID + Scale Density")
 
     p.line(50, height - 190, width - 50, height - 190)

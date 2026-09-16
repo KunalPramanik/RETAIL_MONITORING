@@ -100,15 +100,16 @@ async def test_camera_connection_test_failure_diagnostics(client):
     assert data_auth["success"] is False
     assert "401 Unauthorized" in data_auth["errorMessage"]
 
-    # Malformed RTSP path
+    # Previously-malformed RTSP path (no leading slash) is now auto-corrected:
+    # the system prepends '/' and proceeds with the connection attempt
     resp_path = await client.post(
         "/api/cameras/cam_101/test-connection",
         json={"ipAddress": "192.168.10.41", "rtspPath": "live_no_slash"},
     )
     assert resp_path.status_code == 200
     data_path = resp_path.json()
-    assert data_path["success"] is False
-    assert "leading slash" in data_path["errorMessage"]
+    # Must NOT return an INVALID_RTSP_PATH error — auto-correction means it proceeds
+    assert data_path.get("status") != "INVALID_RTSP_PATH"
 
 
 @pytest.mark.asyncio

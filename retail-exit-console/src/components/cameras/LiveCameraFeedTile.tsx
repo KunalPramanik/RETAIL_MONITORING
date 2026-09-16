@@ -37,9 +37,25 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [forceRefreshKey, setForceRefreshKey] = useState<number>(Date.now());
 
-  const activeCameras = Array.from(
-    new Map(cameras.filter((c) => !c.removedAt).map((c) => [c.cameraId, c])).values()
-  );
+  // Robust deduplication: prevent duplicate tiles by cameraId and physical endpoint
+  const activeCameras = React.useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenEndpoints = new Set<string>();
+    const result: Camera[] = [];
+
+    for (const c of cameras) {
+      if (c.removedAt || seenIds.has(c.cameraId)) continue;
+      seenIds.add(c.cameraId);
+
+      const endpoint = (c.streamUrl || `${c.ipAddress || ''}:${c.rtspPath || ''}`).trim().toLowerCase();
+      if (endpoint && endpoint !== ':' && endpoint !== 'webcam:' && endpoint !== '0:' && endpoint !== '1:') {
+        if (seenEndpoints.has(endpoint)) continue;
+        seenEndpoints.add(endpoint);
+      }
+      result.push(c);
+    }
+    return result;
+  }, [cameras]);
 
   // Default focus camera to first online or first available
   const effectiveFocusId =

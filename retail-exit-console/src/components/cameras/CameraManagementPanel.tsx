@@ -26,7 +26,7 @@ export const CameraManagementPanel: React.FC = () => {
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [resumingCamera, setResumingCamera] = useState<Camera | null>(null);
-  const [showLiveWall, setShowLiveWall] = useState(true);
+  const [showLiveWall, setShowLiveWall] = useState(false);
   const [expandedCamId, setExpandedCamId] = useState<string | null>(null);
   const [scanningCamId, setScanningCamId] = useState<string | null>(null);
   const [scanMessage, setScanMessage] = useState<{ id: string; text: string; isError?: boolean } | null>(null);
@@ -47,9 +47,25 @@ export const CameraManagementPanel: React.FC = () => {
   const [reassigningCam, setReassigningCam] = useState<Camera | null>(null);
   const [targetLaneId, setTargetLaneId] = useState<string>('');
 
-  const activeCameras = Array.from(
-    new Map(cameras.filter((c) => !c.removedAt).map((c) => [c.cameraId, c])).values()
-  );
+  // Robust deduplication: prevent duplicate rows/tiles by cameraId and physical endpoint
+  const activeCameras = React.useMemo(() => {
+    const seenIds = new Set<string>();
+    const seenEndpoints = new Set<string>();
+    const result: Camera[] = [];
+
+    for (const c of cameras) {
+      if (c.removedAt || seenIds.has(c.cameraId)) continue;
+      seenIds.add(c.cameraId);
+
+      const endpoint = (c.streamUrl || `${c.ipAddress || ''}:${c.rtspPath || ''}`).trim().toLowerCase();
+      if (endpoint && endpoint !== ':' && endpoint !== 'webcam:' && endpoint !== '0:' && endpoint !== '1:') {
+        if (seenEndpoints.has(endpoint)) continue;
+        seenEndpoints.add(endpoint);
+      }
+      result.push(c);
+    }
+    return result;
+  }, [cameras]);
 
   const handleTestFeed = async (cam: Camera) => {
     setTestingCamId(cam.cameraId);
@@ -147,7 +163,12 @@ export const CameraManagementPanel: React.FC = () => {
           {activeCameras.length > 0 && (
             <button
               type="button"
-              onClick={() => setShowLiveWall((prev) => !prev)}
+              onClick={() =>
+                setShowLiveWall((prev) => {
+                  if (!prev) setExpandedCamId(null);
+                  return !prev;
+                })
+              }
               className={`flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold rounded-sm transition-colors border ${
                 showLiveWall
                   ? 'bg-amber text-black border-amber shadow-xs'
@@ -394,7 +415,14 @@ export const CameraManagementPanel: React.FC = () => {
                           {/* Toggle Live Stream View */}
                           <button
                             type="button"
-                            onClick={() => setExpandedCamId((prev) => (prev === cam.cameraId ? null : cam.cameraId))}
+                            onClick={() => {
+                              if (showLiveWall) {
+                                setShowLiveWall(false);
+                                setExpandedCamId(cam.cameraId);
+                              } else {
+                                setExpandedCamId((prev) => (prev === cam.cameraId ? null : cam.cameraId));
+                              }
+                            }}
                             className={`p-1 rounded transition-colors ${
                               expandedCamId === cam.cameraId
                                 ? 'bg-amber text-black'

@@ -492,6 +492,26 @@ class VisionInferenceService:
                             specific_label=specific_label,
                         )
                     )
+            else:
+                # Part N.6 — Zero-detection diagnostic: log max per-class scores so operators
+                # can see if the frame had near-threshold detections without silent suppression.
+                all_valid_cids = [0] + list(cfg.case_classes) + list(cfg.single_item_classes)
+                diag_peaks = {}
+                for cid in all_valid_cids:
+                    if cid < scores.shape[1]:
+                        peak = float(scores[:, cid].max())
+                        if peak > 0.05:  # only log classes with any plausible activity
+                            lbl = cfg.class_labels.get(cid, f"class_{cid}")
+                            diag_peaks[lbl] = round(peak, 3)
+                if diag_peaks:
+                    logger.debug(
+                        "Zero-detection frame: no anchor passed threshold. "
+                        "Near-threshold peaks: %s | floors: person=%.2f item=%.2f case=%.2f",
+                        diag_peaks, person_floor, item_floor, case_floor,
+                    )
+                else:
+                    logger.debug("Zero-detection frame: all class scores below 0.05 (scene may be featureless or occluded).")
+
         except Exception as e:
             logger.error("Error during YOLOX forward pass or NMS postprocessing: %s", e, exc_info=True)
 

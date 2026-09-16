@@ -21,6 +21,7 @@ class VisionModelConfig:
     person_conf_threshold: float = 0.50
     item_conf_threshold: float = 0.12
     case_conf_threshold: float = 0.35
+    vehicle_conf_threshold: float = 0.25
 
     # ── NMS & Clustered Item Tuning ──
     # Per-class NMS IoU threshold: lower value (0.35) prevents adjacent clustered items (e.g. wall frames)
@@ -36,9 +37,14 @@ class VisionModelConfig:
     tracker_max_lost_frames: int = 15  # Tolerates ~15 frames (~3-5 seconds) of occlusion without resetting tracklet identity
     tracker_iou_threshold: float = 0.30
 
-    # ── COCO Class ID to Specific Retail Labels ──
+    # ── COCO Class ID to Specific Retail & Vehicle Labels ──
     class_labels: Dict[int, str] = field(default_factory=lambda: {
         0: "Person",
+        1: "Bicycle",
+        2: "Car",
+        3: "Motorcycle / Bike",
+        5: "Bus",
+        7: "Truck",
         24: "Backpack / Bag",
         25: "Umbrella",
         26: "Handbag / Purse",
@@ -81,6 +87,7 @@ class VisionModelConfig:
         24, 25, 26, 27, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
         63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79
     })
+    vehicle_classes: Set[int] = field(default_factory=lambda: {1, 2, 3, 5, 7})
 
 
 # Global singleton instance

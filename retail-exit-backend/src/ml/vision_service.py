@@ -355,9 +355,11 @@ class VisionInferenceService:
             person_floor = cfg.person_conf_threshold
             item_floor = cfg.item_conf_threshold
             case_floor = cfg.case_conf_threshold
+            vehicle_floor = getattr(cfg, "vehicle_conf_threshold", 0.25)
+            vehicle_classes = getattr(cfg, "vehicle_classes", {1, 2, 3, 5, 7})
 
             # Multi-threshold candidate filter driven by centralized configuration
-            # Evaluates candidate scores against valid retail merchandise classes so background COCO classes never steal anchors
+            # Evaluates candidate scores against valid retail merchandise and vehicle classes
             cand_indices = []
             cand_cls_list = []
             cand_sc_list = []
@@ -373,6 +375,12 @@ class VisionInferenceService:
                 for cid in cfg.case_classes:
                     sc = float(scores[i, cid])
                     if sc >= case_floor and sc > best_sc:
+                        best_cid = cid
+                        best_sc = sc
+
+                for cid in vehicle_classes:
+                    sc = float(scores[i, cid])
+                    if sc >= vehicle_floor and sc > best_sc:
                         best_cid = cid
                         best_sc = sc
 
@@ -422,7 +430,12 @@ class VisionInferenceService:
                     cls_indices = [k for k in range(len(cand_cls)) if int(cand_cls[k]) == target_cid]
                     cls_boxes = [nms_boxes[k] for k in cls_indices]
                     cls_scores = [nms_scores[k] for k in cls_indices]
-                    target_floor = person_floor if target_cid == 0 else (case_floor if target_cid in cfg.case_classes else item_floor)
+                    target_floor = (
+                        person_floor if target_cid == 0
+                        else (case_floor if target_cid in cfg.case_classes
+                        else (vehicle_floor if target_cid in vehicle_classes
+                        else item_floor))
+                    )
 
                     indices = cv2.dnn.NMSBoxes(cls_boxes, cls_scores, target_floor, nms_iou)
                     if len(indices) > 0:
@@ -435,16 +448,25 @@ class VisionInferenceService:
                     conf = round(float(nms_scores[idx]), 3)
 
                     # Gated threshold enforcement per class category
-                    target_floor = person_floor if cid == 0 else (case_floor if cid in cfg.case_classes else item_floor)
+                    target_floor = (
+                        person_floor if cid == 0
+                        else (case_floor if cid in cfg.case_classes
+                        else (vehicle_floor if cid in vehicle_classes
+                        else item_floor))
+                    )
                     if conf < target_floor:
                         continue
 
                     # Structural / Architectural Filter:
                     # Single retail items carried by shoppers do not span full architectural room fixtures.
                     # Reject oversized boxes covering full room walls (bw > 80% width and bh > 75% height) or huge backgrounds.
+                    # Vehicles can legitimately occupy up to 98% of portal cameras.
                     box_area = bw * bh
                     frame_area = orig_w * orig_h
-                    if cid != 0:
+                    if cid in vehicle_classes:
+                        if bw > 0.98 * orig_w and bh > 0.98 * orig_h:
+                            continue
+                    elif cid != 0:
                         if (bw > 0.80 * orig_w and bh > 0.75 * orig_h) or (box_area > 0.70 * frame_area and bw > 0.75 * orig_w):
                             continue
                     elif bw > 0.85 * orig_w and bh > 0.70 * orig_h:
@@ -452,7 +474,7 @@ class VisionInferenceService:
 
                     specific_label = cfg.class_labels.get(cid, "Retail Item")
 
-                    # Map COCO classes to retail exit classes
+                    # Map COCO classes to retail exit & vehicle entrance classes
                     if cid == 0:
                         # Hand/finger filter:
                         # Isolated hands/fingers have small height (bh < 0.20 * orig_h) or flat aspect ratio (bw/bh > 1.6) with low conf (< 0.50)
@@ -469,6 +491,23 @@ class VisionInferenceService:
                         pack_size = default_pack
                         total_cases += 1
                         total_units += pack_size
+                    elif cid in vehicle_classes:
+                        class_label = "vehicle"
+                        pack_size = 1
+                        total_singles += 1
+                        total_units += 1
+
+                        # Deep Vehicle Intelligence: Exterior Paint Color + License Plate OCR (ALPR)
+                        try:
+                            from src.ml.vehicle_service import vehicle_service
+                            veh_res = vehicle_service.analyze_vehicle(img, [bx, by, bw, bh], specific_label)
+                            v_color = veh_res["color"]
+                            v_plate = veh_res["license_plate"]
+                            plate_disp = v_plate if v_plate else "NOT_LEGIBLE"
+                            specific_label = f"{specific_label} ({v_color}) | PLATE: {plate_disp}"
+                        except Exception as _v_err:
+                            logger.debug("Vehicle color/plate analysis error: %s", _v_err)
+                            specific_label = f"{specific_label} | PLATE: NOT_LEGIBLE"
                     elif cid in cfg.single_item_classes:
                         class_label = "single_unit"
                         pack_size = 1
@@ -495,7 +534,7 @@ class VisionInferenceService:
             else:
                 # Part N.6 — Zero-detection diagnostic: log max per-class scores so operators
                 # can see if the frame had near-threshold detections without silent suppression.
-                all_valid_cids = [0] + list(cfg.case_classes) + list(cfg.single_item_classes)
+                all_valid_cids = [0] + list(cfg.case_classes) + list(cfg.single_item_classes) + list(vehicle_classes)
                 diag_peaks = {}
                 for cid in all_valid_cids:
                     if cid < scores.shape[1]:
@@ -506,8 +545,8 @@ class VisionInferenceService:
                 if diag_peaks:
                     logger.debug(
                         "Zero-detection frame: no anchor passed threshold. "
-                        "Near-threshold peaks: %s | floors: person=%.2f item=%.2f case=%.2f",
-                        diag_peaks, person_floor, item_floor, case_floor,
+                        "Near-threshold peaks: %s | floors: person=%.2f item=%.2f case=%.2f vehicle=%.2f",
+                        diag_peaks, person_floor, item_floor, case_floor, vehicle_floor,
                     )
                 else:
                     logger.debug("Zero-detection frame: all class scores below 0.05 (scene may be featureless or occluded).")
@@ -527,6 +566,9 @@ class VisionInferenceService:
             elif d.class_label == "case_full":
                 badge_text = f"{disp_label} {conf_pct}%"
                 color = (0, 230, 115)
+            elif d.class_label == "vehicle":
+                badge_text = f"{disp_label} {conf_pct}%"
+                color = (255, 190, 0)  # Bright Cyan / Blue in BGR
             else:
                 badge_text = f"{disp_label} {conf_pct}%"
                 color = (0, 165, 255)

@@ -243,20 +243,27 @@ class CameraIngestionWorker:
                             "entity": None,
                         })
 
-            # 3. Detected items and cases (Neutral / Amber) — Gated by category threshold
+            # 3. Detected items, vehicles, and cases — Gated by category threshold
             cfg = get_vision_config()
             for d in vis_res.detections:
-                target_floor = cfg.case_conf_threshold if "case" in d.class_label.lower() else cfg.item_conf_threshold
+                is_veh = d.class_label == "vehicle"
+                is_case = "case" in d.class_label.lower()
+                target_floor = (
+                    cfg.case_conf_threshold if is_case
+                    else (getattr(cfg, "vehicle_conf_threshold", 0.25) if is_veh
+                    else cfg.item_conf_threshold)
+                )
                 if d.confidence < target_floor:
                     continue
-                tag_prefix = "Case" if "case" in d.class_label.lower() else "Item"
+                tag_prefix = "Vehicle" if is_veh else ("Case" if is_case else "Item")
                 item_label = getattr(d, "specific_label", None) or d.class_label
+                color = "cyan" if is_veh else ("green" if is_case else "amber")
                 overlay_boxes.append({
                     "box": d.bbox,
-                    "type": "ITEM",
-                    "label": f"{tag_prefix}: {item_label} ({int(d.confidence * 100)}%)",
+                    "type": "VEHICLE" if is_veh else "ITEM",
+                    "label": f"{item_label} ({int(d.confidence * 100)}%)" if is_veh else f"{tag_prefix}: {item_label} ({int(d.confidence * 100)}%)",
                     "confidence": round(float(d.confidence), 4),
-                    "color": "amber",
+                    "color": color,
                     "entity": item_label,
                 })
 
@@ -300,6 +307,20 @@ class CameraIngestionWorker:
                     msg = f"{cam_name} — {person_desc} Detected — {time_str}"
                     if not cam_logs or cam_logs[-1]["text"] != msg:
                         cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "PERSON"})
+
+                if any(b["type"] == "VEHICLE" for b in overlay_boxes):
+                    for vb in [b for b in overlay_boxes if b["type"] == "VEHICLE"]:
+                        msg = f"{cam_name} — Vehicle Entry: {vb['label']} — {time_str}"
+                        if not cam_logs or cam_logs[-1]["text"] != msg:
+                            cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "VEHICLE"})
+                    # Auto-capture and persist vehicle snapshot dossier
+                    try:
+                        os.makedirs("snapshots", exist_ok=True)
+                        v_snap_path = os.path.join("snapshots", f"vehicle_{cam.camera_id}_{now.strftime('%Y%m%d_%H%M%S')}.jpg")
+                        with open(v_snap_path, "wb") as vf:
+                            vf.write(annotated_bytes)
+                    except Exception as _vsnap_err:
+                        logger.debug("Vehicle snapshot persist error: %s", _vsnap_err)
 
                 if any(b["type"] == "ITEM" for b in overlay_boxes):
                     msg = f"{cam_name} — {vis_res.cases_detected} Cases / {vis_res.vision_count} Units Detected — {time_str}"

@@ -71,6 +71,14 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
           text: 'var(--signal-amber, #E8A33D)',
           border: 'rgba(232, 163, 61, 0.4)',
         };
+      case 'cyan':
+        return {
+          stroke: '#00D4FF',
+          fill: 'rgba(0, 212, 255, 0.12)',
+          bg: '#0A2533',
+          text: '#00D4FF',
+          border: 'rgba(0, 212, 255, 0.4)',
+        };
       case 'static':
       default:
         return {

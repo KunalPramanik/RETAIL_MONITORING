@@ -197,14 +197,14 @@ export type ViewType =
   | 'reports'
   | 'settings';
 
-export type DetectionBoxType = 'PERSON_MATCHED' | 'PERSON_UNMATCHED' | 'ITEM' | 'STATIC_IMAGE';
+export type DetectionBoxType = 'PERSON_MATCHED' | 'PERSON_UNMATCHED' | 'ITEM' | 'STATIC_IMAGE' | 'VEHICLE';
 
 export interface DetectionBox {
   box: [number, number, number, number]; // [x, y, w, h]
   type: DetectionBoxType;
   label: string;
   confidence: number;
-  color: 'green' | 'red' | 'amber' | 'static';
+  color: 'green' | 'red' | 'amber' | 'static' | 'cyan';
   entity?: string;
 }
 

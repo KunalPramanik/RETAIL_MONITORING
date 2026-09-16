@@ -19,7 +19,7 @@ class VisionModelConfig:
     # ── Confidence Floors & Gating ──
     confidence_floor: float = 0.50  # Hard floor: only detections >= 50% reach DB verdicts & live UI overlays
     person_conf_threshold: float = 0.50
-    item_conf_threshold: float = 0.18
+    item_conf_threshold: float = 0.14
     case_conf_threshold: float = 0.35
 
     # ── NMS & Clustered Item Tuning ──
@@ -67,23 +67,19 @@ class VisionModelConfig:
         65: "Remote Control",
         66: "Keyboard",
         67: "Smartphone",
-        68: "Kitchen Appliance",
-        69: "Oven / Appliance",
-        70: "Toaster / Appliance",
-        72: "Electronic Device / Stand",
         73: "Book / Document",
         74: "Clock / Wall Item",
         75: "Vase",
         76: "Scissors",
         77: "Teddy Bear",
         78: "Hair Drier",
-        79: "Toothbrush",
+        79: "Pen / Stationery",
     })
 
     case_classes: Set[int] = field(default_factory=lambda: {28})
     single_item_classes: Set[int] = field(default_factory=lambda: {
         24, 25, 26, 27, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
-        63, 64, 65, 66, 67, 72, 73, 74, 75, 76, 77, 78, 79
+        63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79
     })
 
 

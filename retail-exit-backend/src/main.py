@@ -13,7 +13,6 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select, and_
 import logging
 import asyncio
-import random
 from datetime import datetime, timezone, timedelta
 
 from src.config import settings
@@ -132,7 +131,7 @@ async def periodic_camera_monitor():
                     )
                     if not alert_check.scalar_one_or_none():
                         new_alert = Alert(
-                            alert_id=f"ALT-{random.randint(8100, 8999)}",
+                            alert_id=f"ALT-{uuid.uuid4().hex[:6].upper()}",
                             camera_id=cam.camera_id,
                             alert_type="CAMERA_OFFLINE",
                             severity="HIGH",

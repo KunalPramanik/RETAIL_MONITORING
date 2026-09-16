@@ -3,7 +3,6 @@
 import os
 import uuid
 import json
-import random
 from datetime import datetime, timezone
 from typing import List, Optional, Any
 
@@ -145,9 +144,9 @@ async def upload_invoice_bill(
 
     if parsed_items:
         # Structured manifest passed directly
-        inv_num = invoiceNumber.strip().upper() if invoiceNumber and invoiceNumber.strip() else f"BOL-2026-{random.randint(1000, 9999)}"
-        carrier = carrierName.strip() if carrierName and carrierName.strip() else "BlueDart Logistics Express"
-        destination = storeDestination.strip() if storeDestination and storeDestination.strip() else "Store #402 - Metro Central"
+        inv_num = invoiceNumber.strip().upper() if invoiceNumber and invoiceNumber.strip() else f"BOL-2026-{uuid.uuid4().hex[:6].upper()}"
+        carrier = carrierName.strip() if carrierName and carrierName.strip() else "Unassigned Carrier"
+        destination = storeDestination.strip() if storeDestination and storeDestination.strip() else "Store Exit Lane"
         ocr_result = OcrService.parse_manifest(
             invoice_number=inv_num,
             carrier_name=carrier,
@@ -165,21 +164,21 @@ async def upload_invoice_bill(
         )
         inv_num = (
             invoiceNumber.strip().upper() if invoiceNumber and invoiceNumber.strip()
-            else (ocr_result.extracted_invoice_number or f"BOL-2026-{random.randint(1000, 9999)}")
+            else (ocr_result.extracted_invoice_number or f"BOL-2026-{uuid.uuid4().hex[:6].upper()}")
         )
         carrier = (
             carrierName.strip() if carrierName and carrierName.strip()
-            else (ocr_result.extracted_carrier or "BlueDart Logistics Express")
+            else (ocr_result.extracted_carrier or "Unassigned Carrier")
         )
         destination = (
             storeDestination.strip() if storeDestination and storeDestination.strip()
-            else (ocr_result.extracted_destination or "Store #402 - Metro Central")
+            else (ocr_result.extracted_destination or "Store Exit Lane")
         )
 
     # Ensure invoice number uniqueness
     existing = await session.execute(select(Invoice).where(Invoice.invoice_number == inv_num))
     if existing.scalar_one_or_none():
-        inv_num = f"{inv_num}-{random.randint(10, 99)}"
+        inv_num = f"{inv_num}-{uuid.uuid4().hex[:4].upper()}"
 
     # Insert into database
     new_invoice = Invoice(
@@ -256,15 +255,15 @@ async def create_invoice(
     session: AsyncSession = Depends(get_db),
 ):
     """Creates an invoice record directly with structured line items and saves to database."""
-    inv_num = payload.invoiceNumber.strip().upper() if payload.invoiceNumber else f"BOL-2026-{random.randint(1000, 9999)}"
+    inv_num = payload.invoiceNumber.strip().upper() if payload.invoiceNumber else f"BOL-2026-{uuid.uuid4().hex[:6].upper()}"
     
     # Check uniqueness
     existing = await session.execute(select(Invoice).where(Invoice.invoice_number == inv_num))
     if existing.scalar_one_or_none():
-        inv_num = f"{inv_num}-{random.randint(10, 99)}"
+        inv_num = f"{inv_num}-{uuid.uuid4().hex[:4].upper()}"
 
-    carrier = payload.carrierName or "BlueDart Logistics Express"
-    destination = payload.storeDestination or "Store #402 - Metro Central"
+    carrier = payload.carrierName or "Unassigned Carrier"
+    destination = payload.storeDestination or "Store Exit Lane"
 
     items_data = [item.dict() for item in payload.lineItems]
     ocr_result = OcrService.parse_manifest(

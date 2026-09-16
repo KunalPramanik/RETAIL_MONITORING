@@ -9,7 +9,6 @@ broadcasts live events to the frontend via WebSockets.
 import asyncio
 import os
 import time
-import random
 import logging
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
@@ -429,7 +428,7 @@ class CameraIngestionWorker:
     ) -> ExitEvent:
         """Runs full computer vision + face recognition + fusion pipeline and commits event to DB."""
         now = get_utc_now()
-        event_num = random.randint(1000, 9999)
+        event_num = int(time.time() * 1000) % 90000 + 10000
         event_id = f"EVT-2026-{event_num}"
         lane_id = cam.lane_id or "UNASSIGNED"
 
@@ -560,7 +559,7 @@ class CameraIngestionWorker:
                 "UNDER_DECLARE" if verdict_result.delta_units < 0 else "SENSOR_DISAGREEMENT"
             )
             alert = Alert(
-                alert_id=f"ALT-2026-{random.randint(1000, 9999)}",
+                alert_id=f"ALT-2026-{uuid.uuid4().hex[:6].upper()}",
                 camera_id=cam.camera_id,
                 event_id=event_id,
                 alert_type=alert_type,

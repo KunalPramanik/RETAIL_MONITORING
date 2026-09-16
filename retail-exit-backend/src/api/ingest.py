@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
-import random
+import uuid
+import time
 
 from src.db.session import get_db
 from src.db.models import (
@@ -95,7 +96,7 @@ async def ingest_exit_event(
 ):
     """Primary edge ingestion pipeline. Processes raw sensor streams, fuses consensus, and evaluates verdicts."""
     now = get_utc_now()
-    event_num = random.randint(9050, 9999)
+    event_num = int(time.time() * 1000) % 90000 + 10000
     event_id = f"EVT-2026-{event_num}"
 
     # 1. Fetch Products & Prepare Vision Line Items
@@ -409,7 +410,7 @@ async def ingest_exit_event(
     alert_resp = None
     is_high_alarm = False
     if verdict_result.verdict == "MISMATCH" or fusion_result.disagreement_detected:
-        alert_id = f"ALT-{random.randint(8050, 8999)}"
+        alert_id = f"ALT-{uuid.uuid4().hex[:6].upper()}"
         alert_type = "OVER_CARRY" if verdict_result.delta_units > 0 else (
             "UNDER_DECLARE" if verdict_result.delta_units < 0 else "SENSOR_DISAGREEMENT"
         )

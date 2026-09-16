@@ -5,7 +5,6 @@ Deduplicates raw EPC tag reads, resolves them by product prefix, and detects RF 
 
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional
-import random
 
 
 @dataclass
@@ -38,7 +37,8 @@ class RfidService:
         rssi_vals = []
 
         for tag in unique_tags:
-            rssi = round(random.uniform(-55.0, -38.0), 2)
+            tag_hash = sum(ord(c) for c in tag) % 15
+            rssi = round(-52.0 + tag_hash * 0.8, 2)
             rssi_vals.append(rssi)
             prefix = tag.split("-")[0] if "-" in tag else tag[:6]
             reads.append(

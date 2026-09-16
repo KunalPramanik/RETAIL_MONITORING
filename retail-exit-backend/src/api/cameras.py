@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from typing import List, Optional
-import random
 import os
 import time
 import json
@@ -506,7 +505,7 @@ async def register_camera(
         await ws_hub.broadcast_event("camera_status_changed", resp.model_dump())
         return resp
 
-    cam_id = f"cam_{random.randint(1000, 9999)}"
+    cam_id = f"cam_{int(time.time() * 1000) % 9000 + 1000}"
     new_cam = Camera(
         camera_id=cam_id,
         label=body.label,
@@ -1328,7 +1327,7 @@ async def pair_camera_device(
     if tok_exp and now > tok_exp:
         raise HTTPException(status_code=400, detail="This pairing token has expired")
 
-    cam_id = f"cam_{random.randint(1000, 9999)}"
+    cam_id = f"cam_{int(time.time() * 1000) % 9000 + 1000}"
     ip = body.ipAddress or "192.168.10.45"
     rtsp = body.rtspPath or "/live/ch0"
     label = body.label or (f"QR Camera ({body.model or 'Auto-Configured'})")

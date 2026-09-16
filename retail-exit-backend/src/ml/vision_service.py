@@ -10,7 +10,6 @@ Features:
 
 import os
 import math
-import random
 import time
 import logging
 import cv2
@@ -231,7 +230,7 @@ class VisionInferenceService:
             sku = item.get("sku_code", "SKU-UNKNOWN")
 
             for c_idx in range(cases):
-                conf = round(random.uniform(0.92, 0.99), 4)
+                conf = round(0.9500 + (c_idx % 4) * 0.012, 4)
                 conf_scores.append(conf)
                 track_id_seq += 1
 
@@ -247,14 +246,14 @@ class VisionInferenceService:
                         confidence=conf,
                         pack_size=pack_size,
                         track_id=track_id_seq,
-                        exit_vector=(0.0, random.uniform(12.0, 18.0)),
+                        exit_vector=(0.0, 15.0),
                     )
                 )
                 total_cases += 1
                 total_units += pack_size
 
             for s_idx in range(singles):
-                conf = round(random.uniform(0.85, 0.96), 4)
+                conf = round(0.9100 + (s_idx % 4) * 0.015, 4)
                 conf_scores.append(conf)
                 track_id_seq += 1
 
@@ -270,14 +269,14 @@ class VisionInferenceService:
                         confidence=conf,
                         pack_size=1,
                         track_id=track_id_seq,
-                        exit_vector=(random.uniform(-1.0, 1.0), random.uniform(10.0, 15.0)),
+                        exit_vector=(0.0, 12.5),
                     )
                 )
                 total_singles += 1
                 total_units += 1
 
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 4) if conf_scores else 0.982
-        simulated_latency = round(random.uniform(12.8, 19.4), 2)
+        simulated_latency = 15.40
 
         return VisionInferenceResult(
             model_version=cls.MODEL_VERSION,
@@ -350,9 +349,6 @@ class VisionInferenceService:
             cls_probs = decoded[:, 5:]
             scores = obj_conf * cls_probs
 
-            class_ids = np.argmax(scores, axis=-1)
-            class_scores = np.max(scores, axis=-1)
-
             cfg = get_vision_config()
             conf_floor = cfg.confidence_floor
             nms_iou = cfg.nms_iou_threshold
@@ -361,21 +357,40 @@ class VisionInferenceService:
             case_floor = cfg.case_conf_threshold
 
             # Multi-threshold candidate filter driven by centralized configuration
+            # Evaluates candidate scores against valid retail merchandise classes so background COCO classes never steal anchors
             cand_indices = []
-            for i in range(len(class_ids)):
-                cid = int(class_ids[i])
-                sc = float(class_scores[i])
-                if cid == 0 and sc >= person_floor:
+            cand_cls_list = []
+            cand_sc_list = []
+            for i in range(len(scores)):
+                best_cid = -1
+                best_sc = 0.0
+
+                p_sc = float(scores[i, 0])
+                if p_sc >= person_floor:
+                    best_cid = 0
+                    best_sc = p_sc
+
+                for cid in cfg.case_classes:
+                    sc = float(scores[i, cid])
+                    if sc >= case_floor and sc > best_sc:
+                        best_cid = cid
+                        best_sc = sc
+
+                for cid in cfg.single_item_classes:
+                    sc = float(scores[i, cid])
+                    if sc >= item_floor and sc > best_sc:
+                        best_cid = cid
+                        best_sc = sc
+
+                if best_cid >= 0:
                     cand_indices.append(i)
-                elif cid in cfg.case_classes and sc >= case_floor:
-                    cand_indices.append(i)
-                elif cid in cfg.single_item_classes and sc >= item_floor:
-                    cand_indices.append(i)
+                    cand_cls_list.append(best_cid)
+                    cand_sc_list.append(best_sc)
 
             if len(cand_indices) > 0:
                 cand_boxes = boxes_xyxy[cand_indices]
-                cand_scores = class_scores[cand_indices]
-                cand_cls = class_ids[cand_indices]
+                cand_scores = np.asarray(cand_sc_list, dtype=np.float32)
+                cand_cls = np.asarray(cand_cls_list, dtype=np.int32)
 
                 # Convert center-xywh to top-left xywh in resized space
                 x_center = cand_boxes[:, 0]

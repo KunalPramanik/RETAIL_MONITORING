@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Any
-import random
+import time
 
 from src.db.session import get_db
 from src.db.models import Lane, Store, Camera, get_utc_now
@@ -71,7 +71,7 @@ async def create_lane(
     _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Creates a new physical exit portal lane inline."""
-    lane_id = body.laneId or f"LANE-{random.randint(5, 99):02d}"
+    lane_id = body.laneId or f"LANE-{(int(time.time()) % 90 + 10):02d}"
     
     # Check if lane ID already exists
     existing = await session.execute(select(Lane).where(Lane.lane_id == lane_id))

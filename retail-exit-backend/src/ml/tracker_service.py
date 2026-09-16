@@ -107,9 +107,11 @@ class CrossCameraTracker:
             elif color_hist and tr.color_hist:
                 score = _cosine_similarity(color_hist, tr.color_hist)
             else:
-                # If no features, temporal-spatial continuity across adjacent cameras
-                if tr.current_camera_id != camera_id and time_delta <= 5.0:
-                    score = 0.72  # strong temporal hand-off prior
+                # Temporal-spatial continuity: maintains track identity across brief occlusion
+                if tr.current_camera_id == camera_id and time_delta <= 5.0:
+                    score = 0.85  # Same camera occlusion persistence (~15 frames / 5s)
+                elif tr.current_camera_id != camera_id and time_delta <= 5.0:
+                    score = 0.72  # Cross-camera hand-off prior
 
             if score > highest_score and score >= self.similarity_threshold:
                 highest_score = score

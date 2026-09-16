@@ -256,7 +256,9 @@ def capture_camera_frame_sync(
             pass
 
     latency = round((time.perf_counter() - t0) * 1000.0, 1)
-    return None, "NO_FRAME", latency
+    if is_rtsp_reachable or (open_http_ports and len(open_http_ports) > 0):
+        return None, "SOCKET_CONNECTED_DECODE_PENDING", latency
+    return None, "NETWORK_UNREACHABLE", latency
 
 
 def generate_diagnostic_preview_frame(
@@ -433,7 +435,6 @@ async def register_camera(
             raise HTTPException(status_code=400, detail=f"Lane '{body.laneId}' does not exist")
 
     now = get_utc_now()
-    cam_id = f"cam_{random.randint(1000, 9999)}"
     if body.streamUrl:
         stream_url = body.streamUrl
     elif body.rtspPath.startswith("http://") or body.rtspPath.startswith("https://") or body.rtspPath.startswith("rtsp://"):
@@ -445,6 +446,67 @@ async def register_camera(
     else:
         stream_url = f"rtsp://{body.ipAddress}:554{body.rtspPath}"
 
+    # Idempotency check: search for active camera with matching IP + RTSP path or stream URL
+    norm_ip = (body.ipAddress or "").strip().lower()
+    norm_path = (body.rtspPath or "").strip().lower()
+    norm_stream = (stream_url or "").strip().lower()
+
+    existing_cams_res = await session.execute(
+        select(Camera).where(Camera.removed_at.is_(None))
+    )
+    existing_cams = existing_cams_res.scalars().all()
+    matched_cam = None
+    for c in existing_cams:
+        c_ip = (c.ip_address or "").strip().lower()
+        c_path = (c.rtsp_path or "").strip().lower()
+        c_stream = (c.stream_url or "").strip().lower()
+        if (norm_ip and norm_ip not in ("0", "1", "webcam") and c_ip == norm_ip and c_path == norm_path) or (norm_stream and c_stream == norm_stream):
+            matched_cam = c
+            break
+
+    if matched_cam:
+        # Idempotently update and merge into the existing camera record
+        before_state = {
+            "camera_id": matched_cam.camera_id,
+            "label": matched_cam.label,
+            "lane_id": matched_cam.lane_id,
+            "status": matched_cam.status,
+        }
+        matched_cam.label = body.label or matched_cam.label
+        if body.laneId:
+            matched_cam.lane_id = body.laneId
+            matched_cam.status = "ONLINE"
+        if body.credentials:
+            matched_cam.credentials_ref = f"secops/cameras/{matched_cam.camera_id}"
+        if body.resolution:
+            matched_cam.resolution = body.resolution
+        if body.fps:
+            matched_cam.fps = body.fps
+        matched_cam.last_heartbeat_at = now
+        await session.flush()
+
+        await log_audit_entry(
+            session=session,
+            entity_type="CAMERA",
+            entity_id=matched_cam.camera_id,
+            action="MERGE_DUPLICATE_REGISTRATION",
+            actor_type="USER",
+            before_state=before_state,
+            after_state={
+                "camera_id": matched_cam.camera_id,
+                "label": matched_cam.label,
+                "lane_id": matched_cam.lane_id,
+                "status": matched_cam.status,
+                "reason": "Idempotent registration re-submitted for identical physical stream endpoint",
+            },
+        )
+        await session.commit()
+        await cache_service.invalidate("cameras")
+        resp = serialize_camera(matched_cam)
+        await ws_hub.broadcast_event("camera_status_changed", resp.model_dump())
+        return resp
+
+    cam_id = f"cam_{random.randint(1000, 9999)}"
     new_cam = Camera(
         camera_id=cam_id,
         label=body.label,
@@ -576,7 +638,15 @@ async def test_camera_connection(
             frame_bytes = final_bytes or obj_bytes or frame_bytes
         except Exception:
             pass
+    elif source_desc == "NETWORK_UNREACHABLE" and not cam and not (ip.strip() in ("0", "1", "webcam") or stream_url):
+        return CameraTestConnectionResponse(
+            success=False,
+            status="UNREACHABLE_IP",
+            errorMessage=f"Could not reach {ip} on RTSP (port 554) or HTTP (port 80/8080) — verify camera power and network subnet routing.",
+            latencyMs=latency_ms,
+        )
     else:
+        # Socket reachable, existing registered camera, or diagnostic mode: generate clear preview frame and allow lane linkage
         frame_bytes = generate_diagnostic_preview_frame(
             label=cam.label if cam else f"Camera {ip}",
             ip=ip,
@@ -585,7 +655,7 @@ async def test_camera_connection(
             camera_id=camera_id,
             lane_id=cam.lane_id if cam else None,
         )
-        latency_ms = 18.4
+        latency_ms = max(latency_ms, 18.4)
 
     with open(snapshot_path, "wb") as f:
         f.write(frame_bytes)

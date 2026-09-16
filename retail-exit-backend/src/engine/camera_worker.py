@@ -40,6 +40,7 @@ from src.ml.face_service import FaceRecognitionService
 from src.engine.fusion import MultiSensorFusionEngine
 from src.engine.verdict import VerdictEngine
 from src.realtime.hub import ws_hub
+from src.ml.model_config import get_vision_config
 
 logger = logging.getLogger("secops.camera_worker")
 
@@ -213,55 +214,62 @@ class CameraIngestionWorker:
             except Exception:
                 pass
 
+            conf_floor = get_vision_config().confidence_floor
             overlay_boxes = []
 
             # 1. Recognized authorized employees (Green)
             if face_res.decision == "MATCHED" and face_res.matched_employee_id:
-                for fb in face_boxes:
-                    overlay_boxes.append({
-                        "box": fb,
-                        "type": "PERSON_MATCHED",
-                        "label": f"Recognized: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
-                        "confidence": round(float(face_res.similarity), 4),
-                        "color": "green",
-                        "entity": face_res.employee_name,
-                    })
+                if face_res.similarity >= conf_floor:
+                    for fb in face_boxes:
+                        overlay_boxes.append({
+                            "box": fb,
+                            "type": "PERSON_MATCHED",
+                            "label": f"Recognized: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
+                            "confidence": round(float(face_res.similarity), 4),
+                            "color": "green",
+                            "entity": face_res.employee_name,
+                        })
 
             # 2. Live unrecognized persons (Red)
             for pb in getattr(face_res, "live_person_boxes", []):
                 if face_res.decision != "MATCHED" or not face_res.matched_employee_id:
                     conf = pb.get("confidence", 0.85)
-                    overlay_boxes.append({
-                        "box": pb["box"],
-                        "type": "PERSON_UNMATCHED",
-                        "label": f"Unknown Person ({int(conf * 100)}%)",
-                        "confidence": round(float(conf), 4),
-                        "color": "red",
-                        "entity": None,
-                    })
+                    if conf >= conf_floor:
+                        overlay_boxes.append({
+                            "box": pb["box"],
+                            "type": "PERSON_UNMATCHED",
+                            "label": f"Unknown Person ({int(conf * 100)}%)",
+                            "confidence": round(float(conf), 4),
+                            "color": "red",
+                            "entity": None,
+                        })
 
-            # 3. Detected items and cases (Neutral / Amber)
+            # 3. Detected items and cases (Neutral / Amber) — Hard-gated by confidence floor
             for d in vis_res.detections:
+                if d.confidence < conf_floor:
+                    continue
                 tag_prefix = "Case" if "case" in d.class_label.lower() else "Item"
+                item_label = getattr(d, "specific_label", None) or d.class_label
                 overlay_boxes.append({
                     "box": d.bbox,
                     "type": "ITEM",
-                    "label": f"{tag_prefix}: {d.class_label} ({int(d.confidence * 100)}%)",
+                    "label": f"{tag_prefix}: {item_label} ({int(d.confidence * 100)}%)",
                     "confidence": round(float(d.confidence), 4),
                     "color": "amber",
-                    "entity": d.class_label,
+                    "entity": item_label,
                 })
 
             # 4. Static images (Low-emphasis outline, e.g. Religious Image, Poster, Screen)
             for s in getattr(face_res, "static_detections", []):
-                overlay_boxes.append({
-                    "box": s["box"],
-                    "type": "STATIC_IMAGE",
-                    "label": s["friendly_label"],
-                    "confidence": round(float(s["confidence"]), 4),
-                    "color": "static",
-                    "entity": s["classification"],
-                })
+                if s.get("confidence", 0.50) >= conf_floor:
+                    overlay_boxes.append({
+                        "box": s["box"],
+                        "type": "STATIC_IMAGE",
+                        "label": s["friendly_label"],
+                        "confidence": round(float(s["confidence"]), 4),
+                        "color": "static",
+                        "entity": s["classification"],
+                    })
                 # Persist static image detection to database
                 try:
                     static_entry = StaticImageDetection(

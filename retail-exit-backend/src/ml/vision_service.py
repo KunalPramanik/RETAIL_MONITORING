@@ -12,12 +12,17 @@ import os
 import math
 import random
 import time
+import logging
 import cv2
 import numpy as np
 import onnxruntime as ort
 from dataclasses import dataclass
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone
+
+from src.ml.model_config import get_vision_config
+
+logger = logging.getLogger("secops.ml.vision")
 
 
 @dataclass
@@ -30,6 +35,7 @@ class DetectedBox:
     pack_size: int = 1
     track_id: Optional[int] = None
     exit_vector: Optional[Tuple[float, float]] = None
+    specific_label: Optional[str] = None  # Specific object label, e.g. 'Bottle', 'Smartphone', 'Clock / Wall Item'
 
 
 @dataclass
@@ -345,19 +351,23 @@ class VisionInferenceService:
             class_ids = np.argmax(scores, axis=-1)
             class_scores = np.max(scores, axis=-1)
 
-            # Multi-threshold candidate filter:
-            # Person detection floor 0.10 to capture seated/portrait/occluded persons cleanly
-            # Wholesale case classes: 0.25
-            # Single retail items: 0.12
+            cfg = get_vision_config()
+            conf_floor = cfg.confidence_floor
+            nms_iou = cfg.nms_iou_threshold
+            person_floor = cfg.person_conf_threshold
+            item_floor = cfg.item_conf_threshold
+            case_floor = cfg.case_conf_threshold
+
+            # Multi-threshold candidate filter driven by centralized configuration
             cand_indices = []
             for i in range(len(class_ids)):
                 cid = int(class_ids[i])
                 sc = float(class_scores[i])
-                if cid == 0 and sc >= 0.10:
+                if cid == 0 and sc >= person_floor:
                     cand_indices.append(i)
-                elif cid in cls.CASE_CLASSES and sc >= 0.25:
+                elif cid in cfg.case_classes and sc >= case_floor:
                     cand_indices.append(i)
-                elif cid in cls.SINGLE_ITEM_CLASSES and sc >= 0.12:
+                elif cid in cfg.single_item_classes and sc >= item_floor:
                     cand_indices.append(i)
 
             if len(cand_indices) > 0:
@@ -385,36 +395,56 @@ class VisionInferenceService:
                 nms_boxes = [[int(x1[k]), int(y1[k]), int(w_orig[k]), int(h_orig[k])] for k in range(len(x1))]
                 nms_scores = [float(s) for s in cand_scores]
 
-                # IoU threshold 0.45 so overlapping / partially occluded persons are preserved
-                indices = cv2.dnn.NMSBoxes(nms_boxes, nms_scores, 0.08, 0.45)
-                keep_indices = [int(k) for k in np.asarray(indices).flatten()] if len(indices) > 0 else []
+                # Class-aware per-class NMS:
+                # Partitions candidate boxes by class ID before running NMSBoxes.
+                # Crucial fix: overlapping boxes of different classes (e.g. phone + bottle side-by-side)
+                # will NEVER suppress each other. Clustered wall items are also preserved via tuned IoU (0.35).
+                keep_indices = []
+                unique_cids = sorted(list(set(int(c) for c in cand_cls)))
+                for target_cid in unique_cids:
+                    cls_indices = [k for k in range(len(cand_cls)) if int(cand_cls[k]) == target_cid]
+                    cls_boxes = [nms_boxes[k] for k in cls_indices]
+                    cls_scores = [nms_scores[k] for k in cls_indices]
+                    target_floor = person_floor if target_cid == 0 else (case_floor if target_cid in cfg.case_classes else item_floor)
+
+                    indices = cv2.dnn.NMSBoxes(cls_boxes, cls_scores, target_floor, nms_iou)
+                    if len(indices) > 0:
+                        for s in np.asarray(indices).flatten():
+                            keep_indices.append(cls_indices[int(s)])
 
                 for idx in keep_indices:
                     bx, by, bw, bh = nms_boxes[idx]
                     cid = int(cand_cls[idx])
                     conf = round(float(nms_scores[idx]), 3)
 
+                    # Hard confidence floor enforcement before reaching database or UI overlay
+                    if conf < conf_floor:
+                        continue
+
                     # Ignore gigantic boxes covering >85% of width and >70% of height (room/wall background false positives)
                     if bw > 0.85 * orig_w and bh > 0.70 * orig_h:
                         continue
 
+                    specific_label = cfg.class_labels.get(cid, "Retail Item")
+
                     # Map COCO classes to retail exit classes
                     if cid == 0:
                         # Hand/finger filter:
-                        # Isolated hands/fingers have small height (bh < 0.20 * orig_h) or flat aspect ratio (bw/bh > 1.6) with low conf (< 0.45)
-                        if bh < 0.20 * orig_h and conf < 0.45:
+                        # Isolated hands/fingers have small height (bh < 0.20 * orig_h) or flat aspect ratio (bw/bh > 1.6) with low conf (< 0.50)
+                        if bh < 0.20 * orig_h and conf < 0.50:
                             continue
                         if (bw / max(1, bh)) > 1.6 and bh < 120 and conf < 0.50:
                             continue
 
                         class_label = "person"
+                        specific_label = "Person"
                         pack_size = 1
-                    elif cid in cls.CASE_CLASSES:
+                    elif cid in cfg.case_classes:
                         class_label = "case_full"
                         pack_size = default_pack
                         total_cases += 1
                         total_units += pack_size
-                    elif cid in cls.SINGLE_ITEM_CLASSES:
+                    elif cid in cfg.single_item_classes:
                         class_label = "single_unit"
                         pack_size = 1
                         total_singles += 1
@@ -434,25 +464,26 @@ class VisionInferenceService:
                             pack_size=pack_size,
                             track_id=track_id_seq,
                             exit_vector=(0.0, 15.0),
+                            specific_label=specific_label,
                         )
                     )
-        except Exception:
-            # Safe recovery if ONNX forward pass fails
-            pass
+        except Exception as e:
+            logger.error("Error during YOLOX forward pass or NMS postprocessing: %s", e, exc_info=True)
 
-        # Draw all dynamic bounding boxes and clean percentage badges (NO "YOLOX:" prefix in writing)
+        # Draw all dynamic bounding boxes with specific labels and clean percentage badges
         for d in detections:
             bx, by, bw, bh = d.bbox
             conf_pct = int(d.confidence * 100)
+            disp_label = (d.specific_label or d.class_label).upper()
 
             if d.class_label == "person":
-                badge_text = f"PERSON {conf_pct}%"
+                badge_text = f"{disp_label} {conf_pct}%"
                 color = (0, 255, 180)
             elif d.class_label == "case_full":
-                badge_text = f"CASE FULL {conf_pct}%"
+                badge_text = f"{disp_label} {conf_pct}%"
                 color = (0, 230, 115)
             else:
-                badge_text = f"SINGLE UNIT {conf_pct}%"
+                badge_text = f"{disp_label} {conf_pct}%"
                 color = (0, 165, 255)
 
             cv2.rectangle(img, (bx, by), (bx + bw, by + bh), color, 2)

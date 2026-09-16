@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union, Tuple
 from insightface.app import FaceAnalysis
 from src.ml.liveness_service import LivenessDetectionService, LivenessResult
+from src.ml.model_config import get_vision_config
 
 
 @dataclass
@@ -279,10 +280,12 @@ class FaceRecognitionService:
                 # Minimum size filter: ignore sub-pixel artifact noise (<18px)
                 if w_face < 18 or h_face < 18:
                     continue
-                # Filter ceiling noise or low confidence
+                # Filter ceiling noise or low confidence using centralized face candidate gate (0.45)
+                # Prevents random textures on doors, bottles, and walls from being passed to liveness & static classifier
                 if y1 < 25 and (y2 - y1) < 30:
                     continue
-                if det_score < 0.08:
+                face_gate = get_vision_config().face_candidate_min_score
+                if det_score < face_gate:
                     continue
 
                 cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0

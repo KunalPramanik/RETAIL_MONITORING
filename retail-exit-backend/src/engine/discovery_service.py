@@ -112,13 +112,13 @@ class NetworkDiscoveryService:
 
     async def scan_network(self) -> List[DiscoveredDevice]:
         """Probes local network segment for compatible ONVIF and RFID hardware."""
-        # Query existing registered cameras from DB to avoid re-suggesting already confirmed devices
+        # Query existing registered cameras from DB to avoid re-suggesting already registered devices
         existing_ips = set()
         existing_lanes = []
         try:
             async with AsyncSessionLocal() as session:
-                cam_res = await session.execute(select(Camera).where(Camera.removed_at == None))
-                existing_ips = {c.ip_address for c in cam_res.scalars().all()}
+                cam_res = await session.execute(select(Camera).where(Camera.removed_at.is_(None)))
+                existing_ips = {str(c.ip_address).strip().lower() for c in cam_res.scalars().all() if c.ip_address}
                 lane_res = await session.execute(select(Lane))
                 existing_lanes = lane_res.scalars().all()
         except Exception as e:
@@ -128,9 +128,10 @@ class NetworkDiscoveryService:
         lanes_by_id = {str(l.lane_id): l for l in existing_lanes}
         unassigned_lanes = [l for l in existing_lanes if not getattr(l, "camera_ids", None)]
 
-        # Check existing discovered devices and update reachability
+        # Check existing discovered devices and update status
         for d in self.discovered_devices.values():
-            if d.ip_address in existing_ips:
+            d_ip = (d.ip_address or "").strip().lower()
+            if d_ip in existing_ips:
                 d.status = "CONFIRMED"
             elif d.status != "CONFIRMED":
                 # Compute smart lane suggestion

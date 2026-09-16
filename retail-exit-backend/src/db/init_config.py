@@ -62,3 +62,74 @@ async def init_baseline_configuration(session: AsyncSession):
 
     await session.commit()
 
+    # Reconcile any duplicate physical cameras in the database
+    await reconcile_duplicate_cameras(session)
+
+
+async def reconcile_duplicate_cameras(session: AsyncSession):
+    """Detects and reconciles any duplicate camera records for the same physical endpoint.
+    
+    Groups active cameras by normalized (ip_address, rtsp_path) or stream_url.
+    Preserves the primary camera (prioritizing assigned lane, or earliest created)
+    and soft-deletes duplicate rows with an immutable audit log entry.
+    """
+    from collections import defaultdict
+    from src.db.models import Camera
+    from src.db.audit import log_audit_entry
+
+    res = await session.execute(select(Camera).where(Camera.removed_at.is_(None)))
+    active_cams = res.scalars().all()
+    if len(active_cams) < 2:
+        return
+
+    grouped = defaultdict(list)
+    for c in active_cams:
+        ip = (c.ip_address or "").strip().lower()
+        path = (c.rtsp_path or "").strip().lower()
+        stream = (c.stream_url or "").strip().lower()
+        if ip and ip not in ("0", "1", "webcam"):
+            key = f"ip:{ip}:{path}"
+        elif stream:
+            key = f"stream:{stream}"
+        else:
+            key = f"id:{c.camera_id}"
+        grouped[key].append(c)
+
+    now = get_utc_now()
+    reconciled_any = False
+
+    for key, cam_list in grouped.items():
+        if len(cam_list) > 1:
+            # Sort: first priority has lane_id assigned; secondary: earlier added_at
+            cam_list.sort(key=lambda x: (1 if x.lane_id else 0, x.added_at or now), reverse=True)
+            primary = cam_list[0]
+            duplicates = cam_list[1:]
+
+            for dup in duplicates:
+                logger.warning(
+                    "Reconciling duplicate camera row %s into primary %s for endpoint %s",
+                    dup.camera_id, primary.camera_id, key
+                )
+                dup.removed_at = now
+                dup.status = "OFFLINE"
+                await log_audit_entry(
+                    session=session,
+                    entity_type="CAMERA",
+                    entity_id=dup.camera_id,
+                    action="RECONCILE_DUPLICATE_CAMERA",
+                    actor_type="SYSTEM",
+                    before_state={"camera_id": dup.camera_id, "status": dup.status, "lane_id": dup.lane_id},
+                    after_state={
+                        "camera_id": dup.camera_id,
+                        "status": "OFFLINE",
+                        "merged_into_camera_id": primary.camera_id,
+                        "endpoint_key": key,
+                        "reason": "Reconciled duplicate physical camera stream registration on startup",
+                    },
+                )
+                reconciled_any = True
+
+    if reconciled_any:
+        await session.commit()
+        logger.info("Successfully reconciled duplicate camera registrations.")
+

@@ -168,7 +168,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
       if (initialStep) {
         setStep(initialStep);
       } else {
-        setStep(initialCamera.laneId ? 4 : 3);
+        setStep(!initialCamera.laneId || initialCamera.status === 'PENDING_SETUP' ? 3 : 4);
       }
     }
   }, [isOpen, initialCamera, initialStep]);
@@ -1056,7 +1056,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   </div>
                 )}
 
-                <div className="flex justify-between pt-2">
+                <div className="flex justify-between pt-2 items-center">
                   <button
                     type="button"
                     onClick={() => setStep(1)}
@@ -1066,15 +1066,27 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                     Back
                   </button>
 
-                  <button
-                    type="button"
-                    disabled={!testResult.success}
-                    onClick={() => setStep(3)}
-                    className="flex items-center gap-1.5 px-4 py-2 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 disabled:opacity-40 text-black transition-colors"
-                  >
-                    Continue to Lane Linkage
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {!testResult.success && (
+                      <button
+                        type="button"
+                        onClick={() => setStep(3)}
+                        className="text-[11px] text-text-sec hover:text-amber font-mono underline mr-1"
+                        title="Skip ahead to lane linkage if camera is pre-configured or in offline staging"
+                      >
+                        Skip to Lane Linkage →
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!testResult.success}
+                      onClick={() => setStep(3)}
+                      className="flex items-center gap-1.5 px-4 py-2 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 disabled:opacity-40 text-black transition-colors"
+                    >
+                      Continue to Lane Linkage
+                      <ArrowRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

@@ -321,7 +321,7 @@ export const CameraManagementPanel: React.FC = () => {
 
                       {/* Assigned Lane */}
                       <td className="p-2.5 font-sans">
-                        {cam.laneId ? (
+                        {cam.laneId && cam.status !== 'PENDING_SETUP' ? (
                           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-sm bg-panel-raised border border-hairline text-text-pri font-mono text-[11px]">
                             <Radio className="w-3 h-3 text-amber" />
                             {cam.laneId}
@@ -330,7 +330,7 @@ export const CameraManagementPanel: React.FC = () => {
                         ) : (
                           <div className="flex items-center gap-2">
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-amber/20 text-amber border border-amber/40 font-mono text-[10px]">
-                              UNBOUND
+                              {!cam.laneId ? 'UNBOUND' : 'PENDING SETUP'}
                             </span>
                             <button
                               type="button"
@@ -339,6 +339,7 @@ export const CameraManagementPanel: React.FC = () => {
                                 setIsAddModalOpen(true);
                               }}
                               className="px-2 py-0.5 bg-amber hover:bg-amber/90 text-black font-semibold text-[10px] rounded-sm transition-colors shadow-xs"
+                              title="Resume camera configuration and lane linkage wizard"
                             >
                               Resume Setup
                             </button>

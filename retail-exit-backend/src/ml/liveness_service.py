@@ -15,6 +15,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Tuple
 from collections import deque
+from src.ml.model_config import get_vision_config
 
 
 @dataclass
@@ -296,24 +297,25 @@ class LivenessDetectionService:
         )
 
         # Hard gating rules:
-        # Rule A: If 3D depth variance is flat (< 15.0mm), it cannot be a real living human face
-        if z_std < cls.MIN_REAL_Z_STD:
+        # Rule A: Flat 2D depth variance (< min_real_z_std, e.g. 15mm) indicates printed/screen spoof.
+        # Living human faces maintain natural 3D curvature and relief even when stationary.
+        # Stillness alone (sitting still) must NEVER flip a genuine 3D face to STATIC_PHOTO.
+        cfg = get_vision_config()
+        min_z = cfg.min_real_z_std
+        pass_thresh = cfg.liveness_pass_threshold
+
+        if z_std < min_z:
             raw_liveness = min(raw_liveness, 0.42)
             spoof_type = "WALL_PORTRAIT" if fw < 45 else "STATIC_PHOTO"
-            reason = f"Flat 2D surface detected (Z-relief {z_std:.1f}mm < {cls.MIN_REAL_Z_STD}mm)"
-        # Rule B: If tracked over >= 4 frames with zero landmark motion (< 0.5px displacement)
-        elif matched_track.frames_tracked >= 4 and motion_score < 0.25:
-            raw_liveness = min(raw_liveness, 0.38)
+            reason = f"Flat 2D surface detected (Z-relief {z_std:.1f}mm < {min_z:.1f}mm)"
+        elif raw_liveness < pass_thresh:
             spoof_type = "STATIC_PHOTO"
-            reason = "Static non-moving target across consecutive video frames"
-        elif raw_liveness < cls.LIVENESS_PASS_THRESHOLD:
-            spoof_type = "STATIC_PHOTO"
-            reason = f"Insufficient liveness consensus score ({raw_liveness:.2f} < {cls.LIVENESS_PASS_THRESHOLD})"
+            reason = f"Insufficient liveness consensus score ({raw_liveness:.2f} < {pass_thresh:.2f})"
         else:
             spoof_type = None
             reason = "Live human confirmed via 3D depth relief and dynamic physiological characteristics"
 
-        is_live = bool(raw_liveness >= cls.LIVENESS_PASS_THRESHOLD and spoof_type is None)
+        is_live = bool(raw_liveness >= pass_thresh and spoof_type is None)
 
         static_class = None
         static_conf = 0.0

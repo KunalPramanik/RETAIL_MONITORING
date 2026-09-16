@@ -426,11 +426,11 @@ class VisionInferenceService:
 
                     # Structural / Architectural Filter:
                     # Single retail items carried by shoppers do not span full architectural room fixtures.
-                    # Reject oversized boxes covering >45% of image area or >70% width & >55% height (e.g. wall windows, doors, tables).
+                    # Reject oversized boxes covering full room walls (bw > 80% width and bh > 75% height) or huge backgrounds.
                     box_area = bw * bh
                     frame_area = orig_w * orig_h
                     if cid != 0:
-                        if box_area > 0.45 * frame_area or (bw > 0.70 * orig_w and bh > 0.55 * orig_h):
+                        if (bw > 0.80 * orig_w and bh > 0.75 * orig_h) or (box_area > 0.70 * frame_area and bw > 0.75 * orig_w):
                             continue
                     elif bw > 0.85 * orig_w and bh > 0.70 * orig_h:
                         continue

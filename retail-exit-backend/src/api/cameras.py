@@ -802,18 +802,6 @@ async def get_camera_snapshot(
                 )
         except Exception:
             pass
-            if len(cached_bytes) > 200:
-                return Response(
-                    content=cached_bytes,
-                    media_type="image/jpeg",
-                    headers={
-                        "Cache-Control": "no-cache, no-store, must-revalidate",
-                        "Pragma": "no-cache",
-                        "Expires": "0",
-                    },
-                )
-        except Exception:
-            pass
 
     # Fall back to custom diagnostic frame uniquely for this camera
     diag_bytes = generate_diagnostic_preview_frame(

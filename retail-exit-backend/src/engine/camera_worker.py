@@ -347,9 +347,12 @@ class CameraIngestionWorker:
 
         os.makedirs("snapshots", exist_ok=True)
         preview_path = os.path.join("snapshots", f"preview_{cam.camera_id}.jpg")
+        raw_path = os.path.join("snapshots", f"raw_{cam.camera_id}.jpg")
         try:
             with open(preview_path, "wb") as f:
                 f.write(annotated_bytes)
+            with open(raw_path, "wb") as f:
+                f.write(frame_bytes)
         except Exception as e:
             logger.warning("Could not write preview snapshot: %s", e)
 

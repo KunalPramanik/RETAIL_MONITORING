@@ -151,19 +151,21 @@ class VisionInferenceService:
     def _preprocess_frame(cls, img: np.ndarray) -> Tuple[np.ndarray, float, bool]:
         """Letterbox resize image to YOLOX input dimensions (416x416) with IR-adapted CLAHE enhancement."""
         is_ir = cls.is_infrared_frame(img)
-        clip_limit = 3.5 if is_ir else 1.8
-
-        # Contrast-Limited Adaptive Histogram Equalization on L-channel to compensate for retail overhead glare or IR low contrast
-        if len(img.shape) == 3 and img.shape[2] == 3 and img.shape[0] > 10 and img.shape[1] > 10:
-            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-            l_chan, a_chan, b_chan = cv2.split(lab)
-            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
-            cl = clahe.apply(l_chan)
-            enhanced = cv2.cvtColor(cv2.merge((cl, a_chan, b_chan)), cv2.COLOR_LAB2BGR)
-        elif len(img.shape) == 2 and img.shape[0] > 10 and img.shape[1] > 10:
-            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
-            enhanced = clahe.apply(img)
-            enhanced = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+        # Contrast-Limited Adaptive Histogram Equalization on L-channel ONLY when in IR/monochrome night mode
+        if is_ir:
+            clip_limit = 3.5
+            if len(img.shape) == 3 and img.shape[2] == 3 and img.shape[0] > 10 and img.shape[1] > 10:
+                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                l_chan, a_chan, b_chan = cv2.split(lab)
+                clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+                cl = clahe.apply(l_chan)
+                enhanced = cv2.cvtColor(cv2.merge((cl, a_chan, b_chan)), cv2.COLOR_LAB2BGR)
+            elif len(img.shape) == 2 and img.shape[0] > 10 and img.shape[1] > 10:
+                clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(8, 8))
+                enhanced = clahe.apply(img)
+                enhanced = cv2.cvtColor(enhanced, cv2.COLOR_GRAY2BGR)
+            else:
+                enhanced = img
         else:
             enhanced = img
 
@@ -422,8 +424,15 @@ class VisionInferenceService:
                     if conf < target_floor:
                         continue
 
-                    # Ignore gigantic boxes covering >85% of width and >70% of height (room/wall background false positives)
-                    if bw > 0.85 * orig_w and bh > 0.70 * orig_h:
+                    # Structural / Architectural Filter:
+                    # Single retail items carried by shoppers do not span full architectural room fixtures.
+                    # Reject oversized boxes covering >45% of image area or >70% width & >55% height (e.g. wall windows, doors, tables).
+                    box_area = bw * bh
+                    frame_area = orig_w * orig_h
+                    if cid != 0:
+                        if box_area > 0.45 * frame_area or (bw > 0.70 * orig_w and bh > 0.55 * orig_h):
+                            continue
+                    elif bw > 0.85 * orig_w and bh > 0.70 * orig_h:
                         continue
 
                     specific_label = cfg.class_labels.get(cid, "Retail Item")

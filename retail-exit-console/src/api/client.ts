@@ -56,11 +56,13 @@ export function resolveMediaUrl(pathOrUrl?: string | null): string {
 export function getCameraSnapshotUrl(
   cameraId: string,
   key?: number | string,
-  quality?: 'main' | 'sub'
+  quality?: 'main' | 'sub',
+  raw: boolean = true
 ): string {
   const t = key || Date.now();
   const streamParam = quality === 'sub' ? '&stream=sub' : '';
-  return `${BACKEND_URL}/api/cameras/${cameraId}/snapshot?t=${t}${streamParam}`;
+  const rawParam = raw ? '&raw=true' : '';
+  return `${BACKEND_URL}/api/cameras/${cameraId}/snapshot?t=${t}${streamParam}${rawParam}`;
 }
 
 export interface LiveKPIs {

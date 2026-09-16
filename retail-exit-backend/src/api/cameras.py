@@ -693,6 +693,7 @@ async def get_camera_snapshot(
     camera_id: str,
     fresh: bool = Query(False, description="Force a live stream capture rather than cached snapshot"),
     stream: Optional[str] = Query(None, description="Stream quality: main or sub"),
+    raw: bool = Query(False, description="Return raw unannotated frame for frontend SVG overlay"),
     session: AsyncSession = Depends(get_db),
 ):
     """Dynamically serves the latest JPEG snapshot for this specific camera with zero hardcoding."""
@@ -703,14 +704,16 @@ async def get_camera_snapshot(
 
     os.makedirs("snapshots", exist_ok=True)
     snapshot_path = os.path.join("snapshots", f"preview_{camera_id}.jpg")
+    raw_path = os.path.join("snapshots", f"raw_{camera_id}.jpg")
     frame_bytes = None
     latency_ms = 0.0
 
     # Determine if we should attempt a live capture
-    should_capture_live = fresh or not os.path.exists(snapshot_path)
-    if not should_capture_live and os.path.exists(snapshot_path):
+    target_disk = raw_path if raw and os.path.exists(raw_path) else snapshot_path
+    should_capture_live = fresh or not os.path.exists(target_disk)
+    if not should_capture_live and os.path.exists(target_disk):
         try:
-            file_mtime = os.path.getmtime(snapshot_path)
+            file_mtime = os.path.getmtime(target_disk)
             if (time.time() - file_mtime) > 1.2 and (cam.status == "ONLINE" or cam.ip_address):
                 should_capture_live = True
         except Exception:
@@ -764,10 +767,14 @@ async def get_camera_snapshot(
             try:
                 with open(snapshot_path, "wb") as f:
                     f.write(annotated_bytes)
+                with open(raw_path, "wb") as f:
+                    f.write(frame_bytes)
             except Exception:
                 pass
+
+            serve_bytes = frame_bytes if raw else annotated_bytes
             return Response(
-                content=annotated_bytes,
+                content=serve_bytes,
                 media_type="image/jpeg",
                 headers={
                     "Cache-Control": "no-cache, no-store, must-revalidate",
@@ -778,11 +785,24 @@ async def get_camera_snapshot(
                 },
             )
 
-    # Read disk snapshot if available
-    if os.path.exists(snapshot_path):
+    # Read disk snapshot if available (serving raw frame if raw=True)
+    disk_target = raw_path if (raw and os.path.exists(raw_path)) else snapshot_path
+    if os.path.exists(disk_target):
         try:
-            with open(snapshot_path, "rb") as f:
+            with open(disk_target, "rb") as f:
                 cached_bytes = f.read()
+            if len(cached_bytes) > 200:
+                return Response(
+                    content=cached_bytes,
+                    media_type="image/jpeg",
+                    headers={
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                    },
+                )
+        except Exception:
+            pass
             if len(cached_bytes) > 200:
                 return Response(
                     content=cached_bytes,

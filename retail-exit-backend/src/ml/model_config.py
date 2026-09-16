@@ -83,7 +83,7 @@ class VisionModelConfig:
     case_classes: Set[int] = field(default_factory=lambda: {28})
     single_item_classes: Set[int] = field(default_factory=lambda: {
         24, 25, 26, 27, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
-        62, 63, 64, 65, 66, 67, 68, 69, 70, 72, 73, 74, 75, 76, 77, 78, 79
+        63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79
     })
 
 

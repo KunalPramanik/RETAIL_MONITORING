@@ -84,6 +84,102 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
     }
   };
 
+  // Pre-calculate collision-free layout for all detection boxes and labels
+  const placedTags: { x: number; y: number; w: number; h: number }[] = [];
+
+  const computedItems = currentBoxes.map((det) => {
+    const rawBx = det.box[0];
+    const rawBy = det.box[1];
+    const rawBw = det.box[2];
+    const rawBh = det.box[3];
+
+    // Clamp bounding box coordinates strictly inside the frame boundaries
+    const bx = Math.max(1, Math.min(rawBx, fWidth - 10));
+    const by = Math.max(1, Math.min(rawBy, fHeight - 10));
+    const bw = Math.max(6, Math.min(rawBw, fWidth - bx - 2));
+    const bh = Math.max(6, Math.min(rawBh, fHeight - by - 2));
+
+    const tokens = getColorTokens(det.color);
+    const isStatic = det.type === 'STATIC_IMAGE';
+
+    // Refine label display: clean "Item:" prefix and format percentage
+    let displayLabel = (det.label || '')
+      .replace(/^Item:\s*/i, '')
+      .replace(/\s*\((\d+)%\)$/, ' · $1%');
+
+    // Simplify compound category names (e.g., "Clock / Wall Item · 83%" -> "Clock · 83%")
+    if (displayLabel.includes(' / ')) {
+      displayLabel = displayLabel.replace(/ \/ [^·]+/, '');
+    }
+
+    const tagHeight = 22;
+    const approxCharWidth = 8.5;
+    const tagWidth = Math.max(70, Math.ceil(displayLabel.length * approxCharWidth + 20));
+
+    // Preferred tag position: above bounding box
+    let tagX = Math.max(4, Math.min(bx, fWidth - tagWidth - 6));
+    let tagY = by - tagHeight - 3;
+
+    // If above goes out of frame, try below the bounding box
+    if (tagY < 4) {
+      tagY = Math.min(fHeight - tagHeight - 4, by + bh + 4);
+    }
+
+    const checkOverlap = (rect: { x: number; y: number; w: number; h: number }) => {
+      return placedTags.some(
+        (p) => !(rect.x + rect.w < p.x || p.x + p.w < rect.x || rect.y + rect.h < p.y || p.y + p.h < rect.y)
+      );
+    };
+
+    let candidate = { x: tagX, y: tagY, w: tagWidth, h: tagHeight };
+
+    if (checkOverlap(candidate)) {
+      // If above position collides, attempt below the bounding box
+      const belowY = Math.min(fHeight - tagHeight - 4, by + bh + 4);
+      const belowCandidate = { x: tagX, y: belowY, w: tagWidth, h: tagHeight };
+      if (!checkOverlap(belowCandidate)) {
+        candidate = belowCandidate;
+      } else {
+        // Find colliding tag and stack vertically
+        const colliding = placedTags.find(
+          (p) => !(candidate.x + candidate.w < p.x || p.x + p.w < candidate.x || candidate.y + candidate.h < p.y || p.y + p.h < candidate.y)
+        );
+        if (colliding) {
+          const stackedDownY = colliding.y + colliding.h + 3;
+          if (stackedDownY + tagHeight <= fHeight - 4) {
+            candidate = { x: tagX, y: stackedDownY, w: tagWidth, h: tagHeight };
+          } else {
+            const stackedUpY = colliding.y - tagHeight - 3;
+            if (stackedUpY >= 4) {
+              candidate = { x: tagX, y: stackedUpY, w: tagWidth, h: tagHeight };
+            }
+          }
+        }
+      }
+    }
+
+    // Ensure within frame bounds
+    candidate.x = Math.max(4, Math.min(candidate.x, fWidth - tagWidth - 4));
+    candidate.y = Math.max(4, Math.min(candidate.y, fHeight - tagHeight - 4));
+
+    placedTags.push(candidate);
+
+    return {
+      bx,
+      by,
+      bw,
+      bh,
+      tagX: candidate.x,
+      tagY: candidate.y,
+      tagWidth,
+      tagHeight,
+      displayLabel,
+      tokens,
+      isStatic,
+      det,
+    };
+  });
+
   return (
     <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden select-none">
       {/* ── 1. SVG Bounding Box Layer ── */}
@@ -92,32 +188,8 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
         preserveAspectRatio="xMidYMid meet"
         className="w-full h-full block"
       >
-        {currentBoxes.map((det, idx) => {
-          const rawBx = det.box[0];
-          const rawBy = det.box[1];
-          const rawBw = det.box[2];
-          const rawBh = det.box[3];
-
-          // Clamp bounding box coordinates strictly inside the frame boundaries
-          const bx = Math.max(1, Math.min(rawBx, fWidth - 10));
-          const by = Math.max(1, Math.min(rawBy, fHeight - 10));
-          const bw = Math.max(6, Math.min(rawBw, fWidth - bx - 2));
-          const bh = Math.max(6, Math.min(rawBh, fHeight - by - 2));
-
-          const tokens = getColorTokens(det.color);
-          const isStatic = det.type === 'STATIC_IMAGE';
-
-          // Refine label display to prevent label truncation
-          const displayLabel = (det.label || '')
-            .replace(/^Item:\s*/i, '')
-            .replace(/\s*\((\d+)%\)$/, ' · $1%');
-
-          const tagHeight = 22;
-          const approxCharWidth = 8.5;
-          const tagWidth = Math.max(70, Math.ceil(displayLabel.length * approxCharWidth + 20));
-          // Clamp tagX so the tag pill and text never overflow the right or left edge of the SVG viewbox
-          const tagX = Math.max(4, Math.min(bx, fWidth - tagWidth - 6));
-          const tagY = (by - tagHeight - 3) >= 4 ? (by - tagHeight - 3) : Math.min(fHeight - tagHeight - 4, by + bh + 4);
+        {computedItems.map((item, idx) => {
+          const { bx, by, bw, bh, tagX, tagY, tagWidth, tagHeight, displayLabel, tokens, isStatic, det } = item;
 
           return (
             <g key={`det-box-${idx}-${det.type}`}>

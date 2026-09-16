@@ -335,11 +335,25 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
     setIsTesting(true);
     setSnapshotLoadFailed(false);
     setTestResult({ tested: false, success: false });
+
+    // Auto-normalize RTSP path to ensure leading slash if missing
+    let cleanRtsp = rtspPath.trim();
+    if (
+      cleanRtsp &&
+      !cleanRtsp.startsWith('/') &&
+      !cleanRtsp.startsWith('http://') &&
+      !cleanRtsp.startsWith('https://') &&
+      !cleanRtsp.startsWith('rtsp://')
+    ) {
+      cleanRtsp = '/' + cleanRtsp;
+      setRtspPath(cleanRtsp);
+    }
+
     try {
       const res = await testCameraConnection(initialCamera?.cameraId || 'temp_test', {
-        ipAddress,
-        rtspPath,
-        credentials,
+        ipAddress: ipAddress.trim(),
+        rtspPath: cleanRtsp,
+        credentials: credentials.trim() || undefined,
       });
       setTestResult({
         tested: true,
@@ -370,23 +384,33 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   const handleSubmit = async () => {
     if (!label.trim()) return;
     setIsSubmitting(true);
+    let cleanRtsp = rtspPath.trim();
+    if (
+      cleanRtsp &&
+      !cleanRtsp.startsWith('/') &&
+      !cleanRtsp.startsWith('http://') &&
+      !cleanRtsp.startsWith('https://') &&
+      !cleanRtsp.startsWith('rtsp://')
+    ) {
+      cleanRtsp = '/' + cleanRtsp;
+    }
     try {
       if (initialCamera?.cameraId) {
         await updateCamera({
           cameraId: initialCamera.cameraId,
-          label,
-          ipAddress,
-          rtspPath,
+          label: label.trim(),
+          ipAddress: ipAddress.trim(),
+          rtspPath: cleanRtsp,
           laneId: selectedLaneId || undefined,
           status: selectedLaneId ? 'ONLINE' : 'PENDING_SETUP',
         });
       } else {
         await addCamera({
-          label,
-          ipAddress,
-          rtspPath,
+          label: label.trim(),
+          ipAddress: ipAddress.trim(),
+          rtspPath: cleanRtsp,
           laneId: selectedLaneId || undefined,
-          credentials,
+          credentials: credentials.trim() || undefined,
           pairingMethod,
         });
       }
@@ -921,16 +945,49 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="text-xs-tech font-medium text-text-pri block mb-1">
-                      RTSP Stream Path <span className="text-status-high">*</span>
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs-tech font-medium text-text-pri">
+                        RTSP Stream Path <span className="text-status-high">*</span>
+                      </label>
+                      <span className="text-[10px] text-text-sec font-mono">Must start with '/'</span>
+                    </div>
                     <input
                       type="text"
                       value={rtspPath}
                       onChange={(e) => setRtspPath(e.target.value)}
+                      onBlur={() => {
+                        const trimmed = rtspPath.trim();
+                        if (
+                          trimmed &&
+                          !trimmed.startsWith('/') &&
+                          !trimmed.startsWith('http://') &&
+                          !trimmed.startsWith('https://') &&
+                          !trimmed.startsWith('rtsp://')
+                        ) {
+                          setRtspPath('/' + trimmed);
+                        }
+                      }}
                       placeholder="/live/ch0"
                       className="w-full px-3 py-2 font-mono bg-canvas border border-hairline rounded-sm text-xs-tech text-text-pri focus-visible:outline-2 focus-visible:outline-amber"
                     />
+                    <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                      <span className="text-[10px] text-text-sec font-mono">Quick Presets:</span>
+                      {[
+                        { label: '/live/ch0 (Generic)', path: '/live/ch0' },
+                        { label: '/Streaming/Channels/101 (Hikvision)', path: '/Streaming/Channels/101' },
+                        { label: '/cam/realmonitor?channel=1&subtype=0 (Dahua)', path: '/cam/realmonitor?channel=1&subtype=0' },
+                        { label: '/stream1 (Tapo)', path: '/stream1' },
+                      ].map((p) => (
+                        <button
+                          key={p.path}
+                          type="button"
+                          onClick={() => setRtspPath(p.path)}
+                          className="px-1.5 py-0.5 text-[10px] font-mono bg-panel-raised hover:bg-amber/20 hover:text-amber border border-hairline rounded text-text-sec transition-colors"
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -955,7 +1012,19 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   <button
                     type="button"
                     disabled={!label.trim() || !ipAddress.trim() || !rtspPath.trim()}
-                    onClick={() => setStep(2)}
+                    onClick={() => {
+                      const trimmed = rtspPath.trim();
+                      if (
+                        trimmed &&
+                        !trimmed.startsWith('/') &&
+                        !trimmed.startsWith('http://') &&
+                        !trimmed.startsWith('https://') &&
+                        !trimmed.startsWith('rtsp://')
+                      ) {
+                        setRtspPath('/' + trimmed);
+                      }
+                      setStep(2);
+                    }}
                     className="flex items-center gap-1.5 px-4 py-2 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 disabled:opacity-40 text-black transition-colors"
                   >
                     Proceed to Connection Test

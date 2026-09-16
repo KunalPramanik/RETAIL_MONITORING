@@ -322,8 +322,12 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
   });
 
   // ── 8b. Real-Time AI Detections & Biometric Overlay ───────────────
-  const { latestDetections } = useAppData();
+  const { latestDetections, lanes, updateCamera } = useAppData();
   const camDetection = latestDetections[camera.cameraId] || null;
+  const [naturalDimensions, setNaturalDimensions] = useState<{ width: number; height: number }>({
+    width: 1280,
+    height: 720,
+  });
   const [isHudOpen, setIsHudOpen] = useState(false);
   const [showAiDetections, setShowAiDetections] = useState(true);
   const [liveClock, setLiveClock] = useState(() => new Date().toTimeString().split(' ')[0]);
@@ -539,7 +543,11 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
                 (e.target as HTMLElement).style.display = 'none';
               }}
               onLoad={(e) => {
-                (e.target as HTMLElement).style.display = 'block';
+                const img = e.currentTarget;
+                img.style.display = 'block';
+                if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                  setNaturalDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+                }
               }}
             />
 
@@ -547,8 +555,8 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
             {showAiDetections && (
               <CameraVideoOverlay
                 detectionData={camDetection}
-                frameWidth={imgRef.current?.naturalWidth || 1280}
-                frameHeight={imgRef.current?.naturalHeight || 720}
+                frameWidth={camDetection?.frameWidth || naturalDimensions.width}
+                frameHeight={camDetection?.frameHeight || naturalDimensions.height}
               />
             )}
           </div>
@@ -913,6 +921,33 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
           }`}
         >
           {scanMessage.text}
+        </div>
+      )}
+
+      {/* ── Unassigned Camera Quick Lane Linker ── */}
+      {!camera.laneId && (
+        <div className="px-3 py-2 bg-amber/10 border-t border-amber/30 flex flex-wrap items-center justify-between gap-2 text-xs-tech">
+          <div className="flex items-center gap-1.5 text-amber">
+            <Radio className="w-3.5 h-3.5 shrink-0 animate-pulse" />
+            <span className="font-semibold">Lane Unassigned:</span>
+            <span className="text-text-sec text-[11px]">Link an exit lane to activate live scans</span>
+          </div>
+          <select
+            value=""
+            onChange={async (e) => {
+              const selectedLane = e.target.value;
+              if (!selectedLane) return;
+              await updateCamera({ cameraId: camera.cameraId, laneId: selectedLane, status: 'ONLINE' });
+            }}
+            className="px-2 py-1 bg-canvas border border-amber/40 rounded text-xs-tech text-amber font-semibold font-mono focus-visible:outline-amber cursor-pointer"
+          >
+            <option value="">⚡ Quick-Link Exit Lane...</option>
+            {lanes.map((l) => (
+              <option key={l.laneId} value={l.laneId}>
+                {l.laneId} — {l.location}
+              </option>
+            ))}
+          </select>
         </div>
       )}
 

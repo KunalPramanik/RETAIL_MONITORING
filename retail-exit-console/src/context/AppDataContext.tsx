@@ -212,7 +212,14 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setProducts(prodRes);
       setEmployees(empRes);
       setLanes(laneRes);
-      setCameras(camRes);
+      // Deduplicate camera entries by unique cameraId
+      const camDedupeMap = new Map<string, Camera>();
+      for (const c of camRes) {
+        if (c.cameraId && !camDedupeMap.has(c.cameraId)) {
+          camDedupeMap.set(c.cameraId, c);
+        }
+      }
+      setCameras(Array.from(camDedupeMap.values()));
       setEvents(evtRes);
       setAlerts(altRes);
       setInvoices(invRes);
@@ -354,7 +361,13 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 return [payload, ...prev];
               });
             } else if (data.type === 'pairing_token_used') {
-              api.getCameras().then((cList) => setCameras(cList)).catch(() => {});
+              api.getCameras().then((cList) => {
+                const map = new Map<string, Camera>();
+                for (const c of cList) {
+                  if (c.cameraId && !map.has(c.cameraId)) map.set(c.cameraId, c);
+                }
+                setCameras(Array.from(map.values()));
+              }).catch(() => {});
             } else if (data.type === 'turnstile_lock_changed') {
               const { laneId, isLocked } = data.payload;
               setTurnstileLocked((prev) => ({ ...prev, [laneId]: isLocked }));
@@ -462,7 +475,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addCamera = async (data: { label: string; ipAddress: string; rtspPath: string; laneId?: string; credentials?: string }): Promise<Camera> => {
     const created = await api.createCamera(data);
-    setCameras((prev) => [created, ...prev]);
+    setCameras((prev) => [created, ...prev.filter((c) => c.cameraId !== created.cameraId)]);
     return created;
   };
 
@@ -473,13 +486,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const removeCamera = async (cameraId: string): Promise<void> => {
     await api.deleteCamera(cameraId);
-    setCameras((prev) =>
-      prev.map((c) =>
-        c.cameraId === cameraId
-          ? { ...c, removedAt: new Date().toISOString(), status: 'OFFLINE', laneId: undefined }
-          : c
-      )
-    );
+    setCameras((prev) => prev.filter((c) => c.cameraId !== cameraId));
   };
 
   const testCameraConnection = async (

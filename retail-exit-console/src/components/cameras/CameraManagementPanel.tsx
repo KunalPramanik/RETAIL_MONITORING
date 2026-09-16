@@ -47,7 +47,9 @@ export const CameraManagementPanel: React.FC = () => {
   const [reassigningCam, setReassigningCam] = useState<Camera | null>(null);
   const [targetLaneId, setTargetLaneId] = useState<string>('');
 
-  const activeCameras = cameras.filter((c) => !c.removedAt);
+  const activeCameras = Array.from(
+    new Map(cameras.filter((c) => !c.removedAt).map((c) => [c.cameraId, c])).values()
+  );
 
   const handleTestFeed = async (cam: Camera) => {
     setTestingCamId(cam.cameraId);

@@ -417,8 +417,9 @@ class VisionInferenceService:
                     cid = int(cand_cls[idx])
                     conf = round(float(nms_scores[idx]), 3)
 
-                    # Hard confidence floor enforcement before reaching database or UI overlay
-                    if conf < conf_floor:
+                    # Gated threshold enforcement per class category
+                    target_floor = person_floor if cid == 0 else (case_floor if cid in cfg.case_classes else item_floor)
+                    if conf < target_floor:
                         continue
 
                     # Ignore gigantic boxes covering >85% of width and >70% of height (room/wall background false positives)

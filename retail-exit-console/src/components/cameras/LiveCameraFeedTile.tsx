@@ -37,7 +37,9 @@ export const LiveCameraFeedTile: React.FC<LiveCameraFeedTileProps> = ({
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [forceRefreshKey, setForceRefreshKey] = useState<number>(Date.now());
 
-  const activeCameras = cameras.filter((c) => !c.removedAt);
+  const activeCameras = Array.from(
+    new Map(cameras.filter((c) => !c.removedAt).map((c) => [c.cameraId, c])).values()
+  );
 
   // Default focus camera to first online or first available
   const effectiveFocusId =

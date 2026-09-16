@@ -93,16 +93,31 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
         className="w-full h-full block"
       >
         {currentBoxes.map((det, idx) => {
-          const [bx, by, bw, bh] = det.box;
+          const rawBx = det.box[0];
+          const rawBy = det.box[1];
+          const rawBw = det.box[2];
+          const rawBh = det.box[3];
+
+          // Clamp bounding box coordinates strictly inside the frame boundaries
+          const bx = Math.max(1, Math.min(rawBx, fWidth - 10));
+          const by = Math.max(1, Math.min(rawBy, fHeight - 10));
+          const bw = Math.max(6, Math.min(rawBw, fWidth - bx - 2));
+          const bh = Math.max(6, Math.min(rawBh, fHeight - by - 2));
+
           const tokens = getColorTokens(det.color);
           const isStatic = det.type === 'STATIC_IMAGE';
 
-          // Clamp tag positioning within video frame
+          // Refine label display to prevent label truncation
+          const displayLabel = (det.label || '')
+            .replace(/^Item:\s*/i, '')
+            .replace(/\s*\((\d+)%\)$/, ' · $1%');
+
           const tagHeight = 22;
-          const tagY = by - tagHeight > 4 ? by - tagHeight - 2 : by + bh + 4;
-          const approxCharWidth = 7.5;
-          const tagWidth = Math.max(100, det.label.length * approxCharWidth + 14);
-          const tagX = Math.max(4, Math.min(bx, fWidth - tagWidth - 4));
+          const approxCharWidth = 8.5;
+          const tagWidth = Math.max(70, Math.ceil(displayLabel.length * approxCharWidth + 20));
+          // Clamp tagX so the tag pill and text never overflow the right or left edge of the SVG viewbox
+          const tagX = Math.max(4, Math.min(bx, fWidth - tagWidth - 6));
+          const tagY = (by - tagHeight - 3) >= 4 ? (by - tagHeight - 3) : Math.min(fHeight - tagHeight - 4, by + bh + 4);
 
           return (
             <g key={`det-box-${idx}-${det.type}`}>
@@ -110,8 +125,8 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
               <rect
                 x={bx}
                 y={by}
-                width={Math.max(4, bw)}
-                height={Math.max(4, bh)}
+                width={bw}
+                height={bh}
                 stroke={tokens.stroke}
                 strokeWidth={isStatic ? 1.5 : 2}
                 strokeDasharray={tokens.dash || 'none'}
@@ -119,21 +134,21 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
                 rx={2}
               />
 
-              {/* Box Corner Accents for high-tech surveillance look (Live detections only) */}
+              {/* Box Corner Accents for surveillance look (Live detections only) */}
               {!isStatic && (
                 <>
                   {/* Top-Left Corner */}
-                  <line x1={bx} y1={by} x2={bx + Math.min(10, bw * 0.25)} y2={by} stroke={tokens.stroke} strokeWidth={3.5} />
-                  <line x1={bx} y1={by} x2={bx} y2={by + Math.min(10, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3.5} />
+                  <line x1={bx} y1={by} x2={bx + Math.min(12, bw * 0.25)} y2={by} stroke={tokens.stroke} strokeWidth={3} />
+                  <line x1={bx} y1={by} x2={bx} y2={by + Math.min(12, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3} />
                   {/* Top-Right Corner */}
-                  <line x1={bx + bw} y1={by} x2={bx + bw - Math.min(10, bw * 0.25)} y2={by} stroke={tokens.stroke} strokeWidth={3.5} />
-                  <line x1={bx + bw} y1={by} x2={bx + bw} y2={by + Math.min(10, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3.5} />
+                  <line x1={bx + bw} y1={by} x2={bx + bw - Math.min(12, bw * 0.25)} y2={by} stroke={tokens.stroke} strokeWidth={3} />
+                  <line x1={bx + bw} y1={by} x2={bx + bw} y2={by + Math.min(12, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3} />
                   {/* Bottom-Left Corner */}
-                  <line x1={bx} y1={by + bh} x2={bx + Math.min(10, bw * 0.25)} y2={by + bh} stroke={tokens.stroke} strokeWidth={3.5} />
-                  <line x1={bx} y1={by + bh} x2={bx} y2={by + bh - Math.min(10, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3.5} />
+                  <line x1={bx} y1={by + bh} x2={bx + Math.min(12, bw * 0.25)} y2={by + bh} stroke={tokens.stroke} strokeWidth={3} />
+                  <line x1={bx} y1={by + bh} x2={bx} y2={by + bh - Math.min(12, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3} />
                   {/* Bottom-Right Corner */}
-                  <line x1={bx + bw} y1={by + bh} x2={bx + bw - Math.min(10, bw * 0.25)} y2={by + bh} stroke={tokens.stroke} strokeWidth={3.5} />
-                  <line x1={bx + bw} y1={by + bh} x2={bx + bw} y2={by + bh - Math.min(10, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3.5} />
+                  <line x1={bx + bw} y1={by + bh} x2={bx + bw - Math.min(12, bw * 0.25)} y2={by + bh} stroke={tokens.stroke} strokeWidth={3} />
+                  <line x1={bx + bw} y1={by + bh} x2={bx + bw} y2={by + bh - Math.min(12, bh * 0.25)} stroke={tokens.stroke} strokeWidth={3} />
                 </>
               )}
 
@@ -151,15 +166,16 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
 
               {/* Label Tag Text with Monospace Readout */}
               <text
-                x={tagX + 7}
-                y={tagY + 15}
+                x={tagX + 8}
+                y={tagY + tagHeight / 2 + 0.5}
+                dominantBaseline="middle"
                 fill={tokens.text}
-                fontSize={11.5}
+                fontSize={11}
                 fontFamily="'IBM Plex Mono', monospace"
                 fontWeight={600}
                 letterSpacing="0.2px"
               >
-                {det.label}
+                {displayLabel}
               </text>
             </g>
           );

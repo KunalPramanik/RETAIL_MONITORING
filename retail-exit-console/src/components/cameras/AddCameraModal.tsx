@@ -152,26 +152,30 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
   };
 
   useEffect(() => {
-    if (isOpen && initialCamera) {
-      setSetupMode('MANUAL');
-      setLabel(initialCamera.label || '');
-      setIpAddress(initialCamera.ipAddress || '');
-      setRtspPath(initialCamera.rtspPath || '');
-      setSelectedLaneId(initialCamera.laneId || '');
-      setPairingMethod(initialCamera.pairingMethod || 'MANUAL');
-      setTestResult({
-        tested: true,
-        success: true,
-        snapshotUrl: `/snapshots/preview_${initialCamera.cameraId}.jpg`,
-      });
-      setSnapshotLoadFailed(false);
-      if (initialStep) {
-        setStep(initialStep);
-      } else {
-        setStep(!initialCamera.laneId || initialCamera.status === 'PENDING_SETUP' ? 3 : 4);
+    if (isOpen) {
+      if (initialCamera) {
+        setSetupMode('MANUAL');
+        setLabel(initialCamera.label || '');
+        setIpAddress(initialCamera.ipAddress || '');
+        setRtspPath(initialCamera.rtspPath || '');
+        setSelectedLaneId(initialCamera.laneId || (lanes[0]?.laneId || ''));
+        setPairingMethod(initialCamera.pairingMethod || 'MANUAL');
+        setTestResult({
+          tested: true,
+          success: true,
+          snapshotUrl: `/snapshots/preview_${initialCamera.cameraId}.jpg`,
+        });
+        setSnapshotLoadFailed(false);
+        if (initialStep) {
+          setStep(initialStep);
+        } else {
+          setStep(!initialCamera.laneId || initialCamera.status === 'PENDING_SETUP' ? 3 : 4);
+        }
+      } else if (!selectedLaneId && lanes.length > 0) {
+        setSelectedLaneId(lanes[0].laneId);
       }
     }
-  }, [isOpen, initialCamera, initialStep]);
+  }, [isOpen, initialCamera, initialStep, lanes]);
 
   // Webcam QR scanner cleanup
   const stopWebcamScan = () => {
@@ -1182,6 +1186,15 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                           </option>
                         ))}
                       </select>
+
+                      {!selectedLaneId && (
+                        <div className="p-2.5 bg-amber/10 border border-amber/30 rounded-sm text-xs-tech text-amber flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Unassigned Notice:</strong> Exit scanning and automated loss prevention require camera-to-lane linkage. Leaving this camera unassigned keeps it in Staging/Reserve pool until a lane is assigned.
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between pt-1">
                         <span className="text-[11px] text-text-sec">

@@ -244,9 +244,11 @@ class CameraIngestionWorker:
                             "entity": None,
                         })
 
-            # 3. Detected items and cases (Neutral / Amber) — Hard-gated by confidence floor
+            # 3. Detected items and cases (Neutral / Amber) — Gated by category threshold
+            cfg = get_vision_config()
             for d in vis_res.detections:
-                if d.confidence < conf_floor:
+                target_floor = cfg.case_conf_threshold if "case" in d.class_label.lower() else cfg.item_conf_threshold
+                if d.confidence < target_floor:
                     continue
                 tag_prefix = "Case" if "case" in d.class_label.lower() else "Item"
                 item_label = getattr(d, "specific_label", None) or d.class_label

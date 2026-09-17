@@ -593,6 +593,50 @@ class VisionInferenceService:
         except Exception as e:
             logger.error("Error during YOLOX forward pass or NMS postprocessing: %s", e, exc_info=True)
 
+        # Augment with dynamic scene objects (doorways, hanging bags, umbrellas)
+        try:
+            from src.ml.scene_object_detector import SceneObjectDetector
+            exclude = [d.bbox for d in detections]
+            scene_objects = SceneObjectDetector.detect_scene_objects(img, exclude_boxes=exclude)
+            for so in scene_objects:
+                so_bbox = so["bbox"]
+                so_lbl = so["class_label"]
+                so_spec = so["specific_label"]
+                so_conf = so["confidence"]
+
+                # Ensure non-overlapping with existing detections
+                if any(cls.calculate_iou(so_bbox, d.bbox) > 0.35 for d in detections):
+                    continue
+
+                track_id_seq += 1
+                conf_scores.append(so_conf)
+                if so_lbl == "doorway":
+                    c_label = "doorway"
+                elif so_lbl == "bag":
+                    c_label = "single_unit"
+                    total_singles += 1
+                    total_units += 1
+                else:
+                    c_label = "single_unit"
+                    total_singles += 1
+                    total_units += 1
+
+                detections.append(
+                    DetectedBox(
+                        bbox=so_bbox,
+                        class_label=c_label,
+                        product_id=default_prod_id,
+                        sku_code=default_sku,
+                        confidence=so_conf,
+                        pack_size=1,
+                        track_id=track_id_seq,
+                        exit_vector=(0.0, 0.0),
+                        specific_label=so_spec,
+                    )
+                )
+        except Exception as _scene_err:
+            logger.debug("Scene object detection error: %s", _scene_err)
+
         # Draw all dynamic bounding boxes with specific labels and clean percentage badges
         for d in detections:
             bx, by, bw, bh = d.bbox
@@ -608,6 +652,9 @@ class VisionInferenceService:
             elif d.class_label == "vehicle":
                 badge_text = f"{disp_label} {conf_pct}%"
                 color = (255, 190, 0)  # Bright Cyan / Blue in BGR
+            elif d.class_label == "doorway":
+                badge_text = f"{disp_label} {conf_pct}%"
+                color = (255, 200, 0)  # Bright Cyan in BGR
             else:
                 badge_text = f"{disp_label} {conf_pct}%"
                 color = (0, 165, 255)

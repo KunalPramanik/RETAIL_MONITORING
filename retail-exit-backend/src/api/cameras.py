@@ -982,23 +982,6 @@ async def get_camera_snapshot(
                     camera_id=camera_id,
                 )
                 annotated_bytes = final_bytes or obj_bytes or frame_bytes
-
-                # Annotate dynamic wall picture frames
-                try:
-                    from src.ml.wall_picture_detector import WallPictureDetector
-                    dec_ann = cv2.imdecode(np.frombuffer(annotated_bytes, np.uint8), cv2.IMREAD_COLOR)
-                    if dec_ann is not None:
-                        exclude = [d.bbox for d in vis_res.detections]
-                        if face_boxes:
-                            exclude.extend(face_boxes)
-                        w_frames = WallPictureDetector.detect_wall_pictures(dec_ann, exclude_boxes=exclude)
-                        if w_frames:
-                            dec_ann = WallPictureDetector.annotate_frame(dec_ann, w_frames)
-                            ret_enc, buf_ann = cv2.imencode(".jpg", dec_ann, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-                            if ret_enc:
-                                annotated_bytes = buf_ann.tobytes()
-                except Exception as _wf_err:
-                    logger.debug("Snapshot wall frame annotation skipped: %s", _wf_err)
             except Exception:
                 pass
 

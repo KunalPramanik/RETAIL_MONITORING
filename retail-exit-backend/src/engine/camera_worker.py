@@ -54,7 +54,7 @@ logger = logging.getLogger("secops.camera_worker")
 class CameraIngestionWorker:
     """Orchestrates live frame polling, object/face inference, and event generation."""
 
-    def __init__(self, poll_interval_sec: float = 3.0):
+    def __init__(self, poll_interval_sec: float = 0.5):
         self.poll_interval_sec = poll_interval_sec
         self.is_running = False
         self._task: Optional[asyncio.Task] = None
@@ -64,6 +64,10 @@ class CameraIngestionWorker:
         self._camera_logs: Dict[str, deque] = {}
         self._active_transactions: Dict[str, Dict[str, Any]] = {}
         self._track_history: Dict[str, Dict[str, Tuple[float, float]]] = {}
+        self._cached_catalog: List[Dict[str, Any]] = []
+        self._cached_catalog_ts: float = 0.0
+        self._cached_roster: List[Dict[str, Any]] = []
+        self._cached_roster_ts: float = 0.0
 
     def register_camera(self, camera_record: Any) -> None:
         """Registers a newly discovered or confirmed camera into the ingestion fleet."""
@@ -209,18 +213,26 @@ class CameraIngestionWorker:
         }
 
         try:
-            prod_res = await session.execute(select(Product))
-            products = prod_res.scalars().all()
-            catalog = [
-                {"product_id": p.product_id, "sku_code": p.sku_code, "pack_size": p.pack_size}
-                for p in products
-            ]
-            emp_res = await session.execute(select(Employee).where(Employee.active_flag == True))
-            employees = emp_res.scalars().all()
-            roster = [
-                {"employee_id": e.employee_id, "name": e.name, "face_embedding": e.face_embedding}
-                for e in employees
-            ]
+            now_epoch = time.time()
+            if not self._cached_catalog or (now_epoch - self._cached_catalog_ts > 15.0):
+                prod_res = await session.execute(select(Product))
+                products = prod_res.scalars().all()
+                self._cached_catalog = [
+                    {"product_id": p.product_id, "sku_code": p.sku_code, "pack_size": p.pack_size}
+                    for p in products
+                ]
+                self._cached_catalog_ts = now_epoch
+            catalog = self._cached_catalog
+
+            if not self._cached_roster or (now_epoch - self._cached_roster_ts > 15.0):
+                emp_res = await session.execute(select(Employee).where(Employee.active_flag == True))
+                employees = emp_res.scalars().all()
+                self._cached_roster = [
+                    {"employee_id": e.employee_id, "name": e.name, "face_embedding": e.face_embedding}
+                    for e in employees
+                ]
+                self._cached_roster_ts = now_epoch
+            roster = self._cached_roster
 
             vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, catalog_products=catalog)
             face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
@@ -315,7 +327,7 @@ class CameraIngestionWorker:
                 if d.confidence < target_floor:
                     continue
 
-                item_label = getattr(d, "specific_label", None) or d.class_label
+                is_door = d.class_label == "doorway"
                 if is_veh:
                     b_type = "VEHICLE"
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
@@ -324,6 +336,10 @@ class CameraIngestionWorker:
                     b_type = "CASE"
                     b_label = f"Case: {item_label} ({int(d.confidence * 100)}%)"
                     b_color = "green"
+                elif is_door:
+                    b_type = "DOORWAY"
+                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
                 else:
                     b_type = "ITEM"
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
@@ -337,6 +353,22 @@ class CameraIngestionWorker:
                     "color": b_color,
                     "entity": item_label,
                 })
+
+            # Deduplicate overlay boxes to eliminate cluttered overlapping tags
+            def _calc_box_iou(b1, b2):
+                xa = max(b1[0], b2[0])
+                ya = max(b1[1], b2[1])
+                xb = min(b1[0] + b1[2], b2[0] + b2[2])
+                yb = min(b1[1] + b1[3], b2[1] + b2[3])
+                inter = max(0, xb - xa) * max(0, yb - ya)
+                denom = b1[2] * b1[3] + b2[2] * b2[3] - inter
+                return inter / float(denom) if denom > 0 else 0.0
+
+            clean_boxes = []
+            for ob in sorted(overlay_boxes, key=lambda x: x.get("confidence", 0.0), reverse=True):
+                if not any(_calc_box_iou(ob["box"], cb["box"]) > 0.45 and ob["type"] == cb["type"] for cb in clean_boxes):
+                    clean_boxes.append(ob)
+            overlay_boxes = clean_boxes
 
             # 4. Static face spoof images (Anti-spoofing photo attacks against biometric scanner)
             for s in getattr(face_res, "static_detections", []):

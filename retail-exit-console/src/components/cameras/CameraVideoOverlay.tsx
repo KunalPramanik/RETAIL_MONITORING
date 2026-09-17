@@ -109,66 +109,64 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
 
     const tokens = getColorTokens(det.color);
     const isStatic = det.type === 'STATIC_IMAGE';
+    const isDoorway = det.type === 'DOORWAY';
 
-    // Refine label display: clean "Item:" prefix and format percentage
+    // Refine label display: clean prefixes and format percentage
     let displayLabel = (det.label || '')
       .replace(/^Item:\s*/i, '')
+      .replace(/\(Folded\)/i, '')
       .replace(/\s*\((\d+)%\)$/, ' · $1%');
 
-    // Simplify compound category names (e.g., "Clock / Wall Item · 83%" -> "Clock · 83%")
+    // Simplify compound category names (e.g., "Doorway / Exit Door" -> "Doorway", "Clock / Wall Item" -> "Clock")
     if (displayLabel.includes(' / ')) {
       displayLabel = displayLabel.replace(/ \/ [^·]+/, '');
     }
+    displayLabel = displayLabel.trim();
 
     const tagHeight = 22;
-    const approxCharWidth = 8.5;
-    const tagWidth = Math.max(70, Math.ceil(displayLabel.length * approxCharWidth + 20));
+    const approxCharWidth = 8.0;
+    const tagWidth = Math.max(68, Math.ceil(displayLabel.length * approxCharWidth + 18));
 
-    // Preferred tag position: above bounding box
-    let tagX = Math.max(4, Math.min(bx, fWidth - tagWidth - 6));
-    let tagY = by - tagHeight - 3;
+    let candidate = { x: 0, y: 0, w: tagWidth, h: tagHeight };
 
-    // If above goes out of frame, try below the bounding box
-    if (tagY < 4) {
-      tagY = Math.min(fHeight - tagHeight - 4, by + bh + 4);
-    }
+    if (isDoorway) {
+      // Architectural doorways dock their badge cleanly inside the top-left corner
+      candidate.x = Math.max(4, Math.min(bx + 8, fWidth - tagWidth - 6));
+      candidate.y = Math.max(4, Math.min(by + 8, fHeight - tagHeight - 6));
+    } else {
+      // Preferred tag position: above bounding box
+      let tagX = Math.max(4, Math.min(bx, fWidth - tagWidth - 6));
+      let tagY = by - tagHeight - 3;
 
-    const checkOverlap = (rect: { x: number; y: number; w: number; h: number }) => {
-      return placedTags.some(
-        (p) => !(rect.x + rect.w < p.x || p.x + p.w < rect.x || rect.y + rect.h < p.y || p.y + p.h < rect.y)
-      );
-    };
+      // If above goes out of frame, place below the bounding box
+      if (tagY < 4) {
+        tagY = Math.min(fHeight - tagHeight - 4, by + bh + 4);
+      }
 
-    let candidate = { x: tagX, y: tagY, w: tagWidth, h: tagHeight };
-
-    if (checkOverlap(candidate)) {
-      // If above position collides, attempt below the bounding box
-      const belowY = Math.min(fHeight - tagHeight - 4, by + bh + 4);
-      const belowCandidate = { x: tagX, y: belowY, w: tagWidth, h: tagHeight };
-      if (!checkOverlap(belowCandidate)) {
-        candidate = belowCandidate;
-      } else {
-        // Find colliding tag and stack vertically
-        const colliding = placedTags.find(
-          (p) => !(candidate.x + candidate.w < p.x || p.x + p.w < candidate.x || candidate.y + candidate.h < p.y || p.y + p.h < candidate.y)
+      const checkOverlap = (rect: { x: number; y: number; w: number; h: number }) => {
+        return placedTags.some(
+          (p) => !(rect.x + rect.w < p.x || p.x + p.w < rect.x || rect.y + rect.h < p.y || p.y + p.h < rect.y)
         );
-        if (colliding) {
-          const stackedDownY = colliding.y + colliding.h + 3;
-          if (stackedDownY + tagHeight <= fHeight - 4) {
-            candidate = { x: tagX, y: stackedDownY, w: tagWidth, h: tagHeight };
-          } else {
-            const stackedUpY = colliding.y - tagHeight - 3;
-            if (stackedUpY >= 4) {
-              candidate = { x: tagX, y: stackedUpY, w: tagWidth, h: tagHeight };
-            }
-          }
+      };
+
+      candidate = { x: tagX, y: tagY, w: tagWidth, h: tagHeight };
+
+      if (checkOverlap(candidate)) {
+        // Try below the bounding box
+        const belowY = Math.min(fHeight - tagHeight - 4, by + bh + 4);
+        const belowCandidate = { x: tagX, y: belowY, w: tagWidth, h: tagHeight };
+        if (!checkOverlap(belowCandidate)) {
+          candidate = belowCandidate;
+        } else {
+          // Inside the top border
+          const insideY = Math.min(fHeight - tagHeight - 4, by + 4);
+          candidate = { x: tagX, y: insideY, w: tagWidth, h: tagHeight };
         }
       }
-    }
 
-    // Ensure within frame bounds
-    candidate.x = Math.max(4, Math.min(candidate.x, fWidth - tagWidth - 4));
-    candidate.y = Math.max(4, Math.min(candidate.y, fHeight - tagHeight - 4));
+      candidate.x = Math.max(4, Math.min(candidate.x, fWidth - tagWidth - 4));
+      candidate.y = Math.max(4, Math.min(candidate.y, fHeight - tagHeight - 4));
+    }
 
     placedTags.push(candidate);
 
@@ -184,6 +182,7 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
       displayLabel,
       tokens,
       isStatic,
+      isDoorway,
       det,
     };
   });
@@ -197,7 +196,7 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
         className="w-full h-full block"
       >
         {computedItems.map((item, idx) => {
-          const { bx, by, bw, bh, tagX, tagY, tagWidth, tagHeight, displayLabel, tokens, isStatic, det } = item;
+          const { bx, by, bw, bh, tagX, tagY, tagWidth, tagHeight, displayLabel, tokens, isStatic, isDoorway, det } = item;
 
           return (
             <g key={`det-box-${idx}-${det.type}`}>
@@ -208,14 +207,14 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
                 width={bw}
                 height={bh}
                 stroke={tokens.stroke}
-                strokeWidth={isStatic ? 1.5 : 2}
-                strokeDasharray={tokens.dash || 'none'}
-                fill={tokens.fill}
+                strokeWidth={isDoorway ? 1.5 : (isStatic ? 1.5 : 2)}
+                strokeDasharray={isDoorway ? '6 4' : (tokens.dash || 'none')}
+                fill={isDoorway ? 'none' : tokens.fill}
                 rx={2}
               />
 
-              {/* Box Corner Accents for surveillance look (Live detections only) */}
-              {!isStatic && (
+              {/* Box Corner Accents for surveillance look (Live detections only, excluding doorways) */}
+              {!isStatic && !isDoorway && (
                 <>
                   {/* Top-Left Corner */}
                   <line x1={bx} y1={by} x2={bx + Math.min(12, bw * 0.25)} y2={by} stroke={tokens.stroke} strokeWidth={3} />

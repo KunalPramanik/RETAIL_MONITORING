@@ -200,7 +200,7 @@ export type ViewType =
   | 'settings';
 
 
-export type DetectionBoxType = 'PERSON_MATCHED' | 'PERSON_UNMATCHED' | 'ITEM' | 'STATIC_IMAGE' | 'VEHICLE';
+export type DetectionBoxType = 'PERSON_MATCHED' | 'PERSON_UNMATCHED' | 'ITEM' | 'STATIC_IMAGE' | 'VEHICLE' | 'DOORWAY' | 'MATERIAL_INSTANCE';
 
 export interface DetectionBox {
   box: [number, number, number, number]; // [x, y, w, h]

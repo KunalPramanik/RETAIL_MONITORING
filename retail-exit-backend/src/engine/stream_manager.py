@@ -99,37 +99,56 @@ class CameraStreamSession:
             return None
 
     def _generate_simulated_frame(self, tick: int) -> np.ndarray:
-        """Generates dynamic, animated high-resolution CCTV video frames."""
+        """Generates dynamic, animated high-resolution CCTV video frames from real surveillance footage."""
+        import glob
         w, h = 1280, 720
-        frame = np.zeros((h, w, 3), dtype=np.uint8)
-        # 1. Subtle surveillance grid
-        grid_color = (25, 30, 40)
-        for x in range(0, w, 80):
-            cv2.line(frame, (x, 0), (x, h), grid_color, 1)
-        for y in range(0, h, 80):
-            cv2.line(frame, (0, y), (w, y), grid_color, 1)
+        frame = None
 
-        # 2. Dark slate border and tech HUD markings
-        cv2.rectangle(frame, (20, 20), (w - 20, h - 20), (55, 65, 81), 2)
-        cv2.putText(frame, "SEC-OPS SURVEILLANCE FLEET // REAL-TIME CV NODE", (40, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (217, 119, 6), 2)
+        if not hasattr(self, "_candidate_files") or not self._candidate_files:
+            candidate_patterns = [
+                "retail-exit-backend/data/active_learning/candidates/*.jpg",
+                "data/active_learning/candidates/*.jpg",
+                "snapshots/*.jpg",
+                "retail-exit-backend/snapshots/*.jpg",
+            ]
+            for pattern in candidate_patterns:
+                matches = glob.glob(pattern)
+                if matches:
+                    self._candidate_files = sorted(matches)
+                    break
+
+        if hasattr(self, "_candidate_files") and self._candidate_files:
+            # Advance frame across the 701 candidate surveillance frames
+            idx = (tick * 2) % len(self._candidate_files)
+            try:
+                raw = cv2.imread(self._candidate_files[idx])
+                if raw is not None and raw.size > 0:
+                    frame = cv2.resize(raw, (w, h))
+            except Exception:
+                pass
+
+        if frame is None:
+            frame = np.zeros((h, w, 3), dtype=np.uint8)
+            grid_color = (25, 30, 40)
+            for x in range(0, w, 80):
+                cv2.line(frame, (x, 0), (x, h), grid_color, 1)
+            for y in range(0, h, 80):
+                cv2.line(frame, (0, y), (w, y), grid_color, 1)
+
+        # Semi-transparent CCTV HUD top and bottom overlays
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, 0), (w, 85), (15, 20, 25), -1)
+        cv2.rectangle(overlay, (0, h - 55), (w, h), (15, 20, 25), -1)
+        cv2.addWeighted(overlay, 0.65, frame, 0.35, 0, frame)
+
+        cv2.putText(frame, "SEC-OPS SURVEILLANCE FLEET // REAL-TIME CV NODE", (30, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (217, 119, 6), 2)
         disp_title = f"{self.camera_key.upper()}"
-        cv2.putText(frame, f"STREAM: {disp_title} | TARGET: {self.source}", (40, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 1)
+        cv2.putText(frame, f"STREAM: {disp_title} | TARGET: {self.source}", (30, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (255, 255, 255), 2)
 
-        # 3. Animated optical sweep line (simulating live active radar sensor scan)
-        sweep_y = int((tick * 10) % (h - 120) + 70)
-        cv2.line(frame, (30, sweep_y), (w - 30, sweep_y), (0, 180, 216), 2)
-
-        # 4. Animated monitored exit target box (simulating moving object through exit lane)
-        box_x = int(450 + 220 * np.sin(tick * 0.05))
-        box_y = int(240 + 50 * np.cos(tick * 0.04))
-        bw, bh = 240, 300
-        cv2.rectangle(frame, (box_x, box_y), (box_x + bw, box_y + bh), (34, 197, 94), 2)
-        cv2.putText(frame, "EXIT ZONE // DETECTED TARGET", (box_x, box_y - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (34, 197, 94), 2)
-
-        # 5. Live UTC timestamp updated continuously every frame
+        # Live UTC timestamp updated continuously every frame
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-4] + " UTC"
-        cv2.putText(frame, f"TIMESTAMP: {now_str}", (40, h - 45), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (160, 174, 192), 1)
-        cv2.putText(frame, "STATUS: LIVE STREAM ACTIVE // 25.0 FPS", (w - 440, h - 45), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (34, 197, 94), 2)
+        cv2.putText(frame, f"REC [LIVE]  {now_str}", (30, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 210, 220), 1)
+        cv2.putText(frame, "STATUS: LIVE VIDEO ACTIVE // 25.0 FPS", (w - 440, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (34, 197, 94), 2)
 
         return frame
 

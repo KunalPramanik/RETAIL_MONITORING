@@ -24,7 +24,7 @@
         "eval_dataset_size": 5000,
         "evaluated_at": "2026-09-17T07:17:04.927654+00:00"
       },
-      "shadow_traffic_pct": 0.0,
+      "shadow_traffic_pct": 30.0,
       "notes": "Initial baseline pretrained weights before retail fine-tuning."
     }
   }

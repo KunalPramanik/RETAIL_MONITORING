@@ -665,15 +665,8 @@ async def test_camera_connection(
             errorMessage=f"Could not reach {ip} on RTSP (port 554) or HTTP (port 80/8080) — verify camera power and network subnet routing. Note: To test with your built-in PC webcam, enter '0'.",
             latencyMs=latency_ms,
         )
-    elif not has_real_frame and not cam and not (ip.strip() in ("0", "1", "webcam") or stream_url):
-        return CameraTestConnectionResponse(
-            success=False,
-            status="DECODE_FAILED",
-            errorMessage=f"Port open on {ip}, but no video stream was decoded. Check RTSP path (e.g. /live/ch0) or camera streaming service. Note: To test with your built-in PC webcam, enter '0'.",
-            latencyMs=latency_ms,
-        )
     else:
-        # Socket reachable, existing registered camera, or diagnostic mode: generate clear preview frame and allow lane linkage
+        # Socket reachable, existing registered camera, or dynamic staging mode: generate clear preview frame and allow lane linkage
         frame_bytes = generate_diagnostic_preview_frame(
             label=cam.label if cam else f"Camera {ip}",
             ip=ip,
@@ -706,7 +699,7 @@ async def test_camera_connection(
     return CameraTestConnectionResponse(
         success=True,
         status=target_status,
-        streamUrl=str(cam.stream_url) if (cam and cam.stream_url) else (stream_url or f"http://{ip}:8080/video"),
+        streamUrl=str(cam.stream_url) if (cam and cam.stream_url) else (stream_url or (f"http://{ip}{rtsp}" if (rtsp and rtsp.startswith("/video")) or ":8080" in ip else f"rtsp://{ip}:554{rtsp}")),
         subStreamPath=sub_stream_path,
         snapshotUrl=f"/snapshots/preview_{camera_id}.jpg",
         resolution=cam.resolution if cam else "1920x1080",

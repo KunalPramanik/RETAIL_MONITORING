@@ -60,7 +60,7 @@
     "person_conf_threshold": 0.50,
     "case_conf_threshold": 0.50,
     "vehicle_conf_threshold": 0.25,
-    "item_conf_threshold": 0.45,
+    "item_conf_threshold": 0.35,
     "nms_iou_threshold": 0.35,
     "face_candidate_min_score": 0.45,
     "min_real_z_std": 15.0,

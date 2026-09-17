@@ -258,31 +258,68 @@ class CameraIngestionWorker:
                             "entity": None,
                         })
 
-            # 3. Detected items, vehicles, and cases — Gated by category threshold
+            # 3. Detected items, vehicles, cases, and people from YOLOX
             cfg = get_vision_config()
             for d in vis_res.detections:
+                is_person = d.class_label == "person"
                 is_veh = d.class_label == "vehicle"
                 is_case = "case" in d.class_label.lower()
+
+                if is_person:
+                    # Check if face recognition already identified or tracked this person
+                    has_face_overlap = False
+                    for ob in overlay_boxes:
+                        if ob["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED"):
+                            fx, fy, fw, fh = ob["box"]
+                            fcx, fcy = fx + fw / 2.0, fy + fh / 2.0
+                            if (d.bbox[0] - 25 <= fcx <= d.bbox[0] + d.bbox[2] + 25 and
+                                d.bbox[1] - 25 <= fcy <= d.bbox[1] + d.bbox[3] + 25):
+                                has_face_overlap = True
+                                break
+                    # Only append person body box if face was NOT visible / occluded
+                    if not has_face_overlap and d.confidence >= cfg.person_conf_threshold:
+                        overlay_boxes.append({
+                            "box": d.bbox,
+                            "type": "PERSON_UNMATCHED",
+                            "label": f"Person ({int(d.confidence * 100)}%)",
+                            "confidence": round(float(d.confidence), 4),
+                            "color": "red",
+                            "entity": "Person",
+                        })
+                    continue
+
                 target_floor = (
                     cfg.case_conf_threshold if is_case
                     else (getattr(cfg, "vehicle_conf_threshold", 0.25) if is_veh
-                    else max(cfg.item_conf_threshold, conf_floor))
+                    else cfg.item_conf_threshold)
                 )
                 if d.confidence < target_floor:
                     continue
-                tag_prefix = "Vehicle" if is_veh else ("Case" if is_case else "Item")
+
                 item_label = getattr(d, "specific_label", None) or d.class_label
-                color = "cyan" if is_veh else ("green" if is_case else "amber")
+                if is_veh:
+                    b_type = "VEHICLE"
+                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_case:
+                    b_type = "CASE"
+                    b_label = f"Case: {item_label} ({int(d.confidence * 100)}%)"
+                    b_color = "green"
+                else:
+                    b_type = "ITEM"
+                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_color = "amber"
+
                 overlay_boxes.append({
                     "box": d.bbox,
-                    "type": "VEHICLE" if is_veh else "ITEM",
-                    "label": f"{item_label} ({int(d.confidence * 100)}%)" if is_veh else f"{tag_prefix}: {item_label} ({int(d.confidence * 100)}%)",
+                    "type": b_type,
+                    "label": b_label,
                     "confidence": round(float(d.confidence), 4),
-                    "color": color,
+                    "color": b_color,
                     "entity": item_label,
                 })
 
-            # 4. Static images (Low-emphasis outline, e.g. Religious Image, Poster, Screen)
+            # 4. Static face spoof images (Anti-spoofing photo attacks against biometric scanner)
             for s in getattr(face_res, "static_detections", []):
                 if s.get("confidence", 0.50) >= conf_floor:
                     overlay_boxes.append({
@@ -308,37 +345,6 @@ class CameraIngestionWorker:
                     session.add(static_entry)
                 except Exception as ex:
                     logger.debug("Failed to record static detection: %s", ex)
-
-            # 4b. Dynamic Wall Picture & Frame Detection (Posters, Prints, Wall Art)
-            if dec is not None and dec.size > 0:
-                try:
-                    from src.ml.wall_picture_detector import WallPictureDetector
-                    person_boxes = [b["box"] for b in overlay_boxes if b["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED")]
-                    wall_frames = WallPictureDetector.detect_wall_pictures(dec, exclude_boxes=person_boxes)
-                    for wf in wall_frames:
-                        # Avoid duplicates if face_res already caught this box
-                        is_dup = any(
-                            abs(wf["box"][0] - b["box"][0]) < 25 and abs(wf["box"][1] - b["box"][1]) < 25
-                            for b in overlay_boxes if b["type"] == "STATIC_IMAGE"
-                        )
-                        if not is_dup and wf["confidence"] >= conf_floor:
-                            overlay_boxes.append(wf)
-                            try:
-                                static_entry = StaticImageDetection(
-                                    camera_id=cam.camera_id,
-                                    frame_ts=now,
-                                    bbox=wf["box"],
-                                    liveness_score=0.15,
-                                    classification=wf["classification"],
-                                    classification_confidence=wf["confidence"],
-                                    model_version="wall-picture-detector-v1.0",
-                                    suppressed_alert=True,
-                                )
-                                session.add(static_entry)
-                            except Exception as ex:
-                                logger.debug("Failed to record wall frame detection: %s", ex)
-                except Exception as w_err:
-                    logger.debug("WallPictureDetector execution failed: %s", w_err)
 
             # Update rolling activity logs for this camera HUD
             if cam.camera_id not in self._camera_logs:

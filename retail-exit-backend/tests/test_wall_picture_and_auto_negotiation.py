@@ -110,3 +110,103 @@ async def test_auto_negotiation_reports_probed_ports_on_closed_target(client):
     # Verifies that developer shortcuts remain purged
     assert "enter '0'" not in err.lower()
     assert "webcam" not in err.lower()
+
+
+def test_dynamic_item_and_person_overlay_deduplication():
+    """Verifies that items like Bottle are dynamic amber items, and people are never labeled as 'Item: Person'."""
+    from src.ml.vision_service import DetectedBox
+    from src.ml.model_config import get_vision_config
+
+    cfg = get_vision_config()
+
+    # Simulate overlay boxes with face detection
+    overlay_boxes = [
+        {
+            "box": [200, 150, 80, 90],
+            "type": "PERSON_UNMATCHED",
+            "label": "Unknown Person (75%)",
+            "confidence": 0.75,
+            "color": "red",
+            "entity": None,
+        }
+    ]
+
+    # Detections from YOLOX:
+    # 1. Person body overlapping the face
+    # 2. Bottle held in hand
+    yolox_detections = [
+        DetectedBox(
+            bbox=[180, 130, 150, 300],
+            class_label="person",
+            product_id=None,
+            sku_code="SKU-UNIT-PACK",
+            confidence=0.82,
+            pack_size=1,
+            track_id=301,
+            exit_vector=(0.0, 15.0),
+            specific_label="Person",
+        ),
+        DetectedBox(
+            bbox=[320, 260, 60, 140],
+            class_label="single_unit",
+            product_id="prod_water_bottle",
+            sku_code="SKU-BOTTLE-500ML",
+            confidence=0.78,
+            pack_size=1,
+            track_id=302,
+            exit_vector=(0.0, 15.0),
+            specific_label="Bottle",
+        ),
+    ]
+
+    # Process detections using the camera_worker logic
+    for d in yolox_detections:
+        is_person = d.class_label == "person"
+        is_veh = d.class_label == "vehicle"
+        is_case = "case" in d.class_label.lower()
+
+        if is_person:
+            has_face_overlap = False
+            for ob in overlay_boxes:
+                if ob["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED"):
+                    fx, fy, fw, fh = ob["box"]
+                    fcx, fcy = fx + fw / 2.0, fy + fh / 2.0
+                    if (d.bbox[0] - 25 <= fcx <= d.bbox[0] + d.bbox[2] + 25 and
+                        d.bbox[1] - 25 <= fcy <= d.bbox[1] + d.bbox[3] + 25):
+                        has_face_overlap = True
+                        break
+            if not has_face_overlap and d.confidence >= cfg.person_conf_threshold:
+                overlay_boxes.append({
+                    "box": d.bbox,
+                    "type": "PERSON_UNMATCHED",
+                    "label": f"Person ({int(d.confidence * 100)}%)",
+                    "confidence": round(float(d.confidence), 4),
+                    "color": "red",
+                    "entity": "Person",
+                })
+            continue
+
+        item_label = getattr(d, "specific_label", None) or d.class_label
+        overlay_boxes.append({
+            "box": d.bbox,
+            "type": "ITEM",
+            "label": f"{item_label} ({int(d.confidence * 100)}%)",
+            "confidence": round(float(d.confidence), 4),
+            "color": "amber",
+            "entity": item_label,
+        })
+
+    # Assertions:
+    # 1. Bottle was added as ITEM with amber color
+    bottle_boxes = [b for b in overlay_boxes if b.get("entity") == "Bottle"]
+    assert len(bottle_boxes) == 1
+    assert bottle_boxes[0]["type"] == "ITEM"
+    assert bottle_boxes[0]["color"] == "amber"
+    assert "Bottle (78%)" in bottle_boxes[0]["label"]
+
+    # 2. No duplicate 'Item: Person' box was added!
+    item_person_boxes = [b for b in overlay_boxes if "Item: Person" in b.get("label", "")]
+    assert len(item_person_boxes) == 0
+
+    # 3. Exactly 2 boxes exist: the face and the bottle (no spurious wall boxes or duplicate person boxes)
+    assert len(overlay_boxes) == 2

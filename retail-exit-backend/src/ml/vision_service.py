@@ -15,7 +15,7 @@ import logging
 import cv2
 import numpy as np
 import onnxruntime as ort
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone
 
@@ -56,6 +56,7 @@ class VisionInferenceService:
     INPUT_SIZE = (416, 416)
 
     _session: Optional[ort.InferenceSession] = None
+    _loaded_version: Optional[str] = None
 
     # COCO Class mapping to retail exit monitoring classes
     # 0 = person
@@ -71,14 +72,35 @@ class VisionInferenceService:
     }
 
     @classmethod
+    def get_model_version(cls) -> str:
+        try:
+            from src.ml.model_registry import ModelRegistry
+            return ModelRegistry.get_instance().active_production_version
+        except Exception:
+            return cls.MODEL_VERSION
+
+    @classmethod
     def get_session(cls) -> ort.InferenceSession:
-        if cls._session is None:
-            if not os.path.exists(cls.WEIGHTS_PATH):
-                raise FileNotFoundError(f"YOLOX weights not found at {cls.WEIGHTS_PATH}")
+        try:
+            from src.ml.model_registry import ModelRegistry
+            prod_model = ModelRegistry.get_instance().get_production_model()
+            target_path = prod_model.weights_path if prod_model else cls.WEIGHTS_PATH
+            target_version = prod_model.model_version if prod_model else cls.MODEL_VERSION
+        except Exception:
+            target_path = cls.WEIGHTS_PATH
+            target_version = cls.MODEL_VERSION
+
+        if cls._session is None or getattr(cls, "_loaded_version", None) != target_version:
+            if not os.path.exists(target_path):
+                if os.path.exists(cls.WEIGHTS_PATH):
+                    target_path = cls.WEIGHTS_PATH
+                else:
+                    raise FileNotFoundError(f"YOLOX weights not found at {target_path}")
             opts = ort.SessionOptions()
             opts.intra_op_num_threads = 2
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            cls._session = ort.InferenceSession(cls.WEIGHTS_PATH, sess_options=opts, providers=["CPUExecutionProvider"])
+            cls._session = ort.InferenceSession(target_path, sess_options=opts, providers=["CPUExecutionProvider"])
+            cls._loaded_version = target_version
         return cls._session
 
     @staticmethod
@@ -279,7 +301,7 @@ class VisionInferenceService:
         simulated_latency = 15.40
 
         return VisionInferenceResult(
-            model_version=cls.MODEL_VERSION,
+            model_version=cls.get_model_version(),
             vision_count=total_units,
             cases_detected=total_cases,
             singles_detected=total_singles,
@@ -304,7 +326,7 @@ class VisionInferenceService:
         if img is None:
             return (
                 VisionInferenceResult(
-                    model_version=cls.MODEL_VERSION,
+                    model_version=cls.get_model_version(),
                     vision_count=0,
                     cases_detected=0,
                     singles_detected=0,
@@ -363,37 +385,43 @@ class VisionInferenceService:
             cand_indices = []
             cand_cls_list = []
             cand_sc_list = []
+            num_model_classes = scores.shape[1]
+
             for i in range(len(scores)):
                 # 1. Person
-                p_sc = float(scores[i, 0])
-                if p_sc >= person_floor:
-                    cand_indices.append(i)
-                    cand_cls_list.append(0)
-                    cand_sc_list.append(p_sc)
+                if 0 < num_model_classes:
+                    p_sc = float(scores[i, 0])
+                    if p_sc >= person_floor:
+                        cand_indices.append(i)
+                        cand_cls_list.append(0)
+                        cand_sc_list.append(p_sc)
 
                 # 2. Case / Carton
                 for cid in cfg.case_classes:
-                    sc = float(scores[i, cid])
-                    if sc >= case_floor:
-                        cand_indices.append(i)
-                        cand_cls_list.append(cid)
-                        cand_sc_list.append(sc)
+                    if cid < num_model_classes:
+                        sc = float(scores[i, cid])
+                        if sc >= case_floor:
+                            cand_indices.append(i)
+                            cand_cls_list.append(cid)
+                            cand_sc_list.append(sc)
 
                 # 3. Vehicles
                 for cid in vehicle_classes:
-                    sc = float(scores[i, cid])
-                    if sc >= vehicle_floor:
-                        cand_indices.append(i)
-                        cand_cls_list.append(cid)
-                        cand_sc_list.append(sc)
+                    if cid < num_model_classes:
+                        sc = float(scores[i, cid])
+                        if sc >= vehicle_floor:
+                            cand_indices.append(i)
+                            cand_cls_list.append(cid)
+                            cand_sc_list.append(sc)
 
                 # 4. Single items (smartphones, laptops, bottles, bags, etc.)
                 # If multiple single item classes pass item_floor for anchor i, keep top candidates
                 item_cands = []
                 for cid in cfg.single_item_classes:
-                    sc = float(scores[i, cid])
-                    if sc >= item_floor:
-                        item_cands.append((sc, cid))
+                    if cid < num_model_classes:
+                        sc = float(scores[i, cid])
+                        if sc >= item_floor:
+                            item_cands.append((sc, cid))
                 if item_cands:
                     item_cands.sort(key=lambda x: x[0], reverse=True)
                     # Keep top 2 single item candidates if present (e.g. adjacent dark laptop + phone)
@@ -624,12 +652,39 @@ class VisionInferenceService:
             cv2.LINE_AA,
         )
 
+        # Part E.6 Shadow deployment frame evaluation (strictly non-interfering)
+        try:
+            from src.ml.shadow_service import shadow_service
+            shadow_service.evaluate_shadow_frame(img, [asdict(d) for d in detections])
+        except Exception as _sh_err:
+            logger.debug("Shadow evaluation error: %s", _sh_err)
+
+        # Step 6 Active Learning: track confidence & capture sub-floor proposals
+        try:
+            from src.ml.active_learning import active_learning_service
+            for c in conf_scores:
+                active_learning_service.log_confidence(c)
+
+            sub_floor_proposals = [
+                {"bbox": d.bbox, "class": d.specific_label or d.class_label, "confidence": d.confidence}
+                for d in detections if d.confidence < 0.50
+            ]
+            if sub_floor_proposals:
+                active_learning_service.capture_candidate_frame(
+                    frame_bytes=frame_bytes,
+                    camera_id="EXIT-SURVEILLANCE",
+                    proposals=sub_floor_proposals,
+                    reason="sub_floor_confidence"
+                )
+        except Exception as _al_err:
+            logger.debug("Active learning logging error: %s", _al_err)
+
         _, encoded_jpg = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
         annotated_bytes = encoded_jpg.tobytes()
 
         return (
             VisionInferenceResult(
-                model_version=cls.MODEL_VERSION,
+                model_version=cls.get_model_version(),
                 vision_count=total_units,
                 cases_detected=total_cases,
                 singles_detected=total_singles,

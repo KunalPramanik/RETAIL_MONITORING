@@ -1,0 +1,31 @@
+{
+  "active_production_version": "yolox-tiny-coco-v0.1.0",
+  "active_shadow_version": null,
+  "shadow_traffic_pct": 0.0,
+  "models": {
+    "yolox-tiny-coco-v0.1.0": {
+      "model_version": "yolox-tiny-coco-v0.1.0",
+      "model_name": "YOLOX-Tiny COCO Baseline",
+      "weights_path": "src/ml/weights/yolox_tiny.onnx",
+      "status": "production",
+      "created_at": "2026-09-17T07:17:04.927654+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "coco-2017-val",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.68,
+        "case_unit_recall": 0.72,
+        "empty_scene_fp_rate": 0.08,
+        "pairwise_precision": 0.71,
+        "latency_ms": 18.5,
+        "eval_dataset_size": 5000,
+        "evaluated_at": "2026-09-17T07:17:04.927654+00:00"
+      },
+      "shadow_traffic_pct": 0.0,
+      "notes": "Initial baseline pretrained weights before retail fine-tuning."
+    }
+  }
+}

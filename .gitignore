@@ -41,6 +41,8 @@ retail-exit-backend/uploads/invoices/*
 !retail-exit-backend/uploads/invoices/.gitkeep
 retail-exit-backend/snapshots/*
 !retail-exit-backend/snapshots/.gitkeep
+retail-exit-backend/data/*
+!retail-exit-backend/data/.gitkeep
 
 # System & OS Files
 .DS_Store

@@ -15,6 +15,7 @@ from src.api.ingest import router as ingest_router
 from src.api.cameras import router as cameras_router
 from src.api.hardware import router as hardware_router
 from src.api.discovery import router as discovery_router
+from src.api.model_routes import router as model_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -31,3 +32,4 @@ api_router.include_router(ingest_router)
 api_router.include_router(cameras_router)
 api_router.include_router(hardware_router)
 api_router.include_router(discovery_router)
+api_router.include_router(model_router)

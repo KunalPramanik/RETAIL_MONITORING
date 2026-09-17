@@ -219,6 +219,7 @@ class CameraIngestionWorker:
 
             # Determine frame dimensions for SVG viewport alignment
             frame_w, frame_h = 1280, 720
+            dec: Optional[np.ndarray] = None
             try:
                 nparr = np.frombuffer(frame_bytes, np.uint8)
                 dec = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)

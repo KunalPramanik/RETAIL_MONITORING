@@ -242,10 +242,12 @@ def capture_camera_frame_sync(
 
     diag_info["is_port_open"] = is_rtsp_reachable
 
+    open_ports: List[int] = []
+    host_responds: bool = False
+
     if not is_rtsp_reachable:
         # Probe fallback ports (8080, 4747, 80, 8554, 8000) to distinguish host unreachable vs port closed
         # and support smart multi-port camera auto-negotiation (e.g. phone IP Webcam apps on 8080/4747)
-        open_ports = []
         for test_p in [8080, 4747, 80, 8554, 8000]:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -394,6 +396,14 @@ def capture_camera_frame_sync(
                 cap.release()
         except Exception:
             pass
+
+    if not is_rtsp_reachable and host_responds:
+        if open_ports:
+            diag_info["error_message"] = (
+                f"RTSP port {target_port} is closed on '{target_host}'. Open TCP port(s) detected: {open_ports}, "
+                f"but no video stream could be decoded (web server or authentication required). "
+                f"If using a phone camera or IP camera, verify the streaming app is started and specify the stream path."
+            )
 
     latency = round((time.perf_counter() - t0) * 1000.0, 1)
     if is_rtsp_reachable or (open_ports and len(open_ports) > 0):

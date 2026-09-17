@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Tuple, Union, Set
+import logging
 import os
 import time
 import uuid
@@ -20,6 +21,8 @@ import asyncio
 import socket
 import urllib.parse
 from datetime import datetime, timezone
+
+logger = logging.getLogger("secops.api.cameras")
 
 from src.db.session import get_db
 from src.db.models import Camera, CameraPairingToken, CameraHeartbeat, Lane, Store, Alert, StaticImageDetection, get_utc_now
@@ -240,18 +243,19 @@ def capture_camera_frame_sync(
     diag_info["is_port_open"] = is_rtsp_reachable
 
     if not is_rtsp_reachable:
-        # Probe fallback ports (80, 443, 8080) to distinguish host unreachable vs port closed
-        host_responds = False
-        for test_p in [80, 443, 8080]:
+        # Probe fallback ports (8080, 4747, 80, 8554, 8000) to distinguish host unreachable vs port closed
+        # and support smart multi-port camera auto-negotiation (e.g. phone IP Webcam apps on 8080/4747)
+        open_ports = []
+        for test_p in [8080, 4747, 80, 8554, 8000]:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.settimeout(0.15)
                     if s.connect_ex((target_host, test_p)) == 0:
-                        host_responds = True
-                        break
+                        open_ports.append(test_p)
             except Exception:
                 pass
 
+        host_responds = len(open_ports) > 0
         diag_info["is_reachable"] = host_responds
         if not host_responds:
             diag_info["stage"] = "HOST_UNREACHABLE"
@@ -262,8 +266,8 @@ def capture_camera_frame_sync(
         else:
             diag_info["stage"] = "PORT_CLOSED"
             diag_info["error_message"] = (
-                f"Port Closed: Host '{target_host}' is reachable, but TCP port {target_port} is closed "
-                "or blocked by a firewall/client isolation. Verify camera streaming service is active."
+                f"Port Closed: Host '{target_host}' is reachable, but TCP port {target_port} is closed. "
+                f"Probed open camera ports: {open_ports}. Attempting stream auto-negotiation..."
             )
     else:
         diag_info["is_reachable"] = True
@@ -297,6 +301,7 @@ def capture_camera_frame_sync(
                             latency = round((time.perf_counter() - t0) * 1000.0, 1)
                             diag_info["stage"] = "SUCCESS"
                             diag_info["error_message"] = ""
+                            diag_info["suggested_stream_url"] = url
                             return (buf.tobytes(), desc, latency, diag_info) if return_diag else (buf.tobytes(), desc, latency)
                     else:
                         diag_info["stage"] = "DECODE_FAILED"
@@ -309,48 +314,89 @@ def capture_camera_frame_sync(
             except Exception as exc:
                 logger.debug("OpenCV RTSP pull exception on %s: %s", url, exc)
 
-    # 4. Candidate HTTP Snapshot URLs (fast check with low latency)
-    open_http_ports = []
-    for test_p in [80, 8080]:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.settimeout(0.12)
-                if s.connect_ex((target_host, test_p)) == 0:
-                    open_http_ports.append(test_p)
-        except Exception:
-            pass
+    # 4. Smart Multi-Port Camera Auto-Negotiation (HTTP/MJPEG/Alternate RTSP)
+    # Probes discovered open ports (e.g. 8080 for IP Webcam, 4747 for DroidCam, 80 for Web Camera, 8554 for RTSP)
+    discovered_video_urls = []
+    if not is_rtsp_reachable and host_responds:
+        for p in open_ports:
+            if p == 8080:
+                discovered_video_urls.extend([
+                    (f"http://{target_host}:8080/video", "IP Webcam Stream (Port 8080)"),
+                    (f"http://{target_host}:8080/shot.jpg", "IP Webcam Snapshot (Port 8080)"),
+                ])
+            elif p == 4747:
+                discovered_video_urls.extend([
+                    (f"http://{target_host}:4747/video", "DroidCam Stream (Port 4747)"),
+                    (f"http://{target_host}:4747/mjpegfeed", "DroidCam Feed (Port 4747)"),
+                ])
+            elif p == 8554:
+                discovered_video_urls.append(
+                    (f"rtsp://{auth_part}{target_host}:8554{rtsp_path or '/live'}", "Alternate RTSP (Port 8554)")
+                )
+            elif p == 80:
+                discovered_video_urls.extend([
+                    (f"http://{target_host}/snapshot", "HTTP Snapshot (Port 80)"),
+                    (f"http://{target_host}/video", "HTTP Video (Port 80)"),
+                    (f"http://{target_host}/mjpeg", "MJPEG Stream (Port 80)"),
+                    (f"http://{target_host}/live.mjpg", "Live MJPG (Port 80)"),
+                ])
+            elif p == 8000:
+                discovered_video_urls.append(
+                    (f"http://{target_host}:8000/video", "DVR/ONVIF Stream (Port 8000)")
+                )
 
-    if open_http_ports or target_host in ("localhost", "127.0.0.1"):
-        http_candidates = []
-        if rtsp_path.startswith(("http://", "https://")):
-            http_candidates.append(rtsp_path)
-        else:
-            p = open_http_ports[0] if open_http_ports else 80
-            h = f"{target_host}:{p}" if p != 80 else target_host
-            http_candidates = [
-                f"http://{h}/snapshot",
-                f"http://{h}/video",
-            ]
+    # Add default candidate HTTP snapshot URLs if host is localhost/127.0.0.1
+    if target_host in ("localhost", "127.0.0.1"):
+        discovered_video_urls.extend([
+            (f"http://{target_host}:8000/snapshot", "Local Snapshot (8000)"),
+            (f"http://{target_host}:8080/video", "Local Video (8080)"),
+        ])
 
+    # Test discovered video endpoints
+    for v_url, v_desc in discovered_video_urls:
+        if v_url.startswith(("http://", "https://")):
+            # Try HTTP snapshot / single frame pull
+            try:
+                with httpx.Client(timeout=0.6, follow_redirects=True) as client:
+                    auth = distinct_auth[0] if distinct_auth else None
+                    resp = client.get(v_url, auth=auth)
+                    if resp.status_code == 200 and len(resp.content) > 500:
+                        if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
+                            latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                            diag_info["stage"] = "SUCCESS"
+                            diag_info["is_port_open"] = True
+                            diag_info["is_handshake_ok"] = True
+                            diag_info["suggested_stream_url"] = v_url
+                            diag_info["error_message"] = ""
+                            return (resp.content, f"{v_desc} ({v_url})", latency, diag_info) if return_diag else (resp.content, f"{v_desc} ({v_url})", latency)
+            except Exception:
+                pass
+
+        # Try OpenCV on streaming video URL (e.g. /video MJPEG or RTSP 8554)
         try:
-            with httpx.Client(timeout=0.3, follow_redirects=False) as client:
-                auth = distinct_auth[0] if distinct_auth else None
-                for url in http_candidates:
-                    try:
-                        resp = client.get(url, auth=auth)
-                        if resp.status_code == 200 and len(resp.content) > 500:
-                            if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
-                                latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                                diag_info["stage"] = "SUCCESS"
-                                diag_info["error_message"] = ""
-                                return (resp.content, f"HTTP Snapshot ({url})", latency, diag_info) if return_diag else (resp.content, f"HTTP Snapshot ({url})", latency)
-                    except Exception:
-                        pass
+            cap = cv2.VideoCapture(v_url)
+            cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1200)
+            cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1200)
+            if cap.isOpened():
+                ret, frame = cap.read()
+                cap.release()
+                if ret and frame is not None and frame.size > 0:
+                    ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                    if ret_enc:
+                        latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                        diag_info["stage"] = "SUCCESS"
+                        diag_info["is_port_open"] = True
+                        diag_info["is_handshake_ok"] = True
+                        diag_info["suggested_stream_url"] = v_url
+                        diag_info["error_message"] = ""
+                        return (buf.tobytes(), f"{v_desc} ({v_url})", latency, diag_info) if return_diag else (buf.tobytes(), f"{v_desc} ({v_url})", latency)
+            else:
+                cap.release()
         except Exception:
             pass
 
     latency = round((time.perf_counter() - t0) * 1000.0, 1)
-    if is_rtsp_reachable or (open_http_ports and len(open_http_ports) > 0):
+    if is_rtsp_reachable or (open_ports and len(open_ports) > 0):
         return (None, "SOCKET_CONNECTED_DECODE_PENDING", latency, diag_info) if return_diag else (None, "SOCKET_CONNECTED_DECODE_PENDING", latency)
     return (None, "NETWORK_UNREACHABLE", latency, diag_info) if return_diag else (None, "NETWORK_UNREACHABLE", latency)
 
@@ -777,10 +823,17 @@ async def test_camera_connection(
             await session.commit()
             await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
 
+        working_url = (
+            diag_info.get("suggested_stream_url")
+            or (str(cam.stream_url) if (cam and cam.stream_url) else None)
+            or stream_url
+            or (f"http://{ip}{rtsp}" if (rtsp and rtsp.startswith("/video")) or ":8080" in ip else f"rtsp://{ip}:554{rtsp}")
+        )
+
         return CameraTestConnectionResponse(
             success=True,
             status="ONLINE",
-            streamUrl=str(cam.stream_url) if (cam and cam.stream_url) else (stream_url or (f"http://{ip}{rtsp}" if (rtsp and rtsp.startswith("/video")) or ":8080" in ip else f"rtsp://{ip}:554{rtsp}")),
+            streamUrl=working_url,
             subStreamPath=sub_stream_path,
             snapshotUrl=f"/snapshots/preview_{camera_id}.jpg",
             resolution=cam.resolution if cam else "1920x1080",
@@ -919,6 +972,23 @@ async def get_camera_snapshot(
                     camera_id=camera_id,
                 )
                 annotated_bytes = final_bytes or obj_bytes or frame_bytes
+
+                # Annotate dynamic wall picture frames
+                try:
+                    from src.ml.wall_picture_detector import WallPictureDetector
+                    dec_ann = cv2.imdecode(np.frombuffer(annotated_bytes, np.uint8), cv2.IMREAD_COLOR)
+                    if dec_ann is not None:
+                        exclude = [d.bbox for d in vis_res.detections]
+                        if face_boxes:
+                            exclude.extend(face_boxes)
+                        w_frames = WallPictureDetector.detect_wall_pictures(dec_ann, exclude_boxes=exclude)
+                        if w_frames:
+                            dec_ann = WallPictureDetector.annotate_frame(dec_ann, w_frames)
+                            ret_enc, buf_ann = cv2.imencode(".jpg", dec_ann, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                            if ret_enc:
+                                annotated_bytes = buf_ann.tobytes()
+                except Exception as _wf_err:
+                    logger.debug("Snapshot wall frame annotation skipped: %s", _wf_err)
             except Exception:
                 pass
 

@@ -82,7 +82,7 @@ interface AppDataContextType {
   uploadInvoice: (formData: FormData) => Promise<Invoice>;
   createInvoice: (data: any) => Promise<Invoice>;
 
-  addCamera: (camera: { label: string; ipAddress: string; rtspPath: string; laneId?: string; credentials?: string; pairingMethod?: "MANUAL" | "QR_CAMERA_DISPLAYED" | "QR_APP_GENERATED" }) => Promise<Camera>;
+  addCamera: (camera: { label: string; ipAddress: string; rtspPath: string; streamUrl?: string; laneId?: string; credentials?: string; pairingMethod?: "MANUAL" | "QR_CAMERA_DISPLAYED" | "QR_APP_GENERATED" }) => Promise<Camera>;
   updateCamera: (camera: Partial<Camera> & { cameraId: string }) => Promise<void>;
   removeCamera: (cameraId: string) => Promise<void>;
   testCameraConnection: (cameraId: string, overrides?: { ipAddress?: string; rtspPath?: string; credentials?: string }) => Promise<TestConnectionResult>;
@@ -473,7 +473,7 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setEmployees((prev) => prev.map((e) => (e.employeeId === employee.employeeId ? employee : e)));
   };
 
-  const addCamera = async (data: { label: string; ipAddress: string; rtspPath: string; laneId?: string; credentials?: string }): Promise<Camera> => {
+  const addCamera = async (data: { label: string; ipAddress: string; rtspPath: string; streamUrl?: string; laneId?: string; credentials?: string; pairingMethod?: "MANUAL" | "QR_CAMERA_DISPLAYED" | "QR_APP_GENERATED" }): Promise<Camera> => {
     const created = await api.createCamera(data);
     setCameras((prev) => [created, ...prev.filter((c) => c.cameraId !== created.cameraId)]);
     return created;

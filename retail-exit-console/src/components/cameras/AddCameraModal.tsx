@@ -82,6 +82,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
     snapshotUrl?: string;
     errorMessage?: string;
     latencyMs?: number;
+    streamUrl?: string;
   }>({ tested: false, success: false });
 
   // Submission state
@@ -359,12 +360,18 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
         rtspPath: cleanRtsp,
         credentials: credentials.trim() || undefined,
       });
+      if (res.success && res.streamUrl) {
+        if (res.streamUrl.startsWith('http://') || res.streamUrl.startsWith('https://')) {
+          setRtspPath(res.streamUrl);
+        }
+      }
       setTestResult({
         tested: true,
         success: res.success,
         snapshotUrl: res.snapshotUrl,
         errorMessage: res.errorMessage,
         latencyMs: res.latencyMs,
+        streamUrl: res.streamUrl,
       });
     } catch (e: any) {
       setTestResult({
@@ -399,12 +406,14 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
       cleanRtsp = '/' + cleanRtsp;
     }
     try {
+      const workingStreamUrl = testResult.streamUrl || (cleanRtsp.startsWith('http://') || cleanRtsp.startsWith('https://') || cleanRtsp.startsWith('rtsp://') ? cleanRtsp : undefined);
       if (initialCamera?.cameraId) {
         await updateCamera({
           cameraId: initialCamera.cameraId,
           label: label.trim(),
           ipAddress: ipAddress.trim(),
           rtspPath: cleanRtsp,
+          streamUrl: workingStreamUrl,
           laneId: selectedLaneId || undefined,
           status: selectedLaneId ? 'ONLINE' : 'PENDING_SETUP',
         });
@@ -413,6 +422,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
           label: label.trim(),
           ipAddress: ipAddress.trim(),
           rtspPath: cleanRtsp,
+          streamUrl: workingStreamUrl,
           laneId: selectedLaneId || undefined,
           credentials: credentials.trim() || undefined,
           pairingMethod,
@@ -1118,10 +1128,12 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="text-xs-tech text-text-sec">Target Endpoint:</span>
                     <span className="font-mono text-xs-tech text-mono-val">
-                      {ipAddress === '0' || ipAddress === 'webcam'
+                      {testResult.streamUrl
+                        ? testResult.streamUrl
+                        : ipAddress === '0' || ipAddress === 'webcam'
                         ? 'Local Device: Built-in / USB Camera (Index 0)'
-                        : ipAddress.includes(':8080') || rtspPath === '/video'
-                        ? `http://${ipAddress}${rtspPath.startsWith('/') ? rtspPath : '/' + rtspPath}`
+                        : ipAddress.includes(':8080') || rtspPath.startsWith('http://') || rtspPath.startsWith('https://')
+                        ? (rtspPath.startsWith('http') ? rtspPath : `http://${ipAddress}${rtspPath.startsWith('/') ? rtspPath : '/' + rtspPath}`)
                         : `rtsp://${ipAddress}:554${rtspPath}`}
                     </span>
                   </div>

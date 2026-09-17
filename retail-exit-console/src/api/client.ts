@@ -286,8 +286,10 @@ export const api = {
     ipAddress: string;
     rtspPath: string;
     subStreamPath?: string;
+    streamUrl?: string;
     laneId?: string;
     credentials?: string;
+    pairingMethod?: string;
   }): Promise<Camera> {
     return request<Camera>('/cameras', {
       method: 'POST',

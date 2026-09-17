@@ -308,6 +308,37 @@ class CameraIngestionWorker:
                 except Exception as ex:
                     logger.debug("Failed to record static detection: %s", ex)
 
+            # 4b. Dynamic Wall Picture & Frame Detection (Posters, Prints, Wall Art)
+            if dec is not None and dec.size > 0:
+                try:
+                    from src.ml.wall_picture_detector import WallPictureDetector
+                    person_boxes = [b["box"] for b in overlay_boxes if b["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED")]
+                    wall_frames = WallPictureDetector.detect_wall_pictures(dec, exclude_boxes=person_boxes)
+                    for wf in wall_frames:
+                        # Avoid duplicates if face_res already caught this box
+                        is_dup = any(
+                            abs(wf["box"][0] - b["box"][0]) < 25 and abs(wf["box"][1] - b["box"][1]) < 25
+                            for b in overlay_boxes if b["type"] == "STATIC_IMAGE"
+                        )
+                        if not is_dup and wf["confidence"] >= conf_floor:
+                            overlay_boxes.append(wf)
+                            try:
+                                static_entry = StaticImageDetection(
+                                    camera_id=cam.camera_id,
+                                    frame_ts=now,
+                                    bbox=wf["box"],
+                                    liveness_score=0.15,
+                                    classification=wf["classification"],
+                                    classification_confidence=wf["confidence"],
+                                    model_version="wall-picture-detector-v1.0",
+                                    suppressed_alert=True,
+                                )
+                                session.add(static_entry)
+                            except Exception as ex:
+                                logger.debug("Failed to record wall frame detection: %s", ex)
+                except Exception as w_err:
+                    logger.debug("WallPictureDetector execution failed: %s", w_err)
+
             # Update rolling activity logs for this camera HUD
             if cam.camera_id not in self._camera_logs:
                 self._camera_logs[cam.camera_id] = deque(maxlen=10)

@@ -167,6 +167,7 @@ class Camera(Base):
     pairing_method: Any = Column(String(32), nullable=False, default="MANUAL")
     resolution: Any = Column(String(32), nullable=True, default="1920x1080")
     fps: Any = Column(Integer, nullable=True, default=30)
+    pipeline_mode: Any = Column(String(64), nullable=False, default="STANDARD_DETECTION")
     status: Any = Column(String(32), nullable=False, default="PENDING_SETUP")
     last_heartbeat_at: Any = Column(DateTime(timezone=True), nullable=True)
     offline_since: Any = Column(DateTime(timezone=True), nullable=True)
@@ -177,15 +178,18 @@ class Camera(Base):
     __table_args__ = (
         CheckConstraint("status IN ('ONLINE', 'OFFLINE', 'DEGRADED', 'PENDING_SETUP')", name="chk_camera_status"),
         CheckConstraint("pairing_method IN ('MANUAL', 'QR_CAMERA_DISPLAYED', 'QR_APP_GENERATED')", name="chk_camera_pairing_method"),
+        CheckConstraint("pipeline_mode IN ('STANDARD_DETECTION', 'MATERIAL_SEGMENTATION', 'PERIMETER_TRIPWIRE_GATE')", name="chk_camera_pipeline_mode"),
         Index("idx_camera_lane", "lane_id"),
-        Index("idx_camera_status", "status"),
     )
 
     lane = relationship("Lane", back_populates="cameras")
+    static_image_detections = relationship("StaticImageDetection", back_populates="camera", cascade="all, delete-orphan")
+    virtual_tripwires = relationship("VirtualTripwireConfig", back_populates="camera", cascade="all, delete-orphan")
     heartbeats = relationship("CameraHeartbeat", back_populates="camera", cascade="all, delete-orphan")
     vision_detections = relationship("VisionDetection", back_populates="camera")
     alerts = relationship("Alert", back_populates="camera")
-    static_image_detections = relationship("StaticImageDetection", back_populates="camera", cascade="all, delete-orphan")
+
+
 
 
 class CameraPairingToken(Base):
@@ -531,4 +535,91 @@ class ThresholdConfig(Base):
     updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
     store = relationship("Store", back_populates="threshold_configs")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Industrial Dispatch & Warehouse Exit Models
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DispatchSession(Base):
+    __tablename__ = "dispatch_session"
+
+    session_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    dock_lane_id: Any = Column(String(36), ForeignKey("lane.lane_id"), nullable=False)
+    manifest_id: Any = Column(String(128), nullable=True, index=True)
+    carrier_employee_id: Any = Column(String(36), ForeignKey("employee.employee_id"), nullable=True)
+    vehicle_identifier: Any = Column(String(64), nullable=True)
+    status: Any = Column(String(32), nullable=False, default="ACTIVE")
+    started_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    completed_at: Any = Column(DateTime(timezone=True), nullable=True)
+    before_count: Any = Column(JSONType, nullable=False, default=dict)
+    after_count: Any = Column(JSONType, nullable=False, default=dict)
+    removed_delta: Any = Column(JSONType, nullable=False, default=dict)
+    manifest_expected: Any = Column(JSONType, nullable=False, default=dict)
+    discrepancy_type: Any = Column(String(32), nullable=False, default="MATCH")
+    discrepancy_magnitude: Any = Column(Integer, nullable=False, default=0)
+    tracking_interrupted_seconds: Any = Column(Numeric(8, 2), nullable=False, default=0.0)
+    archival_snapshot_url: Any = Column(Text, nullable=True)
+    notes: Any = Column(Text, nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint("status IN ('ACTIVE', 'COMPLETED', 'FLAGGED_DISCREPANCY', 'ABORTED')", name="chk_dispatch_status"),
+        CheckConstraint("discrepancy_type IN ('MATCH', 'OVER_AUTHORIZED', 'UNDER_COUNT', 'UNMANIFESTED_SKU')", name="chk_dispatch_discrepancy"),
+        Index("idx_dispatch_dock_lane", "dock_lane_id"),
+        Index("idx_dispatch_status", "status"),
+    )
+
+    lane = relationship("Lane")
+    carrier = relationship("Employee")
+
+
+class VirtualTripwireConfig(Base):
+    __tablename__ = "virtual_tripwire_config"
+
+    tripwire_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=False)
+    label: Any = Column(String(128), nullable=False)
+    line_coords: Any = Column(JSONType, nullable=False, default=lambda: [[0.1, 0.5], [0.9, 0.5]])
+    direction_mode: Any = Column(String(32), nullable=False, default="BIDIRECTIONAL")
+    active: Any = Column(Boolean, nullable=False, default=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint("direction_mode IN ('BIDIRECTIONAL', 'ENTRY_ONLY', 'EXIT_ONLY', 'ENTRY', 'EXIT', 'BOTH')", name="chk_tripwire_direction_mode"),
+        Index("idx_tripwire_camera", "camera_id"),
+    )
+
+
+    camera = relationship("Camera", back_populates="virtual_tripwires")
+    crossing_events = relationship("TripwireCrossingEvent", back_populates="tripwire", cascade="all, delete-orphan")
+
+
+class TripwireCrossingEvent(Base):
+    __tablename__ = "tripwire_crossing_event"
+
+    crossing_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    tripwire_id: Any = Column(String(36), ForeignKey("virtual_tripwire_config.tripwire_id"), nullable=False)
+    camera_id: Any = Column(String(36), nullable=False)
+    track_id: Any = Column(String(64), nullable=False)
+    timestamp: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+    direction: Any = Column(String(16), nullable=False)
+    entity_type: Any = Column(String(32), nullable=False, default="PERSON")
+    biometric_status: Any = Column(String(32), nullable=False, default="UNAVAILABLE")
+    matched_employee_id: Any = Column(String(36), ForeignKey("employee.employee_id"), nullable=True)
+    is_tailgating: Any = Column(Boolean, nullable=False, default=False)
+    tailgating_details: Any = Column(JSONType, nullable=True)
+    snapshot_url: Any = Column(Text, nullable=True)
+
+    __table_args__ = (
+        CheckConstraint("direction IN ('ENTRY', 'EXIT', 'UNKNOWN')", name="chk_crossing_direction"),
+        CheckConstraint("biometric_status IN ('VERIFIED_KNOWN', 'UNKNOWN_INTRUDER', 'UNAVAILABLE')", name="chk_crossing_biometric"),
+        Index("idx_crossing_tripwire", "tripwire_id"),
+        Index("idx_crossing_timestamp", "timestamp"),
+    )
+
+    tripwire = relationship("VirtualTripwireConfig", back_populates="crossing_events")
+    employee = relationship("Employee")
+
 

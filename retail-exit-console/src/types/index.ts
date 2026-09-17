@@ -191,11 +191,14 @@ export type ViewType =
   | 'dashboard'
   | 'events'
   | 'alerts'
+  | 'dispatch'
+  | 'tripwire'
   | 'products'
   | 'employees'
   | 'invoices'
   | 'reports'
   | 'settings';
+
 
 export type DetectionBoxType = 'PERSON_MATCHED' | 'PERSON_UNMATCHED' | 'ITEM' | 'STATIC_IMAGE' | 'VEHICLE';
 
@@ -293,4 +296,70 @@ export interface UsbStatusResponse {
   activeScalePort?: string | null;
   devices: UsbDeviceRecord[];
 }
+
+export interface MaterialClassDefinition {
+  class_id: string;
+  name: string;
+  category: string;
+  typical_dimensions_cm: number[];
+  severity_tier: "LOW" | "MED" | "HIGH";
+  density_notes: string;
+  count_unit: string;
+}
+
+export interface MaterialInstanceItem {
+  classId: string;
+  className: string;
+  confidence: number;
+  bbox: [number, number, number, number];
+  polygon: number[][];
+  areaPixels: number;
+}
+
+export interface DispatchSessionRecord {
+  sessionId: string;
+  dockLaneId: string;
+  manifestId?: string;
+  carrierEmployeeId?: string;
+  carrierName?: string;
+  vehicleIdentifier?: string;
+  status: "ACTIVE" | "COMPLETED" | "FLAGGED_DISCREPANCY" | "CANCELLED";
+  startedAt: string;
+  completedAt?: string;
+  beforeCount: Record<string, number>;
+  afterCount: Record<string, number>;
+  removedDelta: Record<string, number>;
+  manifestExpected: Record<string, number>;
+  discrepancyType: "MATCH" | "OVER_AUTHORIZED" | "UNDER_COUNT";
+  discrepancyMagnitude: number;
+  trackingInterruptedSeconds: number;
+  archivalSnapshotUrl?: string;
+  notes?: string;
+}
+
+export interface VirtualTripwireRecord {
+  tripwireId: string;
+  cameraId: string;
+  label: string;
+  lineCoords: number[][];
+  directionMode: "ENTRY" | "EXIT" | "BOTH";
+  active: boolean;
+  createdAt: string;
+}
+
+export interface TripwireCrossingRecord {
+  crossingId: string;
+  tripwireId: string;
+  cameraId: string;
+  trackId: string;
+  timestamp: string;
+  direction: "ENTRY" | "EXIT";
+  entityType: "PERSON" | "VEHICLE";
+  biometricStatus: "VERIFIED_KNOWN" | "UNKNOWN_INTRUDER" | "UNAVAILABLE";
+  matchedEmployeeId?: string;
+  isTailgating: boolean;
+  tailgatingDetails?: Record<string, any>;
+  snapshotUrl?: string;
+}
+
 

@@ -12,6 +12,8 @@ import { EmployeesView } from './views/EmployeesView';
 import { InvoicesView } from './views/InvoicesView';
 import { ReportsView } from './views/ReportsView';
 import { SettingsView } from './views/SettingsView';
+import { DispatchView } from './views/DispatchView';
+import { PerimeterTripwireView } from './views/PerimeterTripwireView';
 import { AlertOctagon, Zap, Lock } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -35,14 +37,18 @@ const AppContent: React.FC = () => {
       } else if (e.key === '3') {
         setActiveView('alerts');
       } else if (e.key === '4') {
-        setActiveView('products');
+        setActiveView('dispatch');
       } else if (e.key === '5') {
-        setActiveView('employees');
+        setActiveView('tripwire');
       } else if (e.key === '6') {
-        setActiveView('invoices');
+        setActiveView('products');
       } else if (e.key === '7') {
-        setActiveView('reports');
+        setActiveView('employees');
       } else if (e.key === '8') {
+        setActiveView('invoices');
+      } else if (e.key === '9') {
+        setActiveView('reports');
+      } else if (e.key === '0') {
         setActiveView('settings');
       }
     };
@@ -96,12 +102,15 @@ const AppContent: React.FC = () => {
             {activeView === 'dashboard' && <DashboardView />}
             {activeView === 'events' && <EventsView />}
             {activeView === 'alerts' && <AlertsView />}
+            {activeView === 'dispatch' && <DispatchView />}
+            {activeView === 'tripwire' && <PerimeterTripwireView />}
             {activeView === 'products' && <ProductsView />}
             {activeView === 'employees' && <EmployeesView />}
             {activeView === 'invoices' && <InvoicesView />}
             {activeView === 'reports' && <ReportsView />}
             {activeView === 'settings' && <SettingsView />}
           </main>
+
 
           {/* Bottom Industrial Status Bar */}
           <footer className="border-t border-hairline bg-panel px-4 py-2 flex items-center justify-between text-[11px] text-text-sec font-mono">

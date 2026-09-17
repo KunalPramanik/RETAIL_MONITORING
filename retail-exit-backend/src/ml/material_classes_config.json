@@ -1,0 +1,75 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-09-17T23:55:00Z",
+  "material_classes": {
+    "101": {
+      "name": "Cement Bag (50kg)",
+      "sku_prefix": "MAT-CEM-50KG",
+      "category": "STACKED_MATERIAL",
+      "pipeline": "SEGMENTATION",
+      "unit": "bag",
+      "conf_threshold": 0.45,
+      "discrepancy_severity_tier": {
+        "1": "LOW",
+        "3": "MED",
+        "5": "HIGH"
+      }
+    },
+    "102": {
+      "name": "Bundled Iron Rods / Rebar",
+      "sku_prefix": "MAT-ROD-REBAR",
+      "category": "STACKED_MATERIAL",
+      "pipeline": "SEGMENTATION",
+      "unit": "bundle",
+      "conf_threshold": 0.40,
+      "discrepancy_severity_tier": {
+        "1": "MED",
+        "2": "HIGH"
+      }
+    },
+    "103": {
+      "name": "Brick Stack / Paver Pallet",
+      "sku_prefix": "MAT-BRK-RED",
+      "category": "STACKED_MATERIAL",
+      "pipeline": "SEGMENTATION",
+      "unit": "layer",
+      "conf_threshold": 0.45,
+      "discrepancy_severity_tier": {
+        "1": "LOW",
+        "3": "MED",
+        "6": "HIGH"
+      }
+    },
+    "104": {
+      "name": "Heavy Corrugated Master Carton",
+      "sku_prefix": "MAT-BOX-HEAVY",
+      "category": "DISCRETE_ITEM",
+      "pipeline": "BOUNDING_BOX",
+      "unit": "carton",
+      "conf_threshold": 0.40,
+      "discrepancy_severity_tier": {
+        "1": "LOW",
+        "2": "MED",
+        "4": "HIGH"
+      }
+    },
+    "105": {
+      "name": "Industrial Wooden Pallet",
+      "sku_prefix": "MAT-PLT-WOOD",
+      "category": "CONTAINER",
+      "pipeline": "BOUNDING_BOX",
+      "unit": "pallet",
+      "conf_threshold": 0.50,
+      "discrepancy_severity_tier": {
+        "1": "MED",
+        "2": "HIGH"
+      }
+    }
+  },
+  "pipeline_routing_defaults": {
+    "DOCK_PALLET_CAMERA": "MATERIAL_SEGMENTATION",
+    "GATE_PERIMETER_CAMERA": "PERIMETER_TRIPWIRE_GATE",
+    "OVERVIEW_CAMERA": "STANDARD_DETECTION"
+  }
+}
+

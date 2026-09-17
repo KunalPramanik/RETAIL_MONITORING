@@ -32,14 +32,21 @@ from src.db.models import (
     Employee,
     Product,
     ThresholdConfig,
+    DispatchSession,
+    VirtualTripwireConfig,
+    TripwireCrossingEvent,
     get_utc_now,
 )
 from src.ml.vision_service import VisionInferenceService
 from src.ml.face_service import FaceRecognitionService
+from src.ml.material_segmentation import MaterialSegmentationService
+from src.engine.dispatch_engine import DispatchEngine
+from src.engine.tripwire_engine import TripwireEngine
 from src.engine.fusion import MultiSensorFusionEngine
 from src.engine.verdict import VerdictEngine
 from src.realtime.hub import ws_hub
 from src.ml.model_config import get_vision_config
+
 
 logger = logging.getLogger("secops.camera_worker")
 
@@ -56,6 +63,7 @@ class CameraIngestionWorker:
         self._last_detections: Dict[str, Dict[str, Any]] = {}
         self._camera_logs: Dict[str, deque] = {}
         self._active_transactions: Dict[str, Dict[str, Any]] = {}
+        self._track_history: Dict[str, Dict[str, Tuple[float, float]]] = {}
 
     def register_camera(self, camera_record: Any) -> None:
         """Registers a newly discovered or confirmed camera into the ingestion fleet."""
@@ -167,7 +175,18 @@ class CameraIngestionWorker:
                 if diff_sec > 30:
                     cam.status = "OFFLINE"
                     cam.offline_since = now
+            # Stream gap logging for active industrial dispatch sessions
+            if cam.lane_id:
+                try:
+                    await DispatchEngine.record_stream_gap(
+                        session=session,
+                        dock_lane_id=cam.lane_id,
+                        gap_seconds=self.poll_interval_sec,
+                    )
+                except Exception as _gap_err:
+                    logger.debug("Dispatch stream gap recording error: %s", _gap_err)
             return None
+
 
         # Update camera heartbeat and status to ONLINE with verified live stream
         now = get_utc_now()
@@ -386,6 +405,102 @@ class CameraIngestionWorker:
                         if not cam_logs or cam_logs[-1]["text"] != msg:
                             cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "STATIC"})
 
+            # Material Instance Segmentation pipeline routing
+            if getattr(cam, "pipeline_mode", "STANDARD_DETECTION") == "MATERIAL_SEGMENTATION":
+                try:
+                    if dec is None:
+                        nparr = np.frombuffer(frame_bytes, np.uint8)
+                        dec = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    if dec is not None:
+                        seg_res = MaterialSegmentationService.segment_materials(dec)
+                        if seg_res.instances:
+                            annotated_mat = MaterialSegmentationService.annotate_frame_with_masks(dec, seg_res.instances)
+                            success, enc_buf = cv2.imencode(".jpg", annotated_mat, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                            if success:
+                                annotated_bytes = enc_buf.tobytes()
+
+                        for inst in seg_res.instances:
+                            overlay_boxes.append({
+                                "box": inst.bbox,
+                                "type": "MATERIAL_INSTANCE",
+                                "label": f"{inst.class_name} ({int(inst.confidence * 100)}%)",
+                                "confidence": round(float(inst.confidence), 4),
+                                "color": "cyan",
+                                "entity": inst.class_name,
+                                "polygon": inst.polygon,
+                            })
+
+                        detection_data.update({
+                            "segmentedMaterials": [
+                                {
+                                    "classId": i.class_id,
+                                    "className": i.class_name,
+                                    "confidence": i.confidence,
+                                    "bbox": i.bbox,
+                                    "polygon": i.polygon,
+                                    "areaPixels": i.area_pixels,
+                                }
+                                for i in seg_res.instances
+                            ],
+                            "materialCounts": seg_res.counts_by_class,
+                            "totalMaterialCount": seg_res.total_instances,
+                            "segmentationLatencyMs": seg_res.latency_ms,
+                        })
+                except Exception as _seg_err:
+                    logger.warning("Material segmentation error on %s: %s", cam.camera_id, _seg_err)
+
+            # Virtual Tripwire trajectory crossing & anti-tailgating evaluation
+            try:
+                tripwires_res = await session.execute(
+                    select(VirtualTripwireConfig).where(
+                        VirtualTripwireConfig.camera_id == cam.camera_id,
+                        VirtualTripwireConfig.active == True,
+                    )
+                )
+                active_tripwires = tripwires_res.scalars().all()
+                if active_tripwires and overlay_boxes:
+                    cam_tracks = self._track_history.setdefault(cam.camera_id, {})
+                    for b_idx, ob in enumerate(overlay_boxes):
+                        if ob["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED", "VEHICLE"):
+                            track_id = f"tr_{b_idx}"
+                            bx, by, bw, bh = ob["box"]
+                            norm_cx = (bx + bw / 2.0) / max(1.0, float(frame_w))
+                            norm_cy = (by + bh / 2.0) / max(1.0, float(frame_h))
+                            curr_pt = (norm_cx, norm_cy)
+
+                            prev_pt = cam_tracks.get(track_id)
+                            cam_tracks[track_id] = curr_pt
+
+                            if prev_pt:
+                                for tw in active_tripwires:
+                                    if len(tw.line_coords) >= 2:
+                                        l_start = (float(tw.line_coords[0][0]), float(tw.line_coords[0][1]))
+                                        l_end = (float(tw.line_coords[1][0]), float(tw.line_coords[1][1]))
+                                        has_crossed, direction = TripwireEngine.check_trajectory_crossing(
+                                            p_prev=prev_pt,
+                                            p_curr=curr_pt,
+                                            line_start=l_start,
+                                            line_end=l_end,
+                                        )
+                                        if has_crossed and (tw.direction_mode in ("BOTH", direction)):
+                                            emp_match = None
+                                            if face_res.decision == "MATCHED":
+                                                emp_match = {
+                                                    "decision": "MATCHED",
+                                                    "employee_id": face_res.matched_employee_id,
+                                                }
+                                            await TripwireEngine.record_crossing(
+                                                session=session,
+                                                tripwire_id=tw.tripwire_id,
+                                                camera_id=cam.camera_id,
+                                                track_id=track_id,
+                                                direction=direction,
+                                                entity_type="PERSON" if "PERSON" in ob["type"] else "VEHICLE",
+                                                matched_employee=emp_match,
+                                            )
+            except Exception as _tw_err:
+                logger.warning("Tripwire evaluation error on %s: %s", cam.camera_id, _tw_err)
+
             # In-progress compliance tag
             active_tx = self._active_transactions.get(cam.camera_id)
             if active_tx is None and (vis_res.vision_count > 0 or len(vis_res.detections) > 0 or face_res.matched_employee_id):
@@ -399,6 +514,7 @@ class CameraIngestionWorker:
                 "frameTs": now.isoformat(),
                 "frameWidth": frame_w,
                 "frameHeight": frame_h,
+                "pipelineMode": getattr(cam, "pipeline_mode", "STANDARD_DETECTION"),
                 "boxes": overlay_boxes,
                 "entityCount": len(overlay_boxes),
                 "casesDetected": vis_res.cases_detected,
@@ -412,6 +528,7 @@ class CameraIngestionWorker:
                 "activeTransaction": active_tx,
                 "recentLogs": list(cam_logs),
             })
+
         except Exception as e:
             logger.warning("Preview CV annotation error on %s: %s", cam.camera_id, e)
 

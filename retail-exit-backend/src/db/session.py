@@ -51,6 +51,8 @@ def _sync_upgrade_sqlite_schema(sync_conn):
         cam_cols = [row[1] for row in res.fetchall()]
         if "sub_stream_path" not in cam_cols:
             sync_conn.execute(text("ALTER TABLE camera ADD COLUMN sub_stream_path VARCHAR(255)"))
+        if "pipeline_mode" not in cam_cols:
+            sync_conn.execute(text("ALTER TABLE camera ADD COLUMN pipeline_mode VARCHAR(64) DEFAULT 'STANDARD_DETECTION'"))
         
         res = sync_conn.execute(text("PRAGMA table_info(camera_heartbeat)"))
         hb_cols = [row[1] for row in res.fetchall()]

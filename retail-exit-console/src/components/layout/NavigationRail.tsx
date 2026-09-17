@@ -13,19 +13,15 @@ import {
   Shield,
   Volume2,
   VolumeX,
+  Truck,
+  ShieldAlert,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAppData } from '../../context/AppDataContext';
+import type { ViewType } from '../../types';
 
-export type ViewType =
-  | 'dashboard'
-  | 'events'
-  | 'alerts'
-  | 'products'
-  | 'employees'
-  | 'invoices'
-  | 'reports'
-  | 'settings';
+export type { ViewType };
+
 
 interface NavigationRailProps {
   activeView: ViewType;
@@ -55,12 +51,15 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({ activeView, onSe
       badge: openAlertsCount > 0 ? openAlertsCount : undefined,
       badgeHigh: openAlertsBySeverity.high > 0,
     },
+    { id: 'dispatch', label: 'Dock Dispatch', icon: Truck },
+    { id: 'tripwire', label: 'Perimeter Tripwire', icon: ShieldAlert },
     { id: 'products', label: 'Products & Cases', icon: Boxes },
     { id: 'employees', label: 'Employee Roster', icon: Users },
     { id: 'invoices', label: 'OCR Invoices', icon: FileSpreadsheet },
     { id: 'reports', label: 'Daily Reports', icon: FileBarChart },
     { id: 'settings', label: 'System Settings', icon: Settings },
   ];
+
 
   return (
     <aside

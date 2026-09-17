@@ -68,6 +68,6 @@ def test_vision_service_integration_with_scene_objects(sample_indoor_scene):
     res, _ = VisionInferenceService.analyze_frame_bytes(enc.tobytes())
     assert len(res.detections) >= 2
 
-    detected_labels = [d.specific_label for d in res.detections]
+    detected_labels = [d.specific_label or "" for d in res.detections]
     assert any("Doorway" in lbl for lbl in detected_labels)
 

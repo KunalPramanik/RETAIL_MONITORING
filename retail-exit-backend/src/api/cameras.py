@@ -91,9 +91,11 @@ def capture_camera_frame_sync(
             auth_tuples.append((u, p))
         elif not clean_c.startswith("secops/"):
             auth_tuples.append((clean_c, ""))
-
-    # Common IP camera / IPCAM authentication defaults
-    auth_tuples.extend([("admin", ""), ("admin", "admin"), ("admin", "12345"), None])
+    else:
+        # Default to unauthenticated stream pull first
+        auth_tuples.append(None)
+        # Common IP camera defaults as fallbacks
+        auth_tuples.extend([("admin", "admin"), ("admin", "12345"), ("admin", "")])
 
     # Distinct auth tuples while preserving order
     seen = set()
@@ -104,7 +106,11 @@ def capture_camera_frame_sync(
             seen.add(key)
             distinct_auth.append(a)
 
-    auth_part = f"{distinct_auth[0][0]}:{distinct_auth[0][1]}@" if distinct_auth and distinct_auth[0] and distinct_auth[0] != ("__NONE__", "") else ""
+    auth_part = (
+        f"{distinct_auth[0][0]}:{distinct_auth[0][1]}@"
+        if (distinct_auth and distinct_auth[0] is not None and distinct_auth[0] != ("__NONE__", ""))
+        else ""
+    )
 
     # 2. Check direct stream_url if provided
     if stream_url and str(stream_url).startswith(("http://", "https://", "rtsp://")):
@@ -288,6 +294,9 @@ def generate_diagnostic_preview_frame(
     elif status == "DEGRADED":
         status_color = (234, 179, 8)
         status_text = "STATUS: DEGRADED // RECONNECTING"
+    elif status == "PENDING_SETUP":
+        status_color = (34, 197, 94)
+        status_text = "STATUS: RTSP VERIFIED // READY FOR LANE PAIRING"
     else:
         status_color = (239, 68, 68)
         status_text = f"STATUS: {status} // NO SIGNAL DETECTED"

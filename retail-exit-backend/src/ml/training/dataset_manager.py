@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import os
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger("secops.ml.dataset")
 
@@ -20,9 +20,9 @@ class DatasetStats:
     val_count: int = 0
     test_count: int = 0
     empty_scene_count: int = 0
-    class_distribution: Optional[Dict[str, int]] = None
+    class_distribution: Dict[str, int] = field(default_factory=dict)
     is_split_valid: bool = False
-    validation_errors: Optional[List[str]] = None
+    validation_errors: List[str] = field(default_factory=list)
 
 
 class DatasetManager:
@@ -63,7 +63,7 @@ class DatasetManager:
     @classmethod
     def audit_dataset_directory(cls, dataset_dir: str) -> DatasetStats:
         """Audits dataset directory layout and split balance."""
-        stats = DatasetStats(class_distribution={}, validation_errors=[])
+        stats = DatasetStats()
 
         train_dir = os.path.join(dataset_dir, "train")
         val_dir = os.path.join(dataset_dir, "val")

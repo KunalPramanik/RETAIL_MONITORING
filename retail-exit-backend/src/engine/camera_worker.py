@@ -265,7 +265,7 @@ class CameraIngestionWorker:
                 target_floor = (
                     cfg.case_conf_threshold if is_case
                     else (getattr(cfg, "vehicle_conf_threshold", 0.25) if is_veh
-                    else cfg.item_conf_threshold)
+                    else max(cfg.item_conf_threshold, conf_floor))
                 )
                 if d.confidence < target_floor:
                     continue

@@ -469,7 +469,7 @@ class VisionInferenceService:
                         person_floor if target_cid == 0
                         else (case_floor if target_cid in cfg.case_classes
                         else (vehicle_floor if target_cid in vehicle_classes
-                        else item_floor))
+                        else max(item_floor, conf_floor)))
                     )
 
                     indices = cv2.dnn.NMSBoxes(cls_boxes, cls_scores, target_floor, nms_iou)
@@ -482,12 +482,12 @@ class VisionInferenceService:
                     cid = int(cand_cls[idx])
                     conf = round(float(nms_scores[idx]), 3)
 
-                    # Gated threshold enforcement per class category
+                    # Gated threshold enforcement per class category (Part N.0 & N.1: hard confidence floor)
                     target_floor = (
                         person_floor if cid == 0
                         else (case_floor if cid in cfg.case_classes
                         else (vehicle_floor if cid in vehicle_classes
-                        else item_floor))
+                        else max(item_floor, conf_floor)))
                     )
                     if conf < target_floor:
                         continue

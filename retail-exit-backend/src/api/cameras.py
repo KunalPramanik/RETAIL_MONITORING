@@ -56,12 +56,22 @@ def capture_camera_frame_sync(
     sub_stream_path: Optional[str] = None,
     timeout_sec: float = 2.5,
     stream_url: Optional[str] = None,
-) -> tuple[Optional[bytes], str, float]:
+    return_diag: bool = False,
+) -> tuple:
     """Attempts to capture a real frame from RTSP stream (main/sub), HTTP endpoints, or local devices.
     
-    Returns (frame_bytes, source_description, latency_ms).
+    Returns (frame_bytes, source_description, latency_ms) or (frame_bytes, source_description, latency_ms, diag_info).
     """
     t0 = time.perf_counter()
+    diag_info: Dict[str, Any] = {
+        "stage": "UNKNOWN",
+        "error_message": "",
+        "host": str(ip or ""),
+        "port": 554,
+        "is_reachable": False,
+        "is_port_open": False,
+        "is_handshake_ok": False,
+    }
 
     # 1. Check for local webcam device indices (e.g. 0, 1, 'webcam')
     dev_idx = None
@@ -71,13 +81,18 @@ def capture_camera_frame_sync(
         dev_idx = int(ip.strip()) if ip.strip().isdigit() else 0
 
     if dev_idx is not None:
+        diag_info["host"] = f"dev_{dev_idx}"
+        diag_info["is_reachable"] = True
         try:
             # Only accept confirmed live hardware frames — not standby placeholders
             buf, lat = camera_stream_manager.get_latest_real_jpeg(
                 f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=0.8
             )
             if buf is not None:
-                return buf, f"Local Camera Device ({dev_idx})", lat
+                diag_info["stage"] = "SUCCESS"
+                diag_info["is_port_open"] = True
+                diag_info["is_handshake_ok"] = True
+                return (buf, f"Local Camera Device ({dev_idx})", lat, diag_info) if return_diag else (buf, f"Local Camera Device ({dev_idx})", lat)
 
             # Attempt direct capture if stream manager has no real frame yet
             cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
@@ -92,19 +107,26 @@ def capture_camera_frame_sync(
                     ret_enc, buf_enc = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                     if ret_enc:
                         latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                        return buf_enc.tobytes(), f"Local Camera Device ({dev_idx})", latency
+                        diag_info["stage"] = "SUCCESS"
+                        diag_info["is_port_open"] = True
+                        diag_info["is_handshake_ok"] = True
+                        return (buf_enc.tobytes(), f"Local Camera Device ({dev_idx})", latency, diag_info) if return_diag else (buf_enc.tobytes(), f"Local Camera Device ({dev_idx})", latency)
                 else:
-                    # Device opened but read failed — another process is likely holding it
-                    logger.warning(
-                        "Local webcam (index %d) opened but read() failed — "
-                        "device may be in use by another application (e.g. browser, Teams). "
-                        "Close any app using the camera and retry.",
-                        dev_idx,
+                    diag_info["stage"] = "LOCAL_DEVICE_PREEMPTED"
+                    diag_info["error_message"] = (
+                        f"Local camera (index {dev_idx}) opened but read() failed — "
+                        "the device may be in use by another application (e.g. browser, Teams) "
+                        "or blocked by Windows Camera Privacy Settings."
                     )
             else:
-                logger.warning("Local webcam (index %d) could not be opened on any backend.", dev_idx)
+                diag_info["stage"] = "LOCAL_DEVICE_UNAVAILABLE"
+                diag_info["error_message"] = f"Local camera (index {dev_idx}) could not be opened on any capture backend (MSMF/DShow)."
         except Exception as exc:
-            logger.warning("Local webcam capture error for index %d: %s", dev_idx, exc)
+            diag_info["stage"] = "LOCAL_DEVICE_ERROR"
+            diag_info["error_message"] = f"Local camera capture error for index {dev_idx}: {exc}"
+
+        latency = round((time.perf_counter() - t0) * 1000.0, 1)
+        return (None, "Local Camera Unavailable", latency, diag_info) if return_diag else (None, "Local Camera Unavailable", latency)
 
 
     # Parse credentials cleanly
@@ -210,10 +232,46 @@ def capture_camera_frame_sync(
     is_rtsp_reachable = False
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.3)
-            is_rtsp_reachable = s.connect_ex((target_host, target_port)) == 0
+            s.settimeout(0.35)
+            is_rtsp_reachable = (s.connect_ex((target_host, target_port)) == 0)
     except Exception:
         is_rtsp_reachable = False
+
+    diag_info["is_port_open"] = is_rtsp_reachable
+
+    if not is_rtsp_reachable:
+        # Probe fallback ports (80, 443, 8080) to distinguish host unreachable vs port closed
+        host_responds = False
+        for test_p in [80, 443, 8080]:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(0.15)
+                    if s.connect_ex((target_host, test_p)) == 0:
+                        host_responds = True
+                        break
+            except Exception:
+                pass
+
+        diag_info["is_reachable"] = host_responds
+        if not host_responds:
+            diag_info["stage"] = "HOST_UNREACHABLE"
+            diag_info["error_message"] = (
+                f"Host Unreachable: Camera at '{target_host}' did not respond to network probes. "
+                "Confirm camera is powered on and connected to the store network."
+            )
+        else:
+            diag_info["stage"] = "PORT_CLOSED"
+            diag_info["error_message"] = (
+                f"Port Closed: Host '{target_host}' is reachable, but TCP port {target_port} is closed "
+                "or blocked by a firewall/client isolation. Verify camera streaming service is active."
+            )
+    else:
+        diag_info["is_reachable"] = True
+        diag_info["stage"] = "RTSP_HANDSHAKE_FAILED"
+        diag_info["error_message"] = (
+            f"RTSP Handshake Failed: Port {target_port} is open on {target_host}, but RTSP handshake failed "
+            f"on path '{rtsp_path}'. Verify the stream path for this camera model (e.g. /live/ch0, /Streaming/Channels/101, /cam/realmonitor)."
+        )
 
     if is_rtsp_reachable:
         candidate_rtsp_urls = []
@@ -230,17 +288,26 @@ def capture_camera_frame_sync(
                 cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1500)
                 cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
                 if cap.isOpened():
+                    diag_info["is_handshake_ok"] = True
                     ret, frame = cap.read()
                     cap.release()
                     if ret and frame is not None and frame.size > 0:
                         ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                         if ret_enc:
                             latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                            return buf.tobytes(), desc, latency
+                            diag_info["stage"] = "SUCCESS"
+                            diag_info["error_message"] = ""
+                            return (buf.tobytes(), desc, latency, diag_info) if return_diag else (buf.tobytes(), desc, latency)
+                    else:
+                        diag_info["stage"] = "DECODE_FAILED"
+                        diag_info["error_message"] = (
+                            f"Video Decode Failed: Connection opened on {target_host}:{target_port}, "
+                            "but no valid video frames could be decoded. Check camera encoding codec (H.264/H.265)."
+                        )
                 else:
                     cap.release()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("OpenCV RTSP pull exception on %s: %s", url, exc)
 
     # 4. Candidate HTTP Snapshot URLs (fast check with low latency)
     open_http_ports = []
@@ -274,7 +341,9 @@ def capture_camera_frame_sync(
                         if resp.status_code == 200 and len(resp.content) > 500:
                             if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
                                 latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                                return resp.content, f"HTTP Snapshot ({url})", latency
+                                diag_info["stage"] = "SUCCESS"
+                                diag_info["error_message"] = ""
+                                return (resp.content, f"HTTP Snapshot ({url})", latency, diag_info) if return_diag else (resp.content, f"HTTP Snapshot ({url})", latency)
                     except Exception:
                         pass
         except Exception:
@@ -282,8 +351,8 @@ def capture_camera_frame_sync(
 
     latency = round((time.perf_counter() - t0) * 1000.0, 1)
     if is_rtsp_reachable or (open_http_ports and len(open_http_ports) > 0):
-        return None, "SOCKET_CONNECTED_DECODE_PENDING", latency
-    return None, "NETWORK_UNREACHABLE", latency
+        return (None, "SOCKET_CONNECTED_DECODE_PENDING", latency, diag_info) if return_diag else (None, "SOCKET_CONNECTED_DECODE_PENDING", latency)
+    return (None, "NETWORK_UNREACHABLE", latency, diag_info) if return_diag else (None, "NETWORK_UNREACHABLE", latency)
 
 
 def generate_diagnostic_preview_frame(
@@ -668,8 +737,8 @@ async def test_camera_connection(
     creds = req.credentials if (req and req.credentials) else (cam.credentials_ref if cam else None)
 
     # Attempt capture in background thread pool to avoid blocking async event loop
-    frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
-        capture_camera_frame_sync, ip, rtsp, creds, sub_stream_path, 2.5, stream_url
+    frame_bytes, source_desc, latency_ms, diag_info = await asyncio.to_thread(
+        capture_camera_frame_sync, ip, rtsp, creds, sub_stream_path, 2.5, stream_url, True
     )
 
     os.makedirs("snapshots", exist_ok=True)
@@ -746,20 +815,21 @@ async def test_camera_connection(
 
     target_endpoint = stream_url or (f"rtsp://{ip}:554{rtsp}" if not rtsp.startswith(("http://", "https://", "rtsp://")) else f"{ip}{rtsp}")
 
-    # Provide actionable diagnostics for local webcam vs network camera
-    if ip in ("0", "1", "2") or (stream_url and str(stream_url).strip() in ("0", "1", "2")):
-        err_msg = (
-            f"Cannot read frames from local camera (device index {ip or stream_url}). "
-            "Windows may be blocking access: check Privacy Settings → Camera → Allow desktop apps. "
-            "Another application (e.g. browser, Teams) may also be holding the device."
-        )
-    else:
-        err_msg = (
-            f"Real-time stream pull failed on {target_endpoint}. "
-            "Port 554/80 is closed or no video stream was decoded. "
-            "Check RTSP path, camera power, and network reachability. "
-            "To test with your built-in PC webcam, enter '0' as the IP address."
-        )
+    # Staged diagnostic error message (Part O.2.1: specific, actionable, zero webcam testing shortcuts)
+    err_msg = diag_info.get("error_message")
+    if not err_msg:
+        if ip in ("0", "1", "2") or (stream_url and str(stream_url).strip() in ("0", "1", "2")):
+            err_msg = (
+                f"Cannot read frames from local camera (device index {ip or stream_url}). "
+                "Windows Camera access may be preempted by another application (e.g. browser, Teams) "
+                "or blocked by Camera Privacy Settings."
+            )
+        else:
+            err_msg = (
+                f"Real-time stream pull failed on {target_endpoint}. "
+                f"Stage: {diag_info.get('stage', 'CONNECTION_FAILED')}. "
+                "Verify camera power, subnet reachability, and RTSP stream path."
+            )
 
     return CameraTestConnectionResponse(
         success=False,

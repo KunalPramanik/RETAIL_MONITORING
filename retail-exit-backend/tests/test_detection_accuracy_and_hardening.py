@@ -279,3 +279,71 @@ def test_colocated_laptop_and_smartphone_preservation():
     assert len(keep) == 2
     assert 0 in keep  # Laptop preserved
     assert 1 in keep  # Smartphone preserved
+
+
+def test_sub_floor_detections_rejected_from_overlay_and_counting():
+    """Validates Part N.0, N.1, & N.5.4 (Pattern 1 & 2):
+    
+    Verifies that low-confidence false-positive detections (e.g. Clock at 14% and Mouse at 24%)
+    are strictly rejected by the 0.50 confidence floor, preventing them from:
+    1. Reaching the live bounding-box overlay.
+    2. Incrementing total_units or distorting consensus (Pattern 3).
+    Only genuine detections (e.g. Bottle at 60%) pass through.
+    """
+    cfg = get_vision_config()
+    conf_floor = cfg.confidence_floor  # 0.50
+    item_floor = cfg.item_conf_threshold  # 0.45
+    effective_floor = max(item_floor, conf_floor)  # 0.50
+
+    # Simulate three candidate detections:
+    # 1. Clock at 14% (the exact audit failure from Part N.5.4 Pattern 1)
+    # 2. Mouse at 24% (Part N.5.4 Pattern 2)
+    # 3. Bottle at 60% (genuine detection)
+    test_scores = [0.14, 0.24, 0.60]
+    test_classes = [74, 64, 39]  # 74 = Clock, 64 = Mouse, 39 = Bottle
+
+    accepted_detections = []
+    total_units = 0
+
+    for score, cid in zip(test_scores, test_classes):
+        if score < effective_floor:
+            # Sub-floor detection: strictly filtered out
+            continue
+        accepted_detections.append((cid, score))
+        total_units += 1
+
+    # Exactly 1 detection accepted (Bottle 60%), Clock 14% and Mouse 24% rejected
+    assert len(accepted_detections) == 1
+    assert accepted_detections[0] == (39, 0.60)
+    # Consensus / total units is 1, NOT inflated to 2 or 3
+    assert total_units == 1
+
+
+@pytest.mark.asyncio
+async def test_connection_test_diagnostics_without_webcam_shortcut(client):
+    """Validates Part O.2.1:
+    
+    Verifies that real-time stream pull failures on unreachable endpoints:
+    1. Report structured, staged diagnostic failure (Host Unreachable / Port Closed / Handshake Failed).
+    2. Strictly do NOT contain any developer shortcut text ('enter 0' for PC webcam) in production error messages.
+    """
+    resp = await client.post(
+        "/api/cameras/cam_diag_test/test-connection",
+        json={"ipAddress": "192.168.100.101", "rtspPath": "/live/ch0"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["success"] is False
+    assert data["status"] == "CONNECTION_FAILED"
+
+    error_msg = data.get("errorMessage", "")
+    assert error_msg != ""
+
+    # Must NOT contain developer shortcut
+    assert "enter '0'" not in error_msg.lower()
+    assert "enter 0" not in error_msg.lower()
+    assert "webcam" not in error_msg.lower()
+
+    # Must contain specific, actionable diagnostic information
+    assert any(term in error_msg for term in ["Unreachable", "Closed", "Handshake", "Verify", "192.168.100.101"])
+

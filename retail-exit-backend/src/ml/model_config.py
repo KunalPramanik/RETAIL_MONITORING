@@ -21,8 +21,8 @@ class VisionModelConfig:
     # ── Confidence Floors & Gating ──
     confidence_floor: float = 0.50  # Hard floor: only detections >= 50% reach DB verdicts & live UI overlays
     person_conf_threshold: float = 0.50
-    item_conf_threshold: float = 0.12
-    case_conf_threshold: float = 0.45
+    item_conf_threshold: float = 0.45
+    case_conf_threshold: float = 0.50
     vehicle_conf_threshold: float = 0.25
 
     # ── NMS & Clustered Item Tuning ──

@@ -10,7 +10,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from typing import Dict, Any, Optional
 from sqlalchemy import select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
@@ -34,6 +36,73 @@ logger = logging.getLogger("secops.main")
 _is_shutting_down = False
 
 
+async def reconcile_duplicate_cameras(session: AsyncSession) -> int:
+    """Startup reconciliation for any pre-existing duplicates (Part O.2).
+    
+    Detects existing active camera rows sharing identical normalized endpoints,
+    retains the primary (earliest added_at), soft-deletes duplicates (removed_at = now()),
+    and writes an immutable audit_log entry explaining the merge.
+    """
+    stmt = select(Camera).where(Camera.removed_at.is_(None)).order_by(Camera.added_at.asc())
+    res = await session.execute(stmt)
+    active_cams = res.scalars().all()
+
+    seen_endpoints: Dict[str, Camera] = {}
+    reconciled_count = 0
+    now = get_utc_now()
+
+    for cam in active_cams:
+        norm_ip = (cam.ip_address or "").strip().lower()
+        norm_path = (cam.rtsp_path or "").strip().lower()
+        norm_stream = (cam.stream_url or "").strip().lower()
+
+        key = norm_stream if norm_stream else f"{norm_ip}:{norm_path}"
+        if not key or key == ":":
+            continue
+
+        if key in seen_endpoints:
+            primary = seen_endpoints[key]
+            cam.removed_at = now
+            reconciled_count += 1
+            logger.warning(
+                "Duplicate camera detected and reconciled: camera_id=%s merged into primary camera_id=%s (endpoint=%s)",
+                cam.camera_id,
+                primary.camera_id,
+                key,
+            )
+            try:
+                from src.api.cameras import log_audit_entry
+                await log_audit_entry(
+                    session=session,
+                    entity_type="CAMERA",
+                    entity_id=cam.camera_id,
+                    action="STARTUP_RECONCILE_DUPLICATE",
+                    actor_type="SYSTEM",
+                    before_state={
+                        "camera_id": cam.camera_id,
+                        "label": cam.label,
+                        "status": cam.status,
+                        "endpoint": key,
+                    },
+                    after_state={
+                        "camera_id": cam.camera_id,
+                        "removed_at": now.isoformat(),
+                        "merged_into_camera_id": primary.camera_id,
+                        "reason": "Startup reconciliation soft-deleted duplicate camera row for identical endpoint",
+                    },
+                )
+            except Exception as audit_err:
+                logger.debug("Audit log entry for duplicate reconciliation skipped: %s", audit_err)
+        else:
+            seen_endpoints[key] = cam
+
+    if reconciled_count > 0:
+        await session.commit()
+        logger.info("Startup duplicate camera reconciliation complete: %d duplicate(s) soft-deleted.", reconciled_count)
+
+    return reconciled_count
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle hooks."""
@@ -46,6 +115,8 @@ async def lifespan(app: FastAPI):
     # Initialize baseline configuration (Store, ThresholdConfig) with 0 mock rows per Part I policy
     async with AsyncSessionLocal() as session:
         await init_baseline_configuration(session)
+        # Part O.2: Reconcile duplicate cameras on startup
+        await reconcile_duplicate_cameras(session)
     logger.info("Database schema initialized with clean baseline configuration.")
 
     # Start background tasks

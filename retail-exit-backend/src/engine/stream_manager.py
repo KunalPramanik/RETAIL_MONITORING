@@ -2,7 +2,10 @@
 
 Provides persistent background video capture, high-throughput in-memory frame buffering,
 and fluid MJPEG streaming for local USB/webcams (device indices 0, 1) and network RTSP/HTTP cameras.
-Eliminates repetitive cv2.VideoCapture open/close latency and Windows device contention.
+Strictly adheres to Zero-Fake-Data / Dynamic Operations Policy:
+- Disconnected or pending streams render authentic CCTV Technical Standby Cards.
+- Never substitutes missing streams with pre-recorded images or candidate files.
+- Tracks real hardware frames explicitly with `has_real_frame`.
 """
 
 import os
@@ -27,22 +30,25 @@ class CameraStreamSession:
         self.source = source
         self.auth_tuple = auth_tuple
         self.is_running = False
+        self.is_connected = False
+        self.has_real_frame = False
         self.thread: Optional[threading.Thread] = None
 
         self.last_frame_bytes: Optional[bytes] = None
         self.last_frame_bgr: Optional[np.ndarray] = None
+        self.last_real_frame_bytes: Optional[bytes] = None
         self.last_frame_time: float = 0.0
         self.last_access_time: float = time.time()
         self.error_count: int = 0
         self.fps_observed: float = 0.0
-        self.resolution: Tuple[int, int] = (0, 0)
+        self.resolution: Tuple[int, int] = (1280, 720)
         self.lock = threading.Lock()
 
     def start(self) -> None:
-        """Starts the capture background thread with immediate initial frame."""
+        """Starts the capture background thread with immediate technical standby frame."""
         if not self.is_running:
             self.is_running = True
-            init_frame = self._generate_simulated_frame(0)
+            init_frame = self._generate_standby_frame(0)
             ret_enc, buf = cv2.imencode(".jpg", init_frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
             if ret_enc:
                 with self.lock:
@@ -51,6 +57,8 @@ class CameraStreamSession:
                     self.last_frame_time = time.time()
                     self.fps_observed = 25.0
                     self.resolution = (1280, 720)
+                    self.has_real_frame = False
+                    self.is_connected = False
 
             self.thread = threading.Thread(target=self._capture_loop, daemon=True, name=f"Stream-{self.camera_key}")
             self.thread.start()
@@ -64,14 +72,16 @@ class CameraStreamSession:
 
     def _open_capture(self) -> Optional[cv2.VideoCapture]:
         try:
-            if isinstance(self.source, int) or (isinstance(self.source, str) and self.source.isdigit()):
+            if isinstance(self.source, int) or (isinstance(self.source, str) and str(self.source).strip().isdigit()):
                 dev_idx = int(self.source)
-                # Windows DirectShow backend for faster start and low latency
-                cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
+                # On Windows: try MSMF, then DirectShow, then default
+                cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
+                if not cap.isOpened():
+                    cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
                 if not cap.isOpened():
                     cap = cv2.VideoCapture(dev_idx)
             else:
-                src_str = str(self.source)
+                src_str = str(self.source).strip()
                 if src_str.startswith("rtsp://"):
                     import urllib.parse
                     try:
@@ -79,80 +89,97 @@ class CameraStreamSession:
                         h, p = parsed.hostname, parsed.port or 554
                         if h:
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                                s.settimeout(0.2)
+                                s.settimeout(1.2)
                                 if s.connect_ex((h, p)) != 0:
                                     return None
                     except Exception:
                         return None
 
-                os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2000000"
-                cap = cv2.VideoCapture(src_str, cv2.CAP_FFMPEG)
+                    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2500000"
+                    cap = cv2.VideoCapture(src_str, cv2.CAP_FFMPEG)
+                else:
+                    cap = cv2.VideoCapture(src_str)
 
-            if cap.isOpened():
+            if cap and cap.isOpened():
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                try:
+                    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 2500)
+                    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2500)
+                except Exception:
+                    pass
                 return cap
             else:
-                cap.release()
+                if cap:
+                    cap.release()
                 return None
         except Exception as e:
             logger.debug("Failed opening video capture for %s: %s", self.camera_key, e)
             return None
 
-    def _generate_simulated_frame(self, tick: int) -> np.ndarray:
-        """Generates dynamic, animated high-resolution CCTV video frames from real surveillance footage."""
-        import glob
+    def _generate_standby_frame(self, tick: int) -> np.ndarray:
+        """Generates an authentic, professional CCTV Technical Standby Card with live UTC time."""
         w, h = 1280, 720
-        frame = None
+        frame = np.zeros((h, w, 3), dtype=np.uint8)
+        frame[:] = (18, 22, 28)  # Deep tactical dark grey-blue
 
-        # Cache a single stable surveillance scene per camera session to eliminate fast-forwarding
-        if not hasattr(self, "_cached_scene_img") or self._cached_scene_img is None:
-            if not hasattr(self, "_candidate_files") or not self._candidate_files:
-                candidate_patterns = [
-                    "retail-exit-backend/data/active_learning/candidates/*.jpg",
-                    "data/active_learning/candidates/*.jpg",
-                    "snapshots/*.jpg",
-                    "retail-exit-backend/snapshots/*.jpg",
-                ]
-                for pattern in candidate_patterns:
-                    matches = glob.glob(pattern)
-                    if matches:
-                        self._candidate_files = sorted(matches)
-                        break
+        # Technical CCTV grid
+        grid_color = (28, 36, 46)
+        for x in range(0, w, 60):
+            cv2.line(frame, (x, 0), (x, h), grid_color, 1)
+        for y in range(0, h, 60):
+            cv2.line(frame, (0, y), (w, y), grid_color, 1)
 
-            if hasattr(self, "_candidate_files") and self._candidate_files:
-                idx = abs(hash(str(self.camera_key) + str(self.source))) % len(self._candidate_files)
-                try:
-                    raw = cv2.imread(self._candidate_files[idx])
-                    if raw is not None and raw.size > 0:
-                        self._cached_scene_img = cv2.resize(raw, (w, h))
-                except Exception:
-                    self._cached_scene_img = None
+        # Subtle dynamic scanning line (confirms backend video pipeline is active)
+        scan_y = int((tick * 8) % h)
+        cv2.line(frame, (0, scan_y), (w, scan_y), (45, 65, 85), 2)
+        if 0 < scan_y < h - 2:
+            cv2.line(frame, (0, scan_y + 1), (w, scan_y + 1), (30, 45, 60), 1)
 
-        if getattr(self, "_cached_scene_img", None) is not None:
-            frame = self._cached_scene_img.copy()
+        # Center reticle & corner framing
+        center_x, center_y = w // 2, h // 2
+        bracket_len = 35
+        bracket_color = (60, 75, 95)
+        # Top-left corner
+        cv2.line(frame, (40, 40), (40 + bracket_len, 40), bracket_color, 2)
+        cv2.line(frame, (40, 40), (40, 40 + bracket_len), bracket_color, 2)
+        # Top-right corner
+        cv2.line(frame, (w - 40, 40), (w - 40 - bracket_len, 40), bracket_color, 2)
+        cv2.line(frame, (w - 40, 40), (w - 40, 40 + bracket_len), bracket_color, 2)
+        # Bottom-left corner
+        cv2.line(frame, (40, h - 40), (40 + bracket_len, h - 40), bracket_color, 2)
+        cv2.line(frame, (40, h - 40), (40, h - 40 - bracket_len), bracket_color, 2)
+        # Bottom-right corner
+        cv2.line(frame, (w - 40, h - 40), (w - 40 - bracket_len, h - 40), bracket_color, 2)
+        cv2.line(frame, (w - 40, h - 40), (w - 40, h - 40 - bracket_len), bracket_color, 2)
 
-        if frame is None:
-            frame = np.zeros((h, w, 3), dtype=np.uint8)
-            grid_color = (25, 30, 40)
-            for x in range(0, w, 80):
-                cv2.line(frame, (x, 0), (x, h), grid_color, 1)
-            for y in range(0, h, 80):
-                cv2.line(frame, (0, y), (w, y), grid_color, 1)
+        # Central Standby Box
+        box_w, box_h = 560, 160
+        box_x1 = center_x - box_w // 2
+        box_y1 = center_y - box_h // 2
+        cv2.rectangle(frame, (box_x1, box_y1), (box_x1 + box_w, box_y1 + box_h), (25, 32, 42), -1)
+        cv2.rectangle(frame, (box_x1, box_y1), (box_x1 + box_w, box_y1 + box_h), (70, 85, 105), 1)
 
-        # Semi-transparent CCTV HUD top and bottom overlays
+        # Technical status text inside box
+        cv2.putText(frame, "[ NO LIVE SIGNAL // AWAITING STREAM INPUT ]", (box_x1 + 30, box_y1 + 45), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (235, 165, 45), 2)
+        cv2.putText(frame, f"ENDPOINT: {str(self.source)}", (box_x1 + 30, box_y1 + 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (190, 205, 220), 1)
+        cv2.putText(frame, "STATUS: STANDBY CARD // POLLING PHYSICAL DEVICE", (box_x1 + 30, box_y1 + 115), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (130, 145, 160), 1)
+        pulse_dots = "." * ((tick // 6) % 4)
+        cv2.putText(frame, f"RECONNECTING{pulse_dots}", (box_x1 + 30, box_y1 + 140), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (235, 165, 45), 1)
+
+        # Top HUD overlay banner
         overlay = frame.copy()
-        cv2.rectangle(overlay, (0, 0), (w, 85), (15, 20, 25), -1)
-        cv2.rectangle(overlay, (0, h - 55), (w, h), (15, 20, 25), -1)
-        cv2.addWeighted(overlay, 0.65, frame, 0.35, 0, frame)
+        cv2.rectangle(overlay, (0, 0), (w, 85), (12, 15, 20), -1)
+        cv2.rectangle(overlay, (0, h - 55), (w, h), (12, 15, 20), -1)
+        cv2.addWeighted(overlay, 0.70, frame, 0.30, 0, frame)
 
         cv2.putText(frame, "SEC-OPS SURVEILLANCE FLEET // REAL-TIME CV NODE", (30, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (217, 119, 6), 2)
         disp_title = f"{self.camera_key.upper()}"
-        cv2.putText(frame, f"STREAM: {disp_title} | TARGET: {self.source}", (30, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.70, (255, 255, 255), 2)
+        cv2.putText(frame, f"CHANNEL: {disp_title} | TARGET: {self.source}", (30, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
 
         # Live UTC timestamp updated continuously every frame
         now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-4] + " UTC"
-        cv2.putText(frame, f"REC [LIVE]  {now_str}", (30, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 210, 220), 1)
-        cv2.putText(frame, "STATUS: LIVE VIDEO ACTIVE // 25.0 FPS", (w - 440, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (34, 197, 94), 2)
+        cv2.putText(frame, f"REC [STANDBY]  {now_str}", (30, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 195, 210), 1)
+        cv2.putText(frame, "STATUS: AWAITING STREAM FEED // 25.0 FPS", (w - 490, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (235, 165, 45), 2)
 
         return frame
 
@@ -166,9 +193,8 @@ class CameraStreamSession:
             tick += 1
             if cap is None or not cap.isOpened():
                 consecutive_failures += 1
-                # Generate dynamic animated CCTV surveillance frame while waiting / reconnecting
                 now = time.time()
-                frame_anim = self._generate_simulated_frame(tick)
+                frame_anim = self._generate_standby_frame(tick)
                 ret_enc, buf = cv2.imencode(".jpg", frame_anim, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
                 if ret_enc:
                     with self.lock:
@@ -177,9 +203,11 @@ class CameraStreamSession:
                         self.last_frame_time = now
                         self.fps_observed = 25.0
                         self.resolution = (1280, 720)
+                        self.has_real_frame = False
+                        self.is_connected = False
 
                 # Attempt capture re-open periodically (every ~3 seconds / 75 frames)
-                if consecutive_failures % 75 == 0 or consecutive_failures == 1:
+                if consecutive_failures % 75 == 0:
                     cap = self._open_capture()
 
                 time.sleep(0.040)  # ~25 FPS
@@ -196,6 +224,7 @@ class CameraStreamSession:
                         now = time.time()
                         with self.lock:
                             self.last_frame_bytes = jpeg_bytes
+                            self.last_real_frame_bytes = jpeg_bytes
                             self.last_frame_bgr = frame
                             if self.last_frame_time > 0:
                                 dt = now - self.last_frame_time
@@ -203,16 +232,24 @@ class CameraStreamSession:
                                     self.fps_observed = round(0.9 * self.fps_observed + 0.1 * (1.0 / dt), 1)
                             self.last_frame_time = now
                             self.resolution = (w, h)
+                            self.has_real_frame = True
+                            self.is_connected = True
                     # Limit capture loop rate to ~30 FPS to prevent unnecessary CPU load
                     time.sleep(0.030)
                 else:
                     consecutive_failures += 1
+                    with self.lock:
+                        self.has_real_frame = False
+                        self.is_connected = False
                     if consecutive_failures > 5:
                         cap.release()
                         cap = None
                     time.sleep(0.040)
             except Exception as ex:
                 consecutive_failures += 1
+                with self.lock:
+                    self.has_real_frame = False
+                    self.is_connected = False
                 time.sleep(0.040)
 
         if cap is not None:
@@ -281,7 +318,7 @@ class CameraStreamManager:
     def get_latest_jpeg(
         self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, max_wait_sec: float = 1.0
     ) -> Tuple[Optional[bytes], float]:
-        """Returns the most recent JPEG frame directly from memory buffer with near-zero latency."""
+        """Returns the most recent JPEG frame (live video or technical standby) with near-zero latency."""
         t0 = time.perf_counter()
         session = self.get_session(camera_key, ip, rtsp_path, stream_url)
 
@@ -291,6 +328,24 @@ class CameraStreamManager:
                 if session.last_frame_bytes is not None:
                     latency = round((time.perf_counter() - t0) * 1000.0, 1)
                     return session.last_frame_bytes, latency
+            time.sleep(0.05)
+
+        latency = round((time.perf_counter() - t0) * 1000.0, 1)
+        return None, latency
+
+    def get_latest_real_jpeg(
+        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, max_wait_sec: float = 1.0
+    ) -> Tuple[Optional[bytes], float]:
+        """Returns the most recent JPEG frame ONLY if captured from authentic live hardware/RTSP stream."""
+        t0 = time.perf_counter()
+        session = self.get_session(camera_key, ip, rtsp_path, stream_url)
+
+        deadline = time.time() + max_wait_sec
+        while time.time() < deadline:
+            with session.lock:
+                if session.has_real_frame and session.last_real_frame_bytes is not None:
+                    latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                    return session.last_real_frame_bytes, latency
             time.sleep(0.05)
 
         latency = round((time.perf_counter() - t0) * 1000.0, 1)
@@ -315,7 +370,6 @@ class CameraStreamManager:
             if frame_bytes is not None:
                 yield boundary + frame_bytes + b"\r\n"
             else:
-                # Small wait if no frame is ready yet
                 await asyncio.sleep(0.1)
                 continue
 

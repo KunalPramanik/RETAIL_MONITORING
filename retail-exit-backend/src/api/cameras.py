@@ -72,13 +72,17 @@ def capture_camera_frame_sync(
 
     if dev_idx is not None:
         try:
-            buf, lat = camera_stream_manager.get_latest_jpeg(
+            # Only accept confirmed live hardware frames — not standby placeholders
+            buf, lat = camera_stream_manager.get_latest_real_jpeg(
                 f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=0.8
             )
             if buf is not None:
                 return buf, f"Local Camera Device ({dev_idx})", lat
 
-            cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
+            # Attempt direct capture if stream manager has no real frame yet
+            cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
             if not cap.isOpened():
                 cap = cv2.VideoCapture(dev_idx)
             if cap.isOpened():
@@ -89,8 +93,19 @@ def capture_camera_frame_sync(
                     if ret_enc:
                         latency = round((time.perf_counter() - t0) * 1000.0, 1)
                         return buf_enc.tobytes(), f"Local Camera Device ({dev_idx})", latency
-        except Exception:
-            pass
+                else:
+                    # Device opened but read failed — another process is likely holding it
+                    logger.warning(
+                        "Local webcam (index %d) opened but read() failed — "
+                        "device may be in use by another application (e.g. browser, Teams). "
+                        "Close any app using the camera and retry.",
+                        dev_idx,
+                    )
+            else:
+                logger.warning("Local webcam (index %d) could not be opened on any backend.", dev_idx)
+        except Exception as exc:
+            logger.warning("Local webcam capture error for index %d: %s", dev_idx, exc)
+
 
     # Parse credentials cleanly
     auth_tuples = []
@@ -279,59 +294,65 @@ def generate_diagnostic_preview_frame(
     camera_id: Optional[str] = None,
     lane_id: Optional[str] = None,
 ) -> bytes:
-    """Generates an authentic, high-clarity live surveillance preview frame using real retail camera video scenes."""
-    import glob
+    """Generates an authentic CCTV Technical Standby Card with live UTC timestamp.
+
+    Never uses pre-recorded candidate images. Always renders a proper signal-loss
+    standby card so the operator clearly sees the camera is offline/pending.
+    """
     w, h = 1280, 720
-    img = None
+    img = np.zeros((h, w, 3), dtype=np.uint8)
+    img[:] = (18, 22, 28)  # Tactical dark background
 
-    # 1. Load an authentic retail store surveillance scene from candidate repository
-    candidate_patterns = [
-        "retail-exit-backend/data/active_learning/candidates/*.jpg",
-        "data/active_learning/candidates/*.jpg",
-        "snapshots/*.jpg",
-        "retail-exit-backend/snapshots/*.jpg",
-    ]
-    for pattern in candidate_patterns:
-        matches = glob.glob(pattern)
-        if matches:
-            idx = abs(hash(camera_id or ip or "default")) % len(matches)
-            try:
-                raw_img = cv2.imread(matches[idx])
-                if raw_img is not None and raw_img.size > 0:
-                    img = cv2.resize(raw_img, (w, h))
-                    break
-            except Exception:
-                pass
+    # Technical grid
+    grid_color = (28, 36, 46)
+    for x in range(0, w, 60):
+        cv2.line(img, (x, 0), (x, h), grid_color, 1)
+    for y in range(0, h, 60):
+        cv2.line(img, (0, y), (w, y), grid_color, 1)
 
-    if img is None:
-        img = np.zeros((h, w, 3), dtype=np.uint8)
-        cv2.rectangle(img, (20, 20), (w - 20, h - 20), (45, 55, 72), 2)
+    # Corner brackets
+    blen = 35
+    bcol = (60, 75, 95)
+    cv2.line(img, (40, 40), (40 + blen, 40), bcol, 2)
+    cv2.line(img, (40, 40), (40, 40 + blen), bcol, 2)
+    cv2.line(img, (w - 40, 40), (w - 40 - blen, 40), bcol, 2)
+    cv2.line(img, (w - 40, 40), (w - 40, 40 + blen), bcol, 2)
+    cv2.line(img, (40, h - 40), (40 + blen, h - 40), bcol, 2)
+    cv2.line(img, (40, h - 40), (40, h - 40 - blen), bcol, 2)
+    cv2.line(img, (w - 40, h - 40), (w - 40 - blen, h - 40), bcol, 2)
+    cv2.line(img, (w - 40, h - 40), (w - 40, h - 40 - blen), bcol, 2)
 
-    # Semi-transparent CCTV HUD top and bottom overlays
+    # Central standby box
+    box_w, box_h = 620, 175
+    bx = w // 2 - box_w // 2
+    by = h // 2 - box_h // 2
+    cv2.rectangle(img, (bx, by), (bx + box_w, by + box_h), (25, 32, 42), -1)
+    cv2.rectangle(img, (bx, by), (bx + box_w, by + box_h), (70, 85, 105), 1)
+
+    # Status text — reflect actual status so operator knows the true state
+    status_upper = status.upper().replace("_", " ")
+    is_offline = status_upper in ("OFFLINE", "CONNECTION_FAILED", "NETWORK_UNREACHABLE", "PENDING SETUP")
+    badge_color = (235, 165, 45) if is_offline else (34, 197, 94)
+
+    cv2.putText(img, f"[ NO LIVE SIGNAL // {status_upper} ]", (bx + 30, by + 45), cv2.FONT_HERSHEY_SIMPLEX, 0.65, badge_color, 2)
+    disp_cam = f"{label.upper()} [{camera_id or 'UNREGISTERED'}]"
+    cv2.putText(img, f"CAMERA: {disp_cam}", (bx + 30, by + 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (190, 205, 220), 1)
+    lane_desc = f"LANE: {lane_id}" if lane_id else "LANE: NOT ASSIGNED"
+    cv2.putText(img, f"ENDPOINT: {ip}{rtsp_path}  |  {lane_desc}", (bx + 30, by + 110), cv2.FONT_HERSHEY_SIMPLEX, 0.50, (130, 145, 160), 1)
+    cv2.putText(img, "AWAITING PHYSICAL STREAM CONNECTION", (bx + 30, by + 148), cv2.FONT_HERSHEY_SIMPLEX, 0.47, (235, 165, 45), 1)
+
+    # Top & bottom HUD overlay
     overlay = img.copy()
-    cv2.rectangle(overlay, (0, 0), (w, 85), (15, 20, 25), -1)
-    cv2.rectangle(overlay, (0, h - 55), (w, h), (15, 20, 25), -1)
-    cv2.addWeighted(overlay, 0.65, img, 0.35, 0, img)
+    cv2.rectangle(overlay, (0, 0), (w, 85), (12, 15, 20), -1)
+    cv2.rectangle(overlay, (0, h - 55), (w, h), (12, 15, 20), -1)
+    cv2.addWeighted(overlay, 0.70, img, 0.30, 0, img)
 
-    # Top banner & camera identification
     cv2.putText(img, "SEC-OPS RETAIL MONITORING // LIVE CCTV NODE", (30, 32), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (217, 119, 6), 2)
-    display_title = f"{label.upper()} [{camera_id or 'LIVE-PULL'}]"
-    cv2.putText(img, f"STREAM: {display_title}", (30, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (255, 255, 255), 2)
-    lane_desc = f" | LANE: {lane_id}" if lane_id else " | LANE: EXIT PORTAL"
-    cv2.putText(img, f"ENDPOINT: {ip}{rtsp_path}{lane_desc}", (w - 550, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 210, 220), 1)
+    cv2.putText(img, f"STREAM: {label.upper()} [{camera_id or 'PENDING'}]", (30, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
 
-    # Status indicator badge
-    status_color = (34, 197, 94)
-    status_text = "● LIVE VIDEO STREAM ACTIVE // 30 FPS"
-    cv2.putText(img, status_text, (30, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
-
-    # Real-time UTC timestamp
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    cv2.putText(img, f"REC [LIVE]  {now_str}", (w - 380, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (220, 220, 220), 1)
-
-    # Live exit monitoring boundary overlay
-    cv2.rectangle(img, (int(w * 0.30), int(h * 0.20)), (int(w * 0.70), int(h * 0.82)), (34, 197, 94), 2)
-    cv2.putText(img, "MONITORED EXIT ZONE // TARGET ACTIVE", (int(w * 0.30), int(h * 0.20) - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (34, 197, 94), 2)
+    cv2.putText(img, f"REC [STANDBY]  {now_str}", (30, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 195, 210), 1)
+    cv2.putText(img, "STATUS: STANDBY // AWAITING STREAM FEED", (w - 490, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (235, 165, 45), 2)
 
     _, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
     return buf.tobytes()
@@ -698,43 +719,52 @@ async def test_camera_connection(
             latencyMs=latency_ms,
         )
 
-    # If no real frame decoded:
-    # 1. Existing registered camera in database (e.g. unit test suite cam_105)
-    if cam is not None:
-        frame_bytes = generate_diagnostic_preview_frame(
-            label=cam.label,
-            ip=ip,
-            rtsp_path=rtsp,
-            status="ONLINE" if cam.lane_id else "PENDING_SETUP",
-            camera_id=camera_id,
-            lane_id=cam.lane_id,
-        )
+    # If no real frame decoded — honest failure for ALL cases (registered or new wizard test).
+    # Saves a standby card to disk so the tile shows meaningful status to the operator.
+    diag_label = cam.label if cam else (f"CAMERA {camera_id}")
+    diag_lane = cam.lane_id if cam else None
+    standby_bytes = generate_diagnostic_preview_frame(
+        label=diag_label,
+        ip=ip,
+        rtsp_path=rtsp,
+        status="CONNECTION_FAILED",
+        camera_id=camera_id,
+        lane_id=diag_lane,
+    )
+    try:
+        os.makedirs("snapshots", exist_ok=True)
         with open(snapshot_path, "wb") as f:
-            f.write(frame_bytes)
+            f.write(standby_bytes)
+    except Exception:
+        pass
 
-        cam.status = "ONLINE"
-        cam.last_heartbeat_at = now
-        cam.offline_since = None
+    if cam:
+        cam.status = "OFFLINE"
+        cam.offline_since = cam.offline_since or now
         await session.commit()
         await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
 
-        return CameraTestConnectionResponse(
-            success=True,
-            status="ONLINE",
-            streamUrl=str(cam.stream_url or f"rtsp://{ip}:554{rtsp}"),
-            subStreamPath=sub_stream_path,
-            snapshotUrl=f"/snapshots/preview_{camera_id}.jpg",
-            resolution=cam.resolution or "1920x1080",
-            fps=cam.fps or 30,
-            latencyMs=max(latency_ms, 18.4),
+    target_endpoint = stream_url or (f"rtsp://{ip}:554{rtsp}" if not rtsp.startswith(("http://", "https://", "rtsp://")) else f"{ip}{rtsp}")
+
+    # Provide actionable diagnostics for local webcam vs network camera
+    if ip in ("0", "1", "2") or (stream_url and str(stream_url).strip() in ("0", "1", "2")):
+        err_msg = (
+            f"Cannot read frames from local camera (device index {ip or stream_url}). "
+            "Windows may be blocking access: check Privacy Settings → Camera → Allow desktop apps. "
+            "Another application (e.g. browser, Teams) may also be holding the device."
+        )
+    else:
+        err_msg = (
+            f"Real-time stream pull failed on {target_endpoint}. "
+            "Port 554/80 is closed or no video stream was decoded. "
+            "Check RTSP path, camera power, and network reachability. "
+            "To test with your built-in PC webcam, enter '0' as the IP address."
         )
 
-    # 2. New camera test in wizard: honestly report failure with actionable diagnostics (Zero Fake Success)
-    target_endpoint = stream_url or (f"rtsp://{ip}:554{rtsp}" if not rtsp.startswith(("http://", "https://", "rtsp://")) else f"{ip}{rtsp}")
     return CameraTestConnectionResponse(
         success=False,
         status="CONNECTION_FAILED",
-        errorMessage=f"Real-time stream pull failed on {target_endpoint}. Port 554/80 is closed or not streaming video. Check camera power and network subnet. Note: To test in real time with your computer's built-in webcam, enter '0'.",
+        errorMessage=err_msg,
         latencyMs=latency_ms,
     )
 

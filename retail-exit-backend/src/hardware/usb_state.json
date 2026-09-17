@@ -1,1 +1,54 @@
-{}
+{
+  "COM3": {
+    "port": "COM3",
+    "vid": "0403",
+    "pid": "6001",
+    "deviceType": "WEIGHT_SCALE",
+    "manufacturer": "FTDI",
+    "model": "FT232R Industrial Scale USB-Serial Interface",
+    "laneId": "LANE-01",
+    "isConnected": false,
+    "status": "RESTORED_WAITING_VERIFICATION",
+    "lastSeenAt": "2026-09-17T11:10:47.814807+00:00",
+    "rawDescription": ""
+  },
+  "COM4": {
+    "port": "COM4",
+    "vid": "10C4",
+    "pid": "EA60",
+    "deviceType": "WEIGHT_SCALE",
+    "manufacturer": "Silicon Labs / CAS",
+    "model": "CP210x Industrial Floor Scale Terminal",
+    "laneId": "LANE-01",
+    "isConnected": false,
+    "status": "RESTORED_WAITING_VERIFICATION",
+    "lastSeenAt": "2026-09-17T11:10:47.820127+00:00",
+    "rawDescription": ""
+  },
+  "COM5": {
+    "port": "COM5",
+    "vid": "0403",
+    "pid": "6001",
+    "deviceType": "WEIGHT_SCALE",
+    "manufacturer": "FTDI",
+    "model": "FT232R Industrial Scale USB-Serial Interface",
+    "laneId": "LANE-01",
+    "isConnected": false,
+    "status": "RESTORED_WAITING_VERIFICATION",
+    "lastSeenAt": "2026-09-17T11:10:47.831925+00:00",
+    "rawDescription": ""
+  },
+  "COM7": {
+    "port": "COM7",
+    "vid": "0403",
+    "pid": "6001",
+    "deviceType": "WEIGHT_SCALE",
+    "manufacturer": "FTDI",
+    "model": "FT232R Industrial Scale USB-Serial Interface",
+    "laneId": "LANE-03",
+    "isConnected": false,
+    "status": "RESTORED_WAITING_VERIFICATION",
+    "lastSeenAt": "2026-09-17T11:10:47.837457+00:00",
+    "rawDescription": ""
+  }
+}

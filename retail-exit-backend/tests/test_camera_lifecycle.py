@@ -113,22 +113,26 @@ async def test_camera_connection_test_failure_diagnostics(client):
 
 
 @pytest.mark.asyncio
-async def test_camera_connection_test_success(client):
-    """Successful connection test returns snapshot frame and flips camera to ONLINE."""
+async def test_camera_connection_test_unreachable(client):
+    """Connection test for unreachable IP returns CONNECTION_FAILED — not fake success.
+
+    192.168.10.55 is not reachable in CI, so the system must return an honest
+    failure rather than faking ONLINE via a pre-recorded diagnostic frame.
+    """
     resp = await client.post(
         "/api/cameras/cam_105/test-connection",
         json={"ipAddress": "192.168.10.55", "rtspPath": "/stream"},
     )
     assert resp.status_code == 200
     data = resp.json()
-    assert data["success"] is True
-    assert data["status"] == "ONLINE"
-    assert data["snapshotUrl"] is not None
+    assert data["success"] is False
+    assert data["status"] == "CONNECTION_FAILED"
+    assert data["errorMessage"]  # Non-empty diagnostic message
 
-    # Check that cam_105 status flipped to ONLINE
+    # Camera should remain OFFLINE — not flipped to ONLINE on failure
     cam_resp = await client.get("/api/cameras/cam_105")
     assert cam_resp.status_code == 200
-    assert cam_resp.json()["status"] == "ONLINE"
+    assert cam_resp.json()["status"] in ("OFFLINE", "PENDING_SETUP", "PENDING")
 
 
 @pytest.mark.asyncio

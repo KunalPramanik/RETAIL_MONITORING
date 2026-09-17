@@ -142,7 +142,7 @@ class CameraIngestionWorker:
         # Attempt frame capture via stream_manager first for ultra-low latency & no device contention
         from src.engine.stream_manager import camera_stream_manager
         target_path = cam.sub_stream_path or cam.rtsp_path or ""
-        sm_bytes, latency_ms = camera_stream_manager.get_latest_jpeg(
+        sm_bytes, latency_ms = camera_stream_manager.get_latest_real_jpeg(
             cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.5
         )
         if sm_bytes:
@@ -155,14 +155,21 @@ class CameraIngestionWorker:
                 str(cam.rtsp_path or ""),
                 str(cam.credentials_ref or ""),
                 str(cam.sub_stream_path or ""),
-                2.0,
+                1.5,
                 str(cam.stream_url or "") if cam.stream_url else None,
             )
 
         if not frame_bytes:
+            # Physical camera is not streaming live video: do not process inference or create fake events
+            now = get_utc_now()
+            if cam.status == "ONLINE" and cam.last_heartbeat_at:
+                diff_sec = (now - (cam.last_heartbeat_at.replace(tzinfo=timezone.utc) if cam.last_heartbeat_at.tzinfo is None else cam.last_heartbeat_at)).total_seconds()
+                if diff_sec > 30:
+                    cam.status = "OFFLINE"
+                    cam.offline_since = now
             return None
 
-        # Update camera heartbeat and status to ONLINE
+        # Update camera heartbeat and status to ONLINE with verified live stream
         now = get_utc_now()
         cam.last_heartbeat_at = now
         cam.status = "ONLINE"

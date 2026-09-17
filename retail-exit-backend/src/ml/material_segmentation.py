@@ -52,16 +52,17 @@ class MaterialSegmentationService:
     @classmethod
     def load_config(cls) -> Dict[str, Any]:
         if cls._config is None:
+            cfg: Dict[str, Any] = {}
             if os.path.exists(CONFIG_PATH):
                 try:
                     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                        cls._config = json.load(f)
+                        loaded = json.load(f)
+                        if isinstance(loaded, dict):
+                            cfg = loaded
                 except Exception as e:
                     logger.error("Failed to load material classes config: %s", e)
-                    cls._config = {}
-            else:
-                cls._config = {}
-        return cls._config
+            cls._config = cfg
+        return cls._config if cls._config is not None else {}
 
     @classmethod
     def segment_materials(
@@ -122,14 +123,14 @@ class MaterialSegmentationService:
         if max_dist > 5.0:
             # Threshold distance transform to locate distinct instance nuclei
             _, sure_fg = cv2.threshold(dist_transform, 0.28 * max_dist, 255, 0)
-            sure_fg = np.uint8(sure_fg)
+            sure_fg_u8 = np.asarray(sure_fg, dtype=np.uint8)
 
             # Unknown boundary region
             sure_bg = cv2.dilate(opening, kernel, iterations=3)
-            unknown = cv2.subtract(sure_bg, sure_fg)
+            unknown = cv2.subtract(sure_bg, sure_fg_u8)
 
             # Connected components for markers
-            _, markers = cv2.connectedComponents(sure_fg)
+            _, markers = cv2.connectedComponents(sure_fg_u8)
             markers = markers + 1
             markers[unknown == 255] = 0
 

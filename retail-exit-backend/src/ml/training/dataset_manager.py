@@ -20,9 +20,9 @@ class DatasetStats:
     val_count: int = 0
     test_count: int = 0
     empty_scene_count: int = 0
-    class_distribution: Dict[str, int] = None
+    class_distribution: Optional[Dict[str, int]] = None
     is_split_valid: bool = False
-    validation_errors: List[str] = None
+    validation_errors: Optional[List[str]] = None
 
 
 class DatasetManager:

@@ -24,13 +24,23 @@ router = APIRouter(prefix="/ml", tags=["ML Model Lifecycle & Retraining"])
 
 # ── Pydantic Request Models ──
 
+class ModelMetricsInput(BaseModel):
+    map_50: float = 0.0
+    case_unit_recall: float = 0.0
+    empty_scene_fp_rate: float = 0.0
+    pairwise_precision: float = 0.0
+    latency_ms: float = 0.0
+    eval_dataset_size: int = 0
+    evaluated_at: Optional[str] = None
+
+
 class RegisterModelRequest(BaseModel):
     model_version: str = Field(...)
     model_name: str = Field(...)
     weights_path: str = Field(...)
     base_model: Optional[str] = "megvii-yolox-tiny"
     dataset_version: Optional[str] = "retail-v1.0"
-    metrics: Optional[Dict[str, float]] = None
+    metrics: Optional[ModelMetricsInput] = None
     notes: Optional[str] = ""
 
 
@@ -81,7 +91,7 @@ async def register_model(
 ):
     """Registers a newly trained model checkpoint as a candidate."""
     registry = ModelRegistry.get_instance()
-    metrics = ModelMetrics(**req.metrics) if req.metrics else None
+    metrics = ModelMetrics(**req.metrics.model_dump()) if req.metrics else None
     mv = registry.register_model(
         model_version=req.model_version,
         model_name=req.model_name,

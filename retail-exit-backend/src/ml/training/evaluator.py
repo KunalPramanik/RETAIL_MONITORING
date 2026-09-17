@@ -44,6 +44,15 @@ def calculate_box_iou(boxA: List[float], boxB: List[float]) -> float:
     return float(inter_area / union)
 
 
+def _integrate_curve(y: np.ndarray, x: np.ndarray) -> float:
+    """Computes area under curve using NumPy trapezoid with fallback."""
+    trapezoid_fn = getattr(np, "trapezoid", getattr(np, "trapz", None))
+    if trapezoid_fn is not None:
+        return float(trapezoid_fn(y, x))
+    dx = np.diff(x)
+    return float(np.sum((y[:-1] + y[1:]) * dx / 2.0))
+
+
 class AccuracyEvaluator:
     """Evaluates detection accuracy metrics across held-out test datasets."""
 
@@ -118,7 +127,7 @@ class AccuracyEvaluator:
             precisions = tp_cum / np.maximum(1, (tp_cum + fp_cum))
 
             # 11-point interpolation or area under PR curve
-            ap = float(np.trapz(precisions, recalls)) if len(recalls) > 1 else float(precisions[0] * recalls[0])
+            ap = _integrate_curve(precisions, recalls) if len(recalls) > 1 else float(precisions[0] * recalls[0])
             aps.append(max(0.0, min(1.0, ap)))
 
         return round(float(np.mean(aps)), 4) if aps else 0.0

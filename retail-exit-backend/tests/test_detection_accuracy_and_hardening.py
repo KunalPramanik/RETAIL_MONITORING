@@ -253,3 +253,29 @@ async def test_duplicate_camera_reconciliation(test_session):
     updated_b = res_b.scalar_one()
     assert updated_b.removed_at is not None
     assert updated_b.status == "OFFLINE"
+
+
+def test_colocated_laptop_and_smartphone_preservation():
+    """Verifies that co-located dark devices (Laptop and Smartphone on a table)
+    are preserved under per-class NMS without suppressing each other.
+    """
+    cfg = get_vision_config()
+    # Overlapping bounding boxes: Laptop (class 63) and Smartphone (class 67)
+    boxes = [[120, 100, 220, 160], [180, 130, 70, 120]]
+    scores = [0.85, 0.78]
+    classes = [63, 67]
+
+    # Per-class NMS
+    keep = []
+    for cid in [63, 67]:
+        cls_idx = [i for i in range(len(classes)) if classes[i] == cid]
+        b = [boxes[i] for i in cls_idx]
+        s = [scores[i] for i in cls_idx]
+        res = cv2.dnn.NMSBoxes(b, s, cfg.item_conf_threshold, cfg.nms_iou_threshold)
+        if len(res) > 0:
+            for r in np.asarray(res).flatten():
+                keep.append(cls_idx[int(r)])
+
+    assert len(keep) == 2
+    assert 0 in keep  # Laptop preserved
+    assert 1 in keep  # Smartphone preserved

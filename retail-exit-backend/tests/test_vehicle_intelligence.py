@@ -88,3 +88,4 @@ def test_vision_inference_empty_or_zero_state():
     assert res is not None
     assert len(ann_bytes) > 0
     assert res.vision_count >= 0
+

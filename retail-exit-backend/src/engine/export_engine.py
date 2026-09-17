@@ -86,7 +86,10 @@ class AuditExportEngine:
 
         # ── 1. Tab: Exit Events ──
         ws_events = wb.active
-        ws_events.title = "Exit Events"
+        if ws_events is None:
+            ws_events = wb.create_sheet(title="Exit Events")
+        else:
+            ws_events.title = "Exit Events"
         _style_headers(
             ws_events,
             [

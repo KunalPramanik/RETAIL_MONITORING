@@ -358,42 +358,49 @@ class VisionInferenceService:
             vehicle_floor = getattr(cfg, "vehicle_conf_threshold", 0.25)
             vehicle_classes = getattr(cfg, "vehicle_classes", {1, 2, 3, 5, 7})
 
-            # Multi-threshold candidate filter driven by centralized configuration
-            # Evaluates candidate scores against valid retail merchandise and vehicle classes
+            # Multi-threshold candidate filter: preserves all qualifying categories independently
+            # so co-located items (e.g. laptop + smartphone, or person + bag) do not suppress each other
             cand_indices = []
             cand_cls_list = []
             cand_sc_list = []
             for i in range(len(scores)):
-                best_cid = -1
-                best_sc = 0.0
-
+                # 1. Person
                 p_sc = float(scores[i, 0])
                 if p_sc >= person_floor:
-                    best_cid = 0
-                    best_sc = p_sc
+                    cand_indices.append(i)
+                    cand_cls_list.append(0)
+                    cand_sc_list.append(p_sc)
 
+                # 2. Case / Carton
                 for cid in cfg.case_classes:
                     sc = float(scores[i, cid])
-                    if sc >= case_floor and sc > best_sc:
-                        best_cid = cid
-                        best_sc = sc
+                    if sc >= case_floor:
+                        cand_indices.append(i)
+                        cand_cls_list.append(cid)
+                        cand_sc_list.append(sc)
 
+                # 3. Vehicles
                 for cid in vehicle_classes:
                     sc = float(scores[i, cid])
-                    if sc >= vehicle_floor and sc > best_sc:
-                        best_cid = cid
-                        best_sc = sc
+                    if sc >= vehicle_floor:
+                        cand_indices.append(i)
+                        cand_cls_list.append(cid)
+                        cand_sc_list.append(sc)
 
+                # 4. Single items (smartphones, laptops, bottles, bags, etc.)
+                # If multiple single item classes pass item_floor for anchor i, keep top candidates
+                item_cands = []
                 for cid in cfg.single_item_classes:
                     sc = float(scores[i, cid])
-                    if sc >= item_floor and sc > best_sc:
-                        best_cid = cid
-                        best_sc = sc
-
-                if best_cid >= 0:
-                    cand_indices.append(i)
-                    cand_cls_list.append(best_cid)
-                    cand_sc_list.append(best_sc)
+                    if sc >= item_floor:
+                        item_cands.append((sc, cid))
+                if item_cands:
+                    item_cands.sort(key=lambda x: x[0], reverse=True)
+                    # Keep top 2 single item candidates if present (e.g. adjacent dark laptop + phone)
+                    for sc, cid in item_cands[:2]:
+                        cand_indices.append(i)
+                        cand_cls_list.append(cid)
+                        cand_sc_list.append(sc)
 
             if len(cand_indices) > 0:
                 cand_boxes = boxes_xyxy[cand_indices]
@@ -459,15 +466,19 @@ class VisionInferenceService:
 
                     # Structural / Architectural Filter:
                     # Single retail items carried by shoppers do not span full architectural room fixtures.
-                    # Reject oversized boxes covering full room walls (bw > 80% width and bh > 75% height) or huge backgrounds.
+                    # Reject oversized boxes covering full room walls or large desk fixtures.
                     # Vehicles can legitimately occupy up to 98% of portal cameras.
                     box_area = bw * bh
                     frame_area = orig_w * orig_h
                     if cid in vehicle_classes:
                         if bw > 0.98 * orig_w and bh > 0.98 * orig_h:
                             continue
+                    elif cid in cfg.case_classes:
+                        # Reject giant furniture / table surfaces falsely tagged as carton
+                        if (bw > 0.70 * orig_w and bh > 0.45 * orig_h) or (bw / max(1, bh) > 3.0 and conf < 0.65):
+                            continue
                     elif cid != 0:
-                        if (bw > 0.80 * orig_w and bh > 0.75 * orig_h) or (box_area > 0.70 * frame_area and bw > 0.75 * orig_w):
+                        if (bw > 0.75 * orig_w and bh > 0.70 * orig_h) or (box_area > 0.65 * frame_area and bw > 0.70 * orig_w):
                             continue
                     elif bw > 0.85 * orig_w and bh > 0.70 * orig_h:
                         continue

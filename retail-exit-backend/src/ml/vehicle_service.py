@@ -35,8 +35,8 @@ class VehicleIntelligenceService:
         """Lazy-loads ONNX OCR engine from ocr_service."""
         if cls._ocr_engine is None:
             try:
-                from src.ml.ocr_service import ocr_service
-                cls._ocr_engine = ocr_service.ocr_engine
+                from src.ml.ocr_service import OcrService
+                cls._ocr_engine = OcrService.get_ocr_engine()
             except Exception as e:
                 logger.warning("Could not load OCR engine for vehicle plates: %s", e)
         return cls._ocr_engine
@@ -115,7 +115,7 @@ class VehicleIntelligenceService:
             "Brown": int(np.count_nonzero(brown_mask)),
         }
 
-        dominant_color = max(color_counts, key=color_counts.get)
+        dominant_color = max(color_counts, key=lambda k: color_counts[k])
         dominant_pct = color_counts[dominant_color] / total_pixels
 
         # If highest color is negligible or inconclusive, classify as Silver / Grey

@@ -129,14 +129,26 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
     setPan({ x: 0, y: 0 });
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    if (e.deltaY < 0) {
-      handleZoomIn();
-    } else {
-      handleZoomOut();
-    }
-  };
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        setZoom((z) => Math.min(4, +(z + 0.25).toFixed(2)));
+      } else {
+        setZoom((z) => {
+          const next = Math.max(1, +(z - 0.25).toFixed(2));
+          if (next === 1) setPan({ x: 0, y: 0 });
+          return next;
+        });
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+    };
+  }, []);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (zoom <= 1) return;
@@ -506,7 +518,6 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
         style={{ cursor: zoom > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default' }}
       >
         {/* Fallback Standby Graphic */}

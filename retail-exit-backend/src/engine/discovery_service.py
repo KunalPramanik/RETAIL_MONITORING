@@ -49,7 +49,7 @@ class DiscoveredDevice:
         suggested_lane_name: Optional[str] = None,
         suggestion_confidence: float = 0.85,
         is_reachable: bool = True,
-        latency_ms: float = 18.5,
+        latency_ms: Optional[float] = 18.5,
         preview_snapshot_url: Optional[str] = None,
         status: str = "UNASSIGNED",  # "UNASSIGNED" | "CONFIRMED" | "TESTING"
         discovered_at: Optional[str] = None,

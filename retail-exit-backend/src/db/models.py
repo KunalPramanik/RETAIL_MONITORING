@@ -64,10 +64,10 @@ class JSONType(TypeDecorator):
 class Store(Base):
     __tablename__ = "store"
 
-    store_id = Column(String(36), primary_key=True, default=generate_uuid)
-    name = Column(String(255), nullable=False)
-    address = Column(Text, nullable=True)
-    timezone = Column(String(64), nullable=False, default="UTC")
+    store_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Any = Column(String(255), nullable=False)
+    address: Any = Column(Text, nullable=True)
+    timezone: Any = Column(String(64), nullable=False, default="UTC")
 
     lanes = relationship("Lane", back_populates="store", cascade="all, delete-orphan")
     users = relationship("AppUser", back_populates="store")
@@ -77,10 +77,10 @@ class Store(Base):
 class Shift(Base):
     __tablename__ = "shift"
 
-    shift_id = Column(String(36), primary_key=True, default=generate_uuid)
-    label = Column(String(128), nullable=False)
-    starts_at = Column(String(8), nullable=False)  # HH:MM:SS
-    ends_at = Column(String(8), nullable=False)    # HH:MM:SS
+    shift_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    label: Any = Column(String(128), nullable=False)
+    starts_at: Any = Column(String(8), nullable=False)  # HH:MM:SS
+    ends_at: Any = Column(String(8), nullable=False)    # HH:MM:SS
 
     employees = relationship("Employee", back_populates="shift")
 
@@ -88,18 +88,18 @@ class Shift(Base):
 class Product(Base):
     __tablename__ = "product"
 
-    product_id = Column(String(36), primary_key=True, default=generate_uuid)
-    sku_code = Column(String(64), unique=True, nullable=False, index=True)
-    name = Column(String(255), nullable=False)
-    category = Column(String(128), nullable=False)
-    pack_size = Column(Integer, nullable=False)  # units per sealed case
-    unit_price = Column(Numeric(12, 2), nullable=False)
-    case_price = Column(Numeric(12, 2), nullable=False)
-    reorder_threshold = Column(Integer, nullable=False, default=0)
-    rfid_epc_prefix = Column(String(64), nullable=True)
-    avg_unit_weight_g = Column(Numeric(10, 2), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
-    updated_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
+    product_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    sku_code: Any = Column(String(64), unique=True, nullable=False, index=True)
+    name: Any = Column(String(255), nullable=False)
+    category: Any = Column(String(128), nullable=False)
+    pack_size: Any = Column(Integer, nullable=False)  # units per sealed case
+    unit_price: Any = Column(Numeric(12, 2), nullable=False)
+    case_price: Any = Column(Numeric(12, 2), nullable=False)
+    reorder_threshold: Any = Column(Integer, nullable=False, default=0)
+    rfid_epc_prefix: Any = Column(String(64), nullable=True)
+    avg_unit_weight_g: Any = Column(Numeric(10, 2), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 
     __table_args__ = (
         CheckConstraint("pack_size > 0", name="chk_product_pack_size_pos"),
@@ -112,15 +112,15 @@ class Product(Base):
 class Employee(Base):
     __tablename__ = "employee"
 
-    employee_id = Column(String(36), primary_key=True, default=generate_uuid)
-    name = Column(String(255), nullable=False)
-    role = Column(String(128), nullable=False)
-    rfid_badge_id = Column(String(128), unique=True, nullable=False, index=True)
-    shift_id = Column(String(36), ForeignKey("shift.shift_id"), nullable=True)
-    active_flag = Column(Boolean, nullable=False, default=True)
-    face_embedding = Column(JSONType, nullable=True)  # 512-d ArcFace vector or JSON array
-    embedding_updated_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    employee_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Any = Column(String(255), nullable=False)
+    role: Any = Column(String(128), nullable=False)
+    rfid_badge_id: Any = Column(String(128), unique=True, nullable=False, index=True)
+    shift_id: Any = Column(String(36), ForeignKey("shift.shift_id"), nullable=True)
+    active_flag: Any = Column(Boolean, nullable=False, default=True)
+    face_embedding: Any = Column(JSONType, nullable=True)  # 512-d ArcFace vector or JSON array
+    embedding_updated_at: Any = Column(DateTime(timezone=True), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 
     shift = relationship("Shift", back_populates="employees")
     exit_events = relationship("ExitEvent", back_populates="employee")
@@ -130,15 +130,15 @@ class Employee(Base):
 class Lane(Base):
     __tablename__ = "lane"
 
-    lane_id = Column(String(36), primary_key=True, default=generate_uuid)
-    label = Column(String(128), nullable=False)
-    store_id = Column(String(36), ForeignKey("store.store_id"), nullable=False)
-    camera_ids = Column(JSONType, nullable=False, default=list)  # list of camera IDs/IPs
-    rfid_antenna_id = Column(String(128), nullable=True)
-    weight_sensor_id = Column(String(128), nullable=True)
-    turnstile_ctrl_id = Column(String(128), nullable=True)
-    status = Column(String(32), nullable=False, default="ONLINE")
-    last_heartbeat_at = Column(DateTime(timezone=True), nullable=True)
+    lane_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    label: Any = Column(String(128), nullable=False)
+    store_id: Any = Column(String(36), ForeignKey("store.store_id"), nullable=False)
+    camera_ids: Any = Column(JSONType, nullable=False, default=list)  # list of camera IDs/IPs
+    rfid_antenna_id: Any = Column(String(128), nullable=True)
+    weight_sensor_id: Any = Column(String(128), nullable=True)
+    turnstile_ctrl_id: Any = Column(String(128), nullable=True)
+    status: Any = Column(String(32), nullable=False, default="ONLINE")
+    last_heartbeat_at: Any = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint("status IN ('ONLINE', 'OFFLINE', 'DEGRADED')", name="chk_lane_status"),
@@ -210,12 +210,12 @@ class CameraPairingToken(Base):
 class CameraHeartbeat(Base):
     __tablename__ = "camera_heartbeat"
 
-    heartbeat_id = Column(Integer, primary_key=True, autoincrement=True)
-    camera_id = Column(String(36), ForeignKey("camera.camera_id", ondelete="CASCADE"), nullable=False, index=True)
-    received_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
-    fps_observed = Column(Numeric(6, 2), nullable=True)
-    bitrate_kbps = Column(Numeric(10, 2), nullable=True)
-    dropped_frames = Column(Integer, nullable=True, default=0)
+    heartbeat_id: Any = Column(Integer, primary_key=True, autoincrement=True)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id", ondelete="CASCADE"), nullable=False, index=True)
+    received_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+    fps_observed: Any = Column(Numeric(6, 2), nullable=True)
+    bitrate_kbps: Any = Column(Numeric(10, 2), nullable=True)
+    dropped_frames: Any = Column(Integer, nullable=True, default=0)
 
     camera = relationship("Camera", back_populates="heartbeats")
 
@@ -272,11 +272,11 @@ class ExitEvent(Base):
 class ExitEventLineItem(Base):
     __tablename__ = "exit_event_line_item"
 
-    line_item_id = Column(String(36), primary_key=True, default=generate_uuid)
-    event_id = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
-    product_id = Column(String(36), ForeignKey("product.product_id"), nullable=False)
-    cases_qty = Column(Integer, nullable=False, default=0)
-    units_qty = Column(Integer, nullable=False, default=0)
+    line_item_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
+    product_id: Any = Column(String(36), ForeignKey("product.product_id"), nullable=False)
+    cases_qty: Any = Column(Integer, nullable=False, default=0)
+    units_qty: Any = Column(Integer, nullable=False, default=0)
 
     event = relationship("ExitEvent", back_populates="line_items")
     product = relationship("Product", back_populates="line_items")
@@ -285,15 +285,15 @@ class ExitEventLineItem(Base):
 class VisionDetection(Base):
     __tablename__ = "vision_detection"
 
-    detection_id = Column(String(36), primary_key=True, default=generate_uuid)
-    event_id = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
-    camera_id = Column(String(36), ForeignKey("camera.camera_id"), nullable=True)
-    frame_ts = Column(DateTime(timezone=True), nullable=False)
-    model_version = Column(String(64), nullable=False)
-    bbox = Column(JSONType, nullable=False)  # [x, y, w, h] normalized or pixel
-    class_label = Column(String(64), nullable=False)  # 'case_full', 'case_open', 'single_unit', 'person'
-    product_id = Column(String(36), ForeignKey("product.product_id"), nullable=True)
-    confidence = Column(Numeric(5, 4), nullable=False)
+    detection_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=True)
+    frame_ts: Any = Column(DateTime(timezone=True), nullable=False)
+    model_version: Any = Column(String(64), nullable=False)
+    bbox: Any = Column(JSONType, nullable=False)  # [x, y, w, h] normalized or pixel
+    class_label: Any = Column(String(64), nullable=False)  # 'case_full', 'case_open', 'single_unit', 'person'
+    product_id: Any = Column(String(36), ForeignKey("product.product_id"), nullable=True)
+    confidence: Any = Column(Numeric(5, 4), nullable=False)
 
     event = relationship("ExitEvent", back_populates="vision_detections")
     camera = relationship("Camera", back_populates="vision_detections")
@@ -328,12 +328,12 @@ class StaticImageDetection(Base):
 class RfidRead(Base):
     __tablename__ = "rfid_read"
 
-    read_id = Column(String(36), primary_key=True, default=generate_uuid)
-    event_id = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
-    epc_tag = Column(String(128), nullable=False)
-    antenna_id = Column(String(64), nullable=False)
-    rssi = Column(Numeric(6, 2), nullable=True)
-    read_at = Column(DateTime(timezone=True), nullable=False)
+    read_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
+    epc_tag: Any = Column(String(128), nullable=False)
+    antenna_id: Any = Column(String(64), nullable=False)
+    rssi: Any = Column(Numeric(6, 2), nullable=True)
+    read_at: Any = Column(DateTime(timezone=True), nullable=False)
 
     event = relationship("ExitEvent", back_populates="rfid_reads")
 
@@ -341,11 +341,11 @@ class RfidRead(Base):
 class WeightReading(Base):
     __tablename__ = "weight_reading"
 
-    reading_id = Column(String(36), primary_key=True, default=generate_uuid)
-    event_id = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
-    sensor_id = Column(String(64), nullable=False)
-    weight_kg = Column(Numeric(10, 3), nullable=False)
-    read_at = Column(DateTime(timezone=True), nullable=False)
+    reading_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
+    sensor_id: Any = Column(String(64), nullable=False)
+    weight_kg: Any = Column(Numeric(10, 3), nullable=False)
+    read_at: Any = Column(DateTime(timezone=True), nullable=False)
 
     event = relationship("ExitEvent", back_populates="weight_readings")
 
@@ -353,18 +353,18 @@ class WeightReading(Base):
 class Invoice(Base):
     __tablename__ = "invoice"
 
-    invoice_id = Column(String(36), primary_key=True, default=generate_uuid)
-    invoice_number = Column(String(128), unique=True, nullable=False, index=True)
-    carrier_name = Column(String(255), nullable=False)
-    store_destination = Column(String(255), nullable=False)
-    source = Column(String(32), nullable=False, default="SCAN")
-    raw_file_url = Column(Text, nullable=False)
-    ocr_model_version = Column(String(64), nullable=False)
-    extraction_confidence = Column(Numeric(5, 4), nullable=False)
-    extracted_json = Column(JSONType, nullable=False)  # line items array
-    declared_total_units = Column(Integer, nullable=True)
-    linked_event_id = Column(String(36), nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    invoice_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    invoice_number: Any = Column(String(128), unique=True, nullable=False, index=True)
+    carrier_name: Any = Column(String(255), nullable=False)
+    store_destination: Any = Column(String(255), nullable=False)
+    source: Any = Column(String(32), nullable=False, default="SCAN")
+    raw_file_url: Any = Column(Text, nullable=False)
+    ocr_model_version: Any = Column(String(64), nullable=False)
+    extraction_confidence: Any = Column(Numeric(5, 4), nullable=False)
+    extracted_json: Any = Column(JSONType, nullable=False)  # line items array
+    declared_total_units: Any = Column(Integer, nullable=True)
+    linked_event_id: Any = Column(String(36), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 
     __table_args__ = (
         CheckConstraint("source IN ('SCAN', 'EMAIL', 'API')", name="chk_invoice_source"),
@@ -376,13 +376,13 @@ class Invoice(Base):
 class FaceMatchAttempt(Base):
     __tablename__ = "face_match_attempt"
 
-    attempt_id = Column(String(36), primary_key=True, default=generate_uuid)
-    event_id = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
-    matched_employee_id = Column(String(36), ForeignKey("employee.employee_id"), nullable=True)
-    similarity = Column(Numeric(5, 4), nullable=False)
-    model_version = Column(String(64), nullable=False)
-    decision = Column(String(32), nullable=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    attempt_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
+    matched_employee_id: Any = Column(String(36), ForeignKey("employee.employee_id"), nullable=True)
+    similarity: Any = Column(Numeric(5, 4), nullable=False)
+    model_version: Any = Column(String(64), nullable=False)
+    decision: Any = Column(String(32), nullable=False)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 
     __table_args__ = (
         CheckConstraint("decision IN ('MATCHED', 'NO_MATCH', 'LOW_CONFIDENCE')", name="chk_face_decision"),
@@ -429,17 +429,17 @@ class PersonAppearanceSummary(Base):
 class Alert(Base):
     __tablename__ = "alert"
 
-    alert_id = Column(String(36), primary_key=True, default=generate_uuid)
-    event_id = Column(String(36), ForeignKey("exit_event.event_id"), nullable=True, index=True)
-    camera_id = Column(String(36), ForeignKey("camera.camera_id"), nullable=True, index=True)
-    alert_type = Column(String(64), nullable=False)
-    severity = Column(String(32), nullable=False, index=True)
-    delta_units = Column(Integer, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
-    status = Column(String(32), nullable=False, default="OPEN", index=True)
-    resolved_by = Column(String(128), nullable=True)
-    resolution_note = Column(Text, nullable=True)
-    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    alert_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id"), nullable=True, index=True)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=True, index=True)
+    alert_type: Any = Column(String(64), nullable=False)
+    severity: Any = Column(String(32), nullable=False, index=True)
+    delta_units: Any = Column(Integer, nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+    status: Any = Column(String(32), nullable=False, default="OPEN", index=True)
+    resolved_by: Any = Column(String(128), nullable=True)
+    resolution_note: Any = Column(Text, nullable=True)
+    resolved_at: Any = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -458,12 +458,12 @@ class Alert(Base):
 class AlarmDispatch(Base):
     __tablename__ = "alarm_dispatch"
 
-    dispatch_id = Column(String(36), primary_key=True, default=generate_uuid)
-    alert_id = Column(String(36), ForeignKey("alert.alert_id"), nullable=False)
-    channel = Column(String(32), nullable=False)
-    status = Column(String(32), nullable=False, default="QUEUED")
-    attempted_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
-    error_detail = Column(Text, nullable=True)
+    dispatch_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    alert_id: Any = Column(String(36), ForeignKey("alert.alert_id"), nullable=False)
+    channel: Any = Column(String(32), nullable=False)
+    status: Any = Column(String(32), nullable=False, default="QUEUED")
+    attempted_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    error_detail: Any = Column(Text, nullable=True)
 
     __table_args__ = (
         CheckConstraint(
@@ -479,15 +479,15 @@ class AlarmDispatch(Base):
 class AuditLog(Base):
     __tablename__ = "audit_log"
 
-    audit_id = Column(Integer, primary_key=True, autoincrement=True)
-    entity_type = Column(String(64), nullable=False, index=True)
-    entity_id = Column(String(36), nullable=False, index=True)
-    action = Column(String(64), nullable=False)
-    actor_id = Column(String(36), nullable=True)
-    actor_type = Column(String(32), nullable=False)
-    before_state = Column(JSONType, nullable=True)
-    after_state = Column(JSONType, nullable=True)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+    audit_id: Any = Column(Integer, primary_key=True, autoincrement=True)
+    entity_type: Any = Column(String(64), nullable=False, index=True)
+    entity_id: Any = Column(String(36), nullable=False, index=True)
+    action: Any = Column(String(64), nullable=False)
+    actor_id: Any = Column(String(36), nullable=True)
+    actor_type: Any = Column(String(32), nullable=False)
+    before_state: Any = Column(JSONType, nullable=True)
+    after_state: Any = Column(JSONType, nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
 
     __table_args__ = (
         CheckConstraint("actor_type IN ('USER', 'SYSTEM', 'MODEL')", name="chk_audit_actor_type"),
@@ -497,13 +497,13 @@ class AuditLog(Base):
 class AppUser(Base):
     __tablename__ = "app_user"
 
-    user_id = Column(String(36), primary_key=True, default=generate_uuid)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    password_hash = Column(String(255), nullable=False)
-    role = Column(String(32), nullable=False)
-    store_id = Column(String(36), ForeignKey("store.store_id"), nullable=True)
-    mfa_enabled = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    user_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    email: Any = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash: Any = Column(String(255), nullable=False)
+    role: Any = Column(String(32), nullable=False)
+    store_id: Any = Column(String(36), ForeignKey("store.store_id"), nullable=True)
+    mfa_enabled: Any = Column(Boolean, nullable=False, default=False)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 
     __table_args__ = (
         CheckConstraint("role IN ('SUPERVISOR', 'ADMIN', 'VIEWER')", name="chk_app_user_role"),

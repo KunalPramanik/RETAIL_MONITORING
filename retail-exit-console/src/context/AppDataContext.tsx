@@ -15,7 +15,7 @@ import type {
 import { api, BACKEND_URL, type TestConnectionResult } from '../api/client';
 import { playAlarmSound } from '../utils/audioAlarm';
 
-export const DEFAULT_SETTINGS: SystemSettings = {
+const DEFAULT_SETTINGS: SystemSettings = {
   lowSeverityThreshold: 1,
   medSeverityThreshold: 3,
   highSeverityThreshold: 6,

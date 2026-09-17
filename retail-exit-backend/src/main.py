@@ -184,8 +184,23 @@ async def periodic_camera_monitor():
                     silent_res = await session.execute(silent_stmt)
                     silent_lanes = silent_res.scalars().all()
                     metrics.silent_lanes_total = len(silent_lanes)
-                    for sl in silent_lanes:
-                        logger.warning(f"LANE_SILENT: Exit Lane {sl.lane_id} ({sl.label}) heartbeat timed out (>15 min silent).")
+                    if silent_lanes:
+                        for sl in silent_lanes:
+                            sl.status = "OFFLINE"
+                            sl.offline_since = now
+                            logger.warning(
+                                f"LANE_SILENT: Exit Lane {sl.lane_id} ({sl.label}) heartbeat timed out (>15 min silent) — transitioned to OFFLINE."
+                            )
+                            await ws_hub.broadcast_event(
+                                "lane_status_changed",
+                                {
+                                    "laneId": sl.lane_id,
+                                    "status": "OFFLINE",
+                                    "offlineSince": now.isoformat(),
+                                    "label": sl.label,
+                                },
+                            )
+                        await session.commit()
                 except Exception as lane_err:
                     logger.debug(f"Silent lane check pass error: {lane_err}")
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Camera, SensorLane } from '../../types';
-import { api, getCameraSnapshotUrl } from '../../api/client';
+import { api, getCameraSnapshotUrl, getCameraStreamUrl } from '../../api/client';
 import { useAppData } from '../../context/AppDataContext';
 import { CameraVideoOverlay } from './CameraVideoOverlay';
 import { CameraOperationsHud } from './CameraOperationsHud';
@@ -177,11 +177,26 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
     setTimeout(() => setFlashMessage(null), 2500);
   };
 
+  const [streamError, setStreamError] = useState(false);
+  const streamUrl = getCameraStreamUrl(camera.cameraId, true);
   const snapshotUrl = getCameraSnapshotUrl(camera.cameraId, snapshotKey, quality);
 
-  // Live frame refresh interval for online cameras
+  // Reset stream error when camera status updates to ONLINE
   useEffect(() => {
-    if (camera.status === 'ONLINE' && refreshIntervalMs > 0) {
+    if (camera.status === 'ONLINE') {
+      setStreamError(false);
+    }
+  }, [camera.status]);
+
+  // Active video source: fluid continuous MJPEG stream when online; fallback to snapshot polling
+  const activeFeedUrl =
+    camera.status === 'ONLINE' && !streamError
+      ? streamUrl
+      : snapshotUrl;
+
+  // Live frame refresh interval for cameras (used during snapshot mode or stream fallback)
+  useEffect(() => {
+    if ((camera.status === 'ONLINE' || camera.status === 'PENDING_SETUP') && refreshIntervalMs > 0) {
       const interval = setInterval(() => {
         setSnapshotKey(Date.now());
       }, refreshIntervalMs);
@@ -547,11 +562,15 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
             <img
               ref={imgRef}
               crossOrigin="anonymous"
-              src={snapshotUrl}
+              src={activeFeedUrl}
               alt={`Live feed from ${camera.label}`}
               className="relative z-[1] w-full h-full object-contain pointer-events-none"
               onError={(e) => {
-                (e.target as HTMLElement).style.display = 'none';
+                if (!streamError) {
+                  setStreamError(true);
+                } else {
+                  (e.target as HTMLElement).style.display = 'none';
+                }
               }}
               onLoad={(e) => {
                 const img = e.currentTarget;

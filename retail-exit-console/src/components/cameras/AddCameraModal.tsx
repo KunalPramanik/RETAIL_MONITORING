@@ -918,6 +918,79 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
             {/* Step 1: Network & Stream Config */}
             {step === 1 && (
               <div className="space-y-3 pt-1">
+                {/* Camera Source Quick Selectors */}
+                <div className="space-y-1.5 pb-1">
+                  <span className="text-xs-tech font-bold text-text-pri block">Select Camera Source:</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLabel(label || 'Exit Lane — Built-in Webcam');
+                        setIpAddress('0');
+                        setRtspPath('/');
+                        setCredentials('');
+                      }}
+                      className={`p-2.5 rounded-sm border text-left transition-all ${
+                        ipAddress === '0'
+                          ? 'bg-amber/15 border-amber text-amber font-bold shadow-sm'
+                          : 'bg-canvas hover:bg-panel-raised border-hairline text-text-sec hover:text-text-pri'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <CameraIcon className="w-4 h-4 text-amber shrink-0" />
+                        <span className="text-xs-tech font-bold">Built-in / USB Cam</span>
+                      </div>
+                      <span className="text-[10px] text-text-sec block leading-tight">
+                        Integrated PC webcam or USB device (Index 0). Instant live streaming.
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLabel(label || 'Exit Lane — Phone IP Cam');
+                        if (ipAddress === '0' || !ipAddress) setIpAddress('192.168.100.X:8080');
+                        setRtspPath('/video');
+                      }}
+                      className={`p-2.5 rounded-sm border text-left transition-all ${
+                        rtspPath === '/video' || ipAddress.includes(':8080')
+                          ? 'bg-amber/15 border-amber text-amber font-bold shadow-sm'
+                          : 'bg-canvas hover:bg-panel-raised border-hairline text-text-sec hover:text-text-pri'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Radio className="w-4 h-4 text-blue-400 shrink-0" />
+                        <span className="text-xs-tech font-bold">Phone IP Camera</span>
+                      </div>
+                      <span className="text-[10px] text-text-sec block leading-tight">
+                        Use Android/iOS IP Webcam app HTTP stream (:8080/video).
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLabel(label || 'Exit Lane — CCTV Camera');
+                        if (ipAddress === '0') setIpAddress('');
+                        setRtspPath('/live/ch0');
+                      }}
+                      className={`p-2.5 rounded-sm border text-left transition-all ${
+                        ipAddress !== '0' && rtspPath !== '/video' && !ipAddress.includes(':8080')
+                          ? 'bg-amber/15 border-amber text-amber font-bold shadow-sm'
+                          : 'bg-canvas hover:bg-panel-raised border-hairline text-text-sec hover:text-text-pri'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Video className="w-4 h-4 text-teal-400 shrink-0" />
+                        <span className="text-xs-tech font-bold">CCTV / RTSP Cam</span>
+                      </div>
+                      <span className="text-[10px] text-text-sec block leading-tight">
+                        Network CCTV IP camera (Hikvision, Dahua, Tapo, RTSP).
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-xs-tech font-medium text-text-pri block mb-1">
                     Camera Descriptive Label <span className="text-status-high">*</span>
@@ -1043,9 +1116,13 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
               <div className="space-y-4 pt-1">
                 <div className="p-3 bg-panel-raised border border-hairline rounded-sm space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs-tech text-text-sec">Target RTSP Endpoint:</span>
+                    <span className="text-xs-tech text-text-sec">Target Endpoint:</span>
                     <span className="font-mono text-xs-tech text-mono-val">
-                      rtsp://{ipAddress}:554{rtspPath}
+                      {ipAddress === '0' || ipAddress === 'webcam'
+                        ? 'Local Device: Built-in / USB Camera (Index 0)'
+                        : ipAddress.includes(':8080') || rtspPath === '/video'
+                        ? `http://${ipAddress}${rtspPath.startsWith('/') ? rtspPath : '/' + rtspPath}`
+                        : `rtsp://${ipAddress}:554${rtspPath}`}
                     </span>
                   </div>
 
@@ -1059,7 +1136,7 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                       {isTesting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin text-amber" />
-                          Testing RTSP Handshake & Pulling Frame...
+                          Testing Camera Handshake & Pulling Frame...
                         </>
                       ) : (
                         <>
@@ -1089,12 +1166,14 @@ export const AddCameraModal: React.FC<AddCameraModalProps> = ({
                       <div className="space-y-1">
                         <div className="text-xs-tech font-bold text-text-pri">
                           {testResult.success
-                            ? `RTSP Handshake Succeeded (${testResult.latencyMs}ms)`
+                            ? `${ipAddress === '0' ? 'Local Camera Connection Verified' : 'Stream Handshake Succeeded'} (${testResult.latencyMs}ms)`
                             : 'Camera Connection Failed'}
                         </div>
                         <p className="text-[11px] text-text-sec">
                           {testResult.success
-                            ? 'Edge media server verified frame pull at 1920x1080 @ 30fps with H.264 video decoding.'
+                            ? ipAddress === '0'
+                              ? 'Direct video capture verified on local integrated camera device (Index 0).'
+                              : 'Edge media server verified frame pull with active video decoding.'
                             : testResult.errorMessage}
                         </p>
                       </div>

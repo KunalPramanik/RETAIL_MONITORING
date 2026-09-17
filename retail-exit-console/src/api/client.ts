@@ -65,6 +65,12 @@ export function getCameraSnapshotUrl(
   return `${BACKEND_URL}/api/cameras/${cameraId}/snapshot?t=${t}${streamParam}${rawParam}`;
 }
 
+/** Dynamically builds the live multipart MJPEG video stream URL for continuous fluid playback. */
+export function getCameraStreamUrl(cameraId: string, raw: boolean = true): string {
+  const rawParam = raw ? '?raw=true' : '';
+  return `${BACKEND_URL}/api/cameras/${cameraId}/stream${rawParam}`;
+}
+
 export interface LiveKPIs {
   todayThroughputUnits: number;
   openAlertsCount: number;

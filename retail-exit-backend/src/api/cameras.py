@@ -5,6 +5,7 @@ cameras without requiring service redeployment or pipeline restarts.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from typing import List, Optional
@@ -43,6 +44,7 @@ from src.cache import cache_service
 from src.api.deps_auth import require_roles
 from pydantic import BaseModel, Field
 from src.engine.ptz_service import ptz_service, PTZNotSupportedError
+from src.engine.stream_manager import camera_stream_manager
 
 router = APIRouter(prefix="/cameras", tags=["Camera Fleet Management"])
 
@@ -70,15 +72,23 @@ def capture_camera_frame_sync(
 
     if dev_idx is not None:
         try:
-            cap = cv2.VideoCapture(dev_idx)
+            buf, lat = camera_stream_manager.get_latest_jpeg(
+                f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=0.8
+            )
+            if buf is not None:
+                return buf, f"Local Camera Device ({dev_idx})", lat
+
+            cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
+            if not cap.isOpened():
+                cap = cv2.VideoCapture(dev_idx)
             if cap.isOpened():
                 ret, frame = cap.read()
                 cap.release()
                 if ret and frame is not None and frame.size > 0:
-                    ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                    ret_enc, buf_enc = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                     if ret_enc:
                         latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                        return buf.tobytes(), f"Local Camera Device ({dev_idx})", latency
+                        return buf_enc.tobytes(), f"Local Camera Device ({dev_idx})", latency
         except Exception:
             pass
 
@@ -652,7 +662,14 @@ async def test_camera_connection(
         return CameraTestConnectionResponse(
             success=False,
             status="UNREACHABLE_IP",
-            errorMessage=f"Could not reach {ip} on RTSP (port 554) or HTTP (port 80/8080) — verify camera power and network subnet routing.",
+            errorMessage=f"Could not reach {ip} on RTSP (port 554) or HTTP (port 80/8080) — verify camera power and network subnet routing. Note: To test with your built-in PC webcam, enter '0'.",
+            latencyMs=latency_ms,
+        )
+    elif not has_real_frame and not cam and not (ip.strip() in ("0", "1", "webcam") or stream_url):
+        return CameraTestConnectionResponse(
+            success=False,
+            status="DECODE_FAILED",
+            errorMessage=f"Port open on {ip}, but no video stream was decoded. Check RTSP path (e.g. /live/ch0) or camera streaming service. Note: To test with your built-in PC webcam, enter '0'.",
             latencyMs=latency_ms,
         )
     else:
@@ -731,15 +748,22 @@ async def get_camera_snapshot(
 
     if should_capture_live:
         target_path = cam.sub_stream_path if (stream == "sub" and cam.sub_stream_path) else cam.rtsp_path
-        frame_bytes, desc, latency_ms = await asyncio.to_thread(
-            capture_camera_frame_sync,
-            str(cam.ip_address or ""),
-            str(target_path or ""),
-            str(cam.credentials_ref or ""),
-            str(cam.sub_stream_path or ""),
-            1.5,
-            str(cam.stream_url or "") if cam.stream_url else None,
+        # Fast path via CameraStreamManager buffer
+        sm_bytes, sm_lat = camera_stream_manager.get_latest_jpeg(
+            cam.camera_id, str(cam.ip_address or ""), str(target_path or ""), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.4
         )
+        if sm_bytes:
+            frame_bytes, desc, latency_ms = sm_bytes, f"Live Stream ({cam.ip_address})", sm_lat
+        else:
+            frame_bytes, desc, latency_ms = await asyncio.to_thread(
+                capture_camera_frame_sync,
+                str(cam.ip_address or ""),
+                str(target_path or ""),
+                str(cam.credentials_ref or ""),
+                str(cam.sub_stream_path or ""),
+                1.5,
+                str(cam.stream_url or "") if cam.stream_url else None,
+            )
         if frame_bytes:
             annotated_bytes = frame_bytes
             try:
@@ -830,6 +854,42 @@ async def get_camera_snapshot(
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
+        },
+    )
+
+
+@router.get("/{camera_id}/stream")
+async def stream_camera_mjpeg(
+    camera_id: str,
+    raw: bool = Query(True, description="Return raw unannotated video stream"),
+    session: AsyncSession = Depends(get_db),
+):
+    """Provides continuous high-FPS multipart MJPEG video stream directly to browser <img> elements."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera '{camera_id}' not found")
+
+    target_ip = str(cam.ip_address or "")
+    target_path = str(cam.rtsp_path or "")
+    stream_url = str(cam.stream_url or "") if cam.stream_url else None
+
+    # Generate continuous MJPEG stream using CameraStreamManager
+    gen = camera_stream_manager.generate_mjpeg_stream(
+        camera_key=cam.camera_id,
+        ip=target_ip,
+        rtsp_path=target_path,
+        stream_url=stream_url,
+        fps=cam.fps or 20,
+    )
+    return StreamingResponse(
+        gen,
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Connection": "close",
         },
     )
 

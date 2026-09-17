@@ -139,18 +139,25 @@ class CameraIngestionWorker:
         if not ip:
             return None
 
-        # Attempt frame capture via RTSP stream or HTTP endpoints
-        from src.api.cameras import capture_camera_frame_sync
-
-        frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
-            capture_camera_frame_sync,
-            str(cam.ip_address),
-            str(cam.rtsp_path or ""),
-            str(cam.credentials_ref or ""),
-            str(cam.sub_stream_path or ""),
-            2.0,
-            str(cam.stream_url or "") if cam.stream_url else None,
+        # Attempt frame capture via stream_manager first for ultra-low latency & no device contention
+        from src.engine.stream_manager import camera_stream_manager
+        target_path = cam.sub_stream_path or cam.rtsp_path or ""
+        sm_bytes, latency_ms = camera_stream_manager.get_latest_jpeg(
+            cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.5
         )
+        if sm_bytes:
+            frame_bytes, source_desc = sm_bytes, f"StreamManager ({cam.ip_address})"
+        else:
+            from src.api.cameras import capture_camera_frame_sync
+            frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
+                capture_camera_frame_sync,
+                str(cam.ip_address),
+                str(cam.rtsp_path or ""),
+                str(cam.credentials_ref or ""),
+                str(cam.sub_stream_path or ""),
+                2.0,
+                str(cam.stream_url or "") if cam.stream_url else None,
+            )
 
         if not frame_bytes:
             return None

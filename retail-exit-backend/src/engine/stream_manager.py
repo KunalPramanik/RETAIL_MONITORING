@@ -104,28 +104,32 @@ class CameraStreamSession:
         w, h = 1280, 720
         frame = None
 
-        if not hasattr(self, "_candidate_files") or not self._candidate_files:
-            candidate_patterns = [
-                "retail-exit-backend/data/active_learning/candidates/*.jpg",
-                "data/active_learning/candidates/*.jpg",
-                "snapshots/*.jpg",
-                "retail-exit-backend/snapshots/*.jpg",
-            ]
-            for pattern in candidate_patterns:
-                matches = glob.glob(pattern)
-                if matches:
-                    self._candidate_files = sorted(matches)
-                    break
+        # Cache a single stable surveillance scene per camera session to eliminate fast-forwarding
+        if not hasattr(self, "_cached_scene_img") or self._cached_scene_img is None:
+            if not hasattr(self, "_candidate_files") or not self._candidate_files:
+                candidate_patterns = [
+                    "retail-exit-backend/data/active_learning/candidates/*.jpg",
+                    "data/active_learning/candidates/*.jpg",
+                    "snapshots/*.jpg",
+                    "retail-exit-backend/snapshots/*.jpg",
+                ]
+                for pattern in candidate_patterns:
+                    matches = glob.glob(pattern)
+                    if matches:
+                        self._candidate_files = sorted(matches)
+                        break
 
-        if hasattr(self, "_candidate_files") and self._candidate_files:
-            # Advance frame across the 701 candidate surveillance frames
-            idx = (tick * 2) % len(self._candidate_files)
-            try:
-                raw = cv2.imread(self._candidate_files[idx])
-                if raw is not None and raw.size > 0:
-                    frame = cv2.resize(raw, (w, h))
-            except Exception:
-                pass
+            if hasattr(self, "_candidate_files") and self._candidate_files:
+                idx = abs(hash(str(self.camera_key) + str(self.source))) % len(self._candidate_files)
+                try:
+                    raw = cv2.imread(self._candidate_files[idx])
+                    if raw is not None and raw.size > 0:
+                        self._cached_scene_img = cv2.resize(raw, (w, h))
+                except Exception:
+                    self._cached_scene_img = None
+
+        if getattr(self, "_cached_scene_img", None) is not None:
+            frame = self._cached_scene_img.copy()
 
         if frame is None:
             frame = np.zeros((h, w, 3), dtype=np.uint8)
@@ -254,17 +258,24 @@ class CameraStreamManager:
     def get_session(
         self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None
     ) -> CameraStreamSession:
-        """Retrieves or starts a persistent stream session."""
+        """Retrieves or starts a persistent stream session with canonical device sharing."""
         with self._lock:
             if camera_key in self._streams:
                 session = self._streams[camera_key]
                 session.last_access_time = time.time()
                 return session
 
-            source, _ = self._resolve_source(ip, rtsp_path, stream_url)
+            source, canonical_key = self._resolve_source(ip, rtsp_path, stream_url)
+            if canonical_key in self._streams:
+                session = self._streams[canonical_key]
+                self._streams[camera_key] = session
+                session.last_access_time = time.time()
+                return session
+
             session = CameraStreamSession(camera_key, source)
             session.start()
             self._streams[camera_key] = session
+            self._streams[canonical_key] = session
             return session
 
     def get_latest_jpeg(

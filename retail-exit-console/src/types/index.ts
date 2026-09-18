@@ -200,15 +200,31 @@ export type ViewType =
   | 'settings';
 
 
-export type DetectionBoxType = 'PERSON_MATCHED' | 'PERSON_UNMATCHED' | 'ITEM' | 'STATIC_IMAGE' | 'VEHICLE' | 'DOORWAY' | 'MATERIAL_INSTANCE';
+export type DetectionBoxType =
+  | 'PERSON_MATCHED'
+  | 'PERSON_UNMATCHED'
+  | 'ITEM'
+  | 'STATIC_IMAGE'
+  | 'VEHICLE'
+  | 'DOORWAY'
+  | 'MATERIAL_INSTANCE'
+  | 'HAZARD_FIRE'
+  | 'SUSPICIOUS_BEHAVIOR'
+  | 'PPE_COMPLIANT'
+  | 'PPE_VIOLATION'
+  | 'PEDESTRIAN'
+  | 'ZONE_OCCUPANCY'
+  | 'OPEN_VOCAB';
 
 export interface DetectionBox {
   box: [number, number, number, number]; // [x, y, w, h]
   type: DetectionBoxType;
   label: string;
   confidence: number;
-  color: 'green' | 'red' | 'amber' | 'static' | 'cyan';
+  color: 'green' | 'red' | 'amber' | 'static' | 'cyan' | 'fire' | 'suspicious' | 'ppe_ok' | 'ppe_violation';
   entity?: string;
+  keypoints?: Record<string, [number, number]>;
+  connections?: [string, string][];
 }
 
 export interface CameraDetectionUpdate {
@@ -227,6 +243,24 @@ export interface CameraDetectionUpdate {
   livenessScore?: number;
   confidence?: number;
   boxesCount?: number;
+  occupancy?: number;
+  totalFootfallIn?: number;
+  totalFootfallOut?: number;
+  crowdDensity?: string;
+  zoneMetrics?: Array<{
+    zone_id: string;
+    label: string;
+    current_occupancy: number;
+    avg_dwell_seconds: number;
+    max_dwell_seconds: number;
+  }>;
+  tripwireTallies?: Array<{
+    tripwire_id: string;
+    label: string;
+    in_count: number;
+    out_count: number;
+    net_flow: number;
+  }>;
   activeTransaction?: {
     eventId: string;
     status: string; // 'CONSENSUS_PENDING' | 'RESOLVED'

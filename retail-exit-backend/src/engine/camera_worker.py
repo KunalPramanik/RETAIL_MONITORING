@@ -37,9 +37,14 @@ from src.db.models import (
     TripwireCrossingEvent,
     get_utc_now,
 )
+from dataclasses import asdict
 from src.ml.vision_service import VisionInferenceService
 from src.ml.face_service import FaceRecognitionService
 from src.ml.material_segmentation import MaterialSegmentationService
+from src.ml.hazard_service import FlameHazardDetector
+from src.ml.pose_service import SuspiciousBehaviorDetector
+from src.ml.ppe_service import PPEComplianceDetector
+from src.engine.zone_analytics import zone_analytics_engine
 from src.engine.dispatch_engine import DispatchEngine
 from src.engine.tripwire_engine import TripwireEngine
 from src.engine.fusion import MultiSensorFusionEngine
@@ -262,6 +267,8 @@ class CameraIngestionWorker:
             conf_floor = get_vision_config().confidence_floor
             overlay_boxes = []
 
+            all_person_boxes: List[List[int]] = []
+
             # 1. Recognized authorized employees (Green)
             if face_res.decision == "MATCHED" and face_res.matched_employee_id:
                 if face_res.similarity >= conf_floor:
@@ -274,6 +281,7 @@ class CameraIngestionWorker:
                             "color": "green",
                             "entity": face_res.employee_name,
                         })
+                        all_person_boxes.append(fb)
 
             # 2. Live unrecognized persons (Red)
             for pb in getattr(face_res, "live_person_boxes", []):
@@ -288,6 +296,7 @@ class CameraIngestionWorker:
                             "color": "red",
                             "entity": None,
                         })
+                        all_person_boxes.append(pb["box"])
 
             # 3. Detected items, vehicles, cases, and people from YOLOX
             cfg = get_vision_config()
@@ -297,6 +306,7 @@ class CameraIngestionWorker:
                 is_case = "case" in d.class_label.lower()
 
                 if is_person:
+                    all_person_boxes.append(d.bbox)
                     # Check if face recognition already identified or tracked this person
                     has_face_overlap = False
                     for ob in overlay_boxes:
@@ -327,6 +337,7 @@ class CameraIngestionWorker:
                 if d.confidence < target_floor:
                     continue
 
+                item_label = d.specific_label or d.class_label
                 is_door = d.class_label == "doorway"
                 if is_veh:
                     b_type = "VEHICLE"
@@ -353,6 +364,96 @@ class CameraIngestionWorker:
                     "color": b_color,
                     "entity": item_label,
                 })
+
+            # 4. Real-Time Flame & Fire Hazard Detection
+            if dec is not None:
+                try:
+                    flames = FlameHazardDetector.detect_flames(dec)
+                    for fl in flames:
+                        overlay_boxes.append({
+                            "box": fl.bbox,
+                            "type": "HAZARD_FIRE",
+                            "label": f"FIRE · {int(fl.confidence * 100)}%",
+                            "confidence": fl.confidence,
+                            "color": "red",
+                            "entity": "Fire / Flame",
+                        })
+                except Exception as _flame_err:
+                    logger.debug("Flame detector error: %s", _flame_err)
+
+            # 5. Pose Estimation, Suspicious Behavior & PPE Compliance
+            if dec is not None and all_person_boxes:
+                for p_box in all_person_boxes:
+                    try:
+                        # 5A. Suspicious behavior & keypoint analysis
+                        pose_res = SuspiciousBehaviorDetector.estimate_pose_and_behavior(dec, p_box)
+                        if pose_res.is_suspicious:
+                            overlay_boxes.append({
+                                "box": p_box,
+                                "type": "SUSPICIOUS_BEHAVIOR",
+                                "label": f"SUSPICIOUS · {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})",
+                                "confidence": pose_res.confidence,
+                                "color": "amber",
+                                "entity": "Suspicious Activity",
+                            })
+
+                        # 5B. PPE Worker Safety Assessment
+                        ppe_res = PPEComplianceDetector.evaluate_worker_ppe(dec, p_box)
+                        if ppe_res.has_helmet and ppe_res.helmet_box:
+                            overlay_boxes.append({
+                                "box": ppe_res.helmet_box,
+                                "type": "PPE_COMPLIANT",
+                                "label": f"HELMET · {int(ppe_res.helmet_confidence * 100)}%",
+                                "confidence": ppe_res.helmet_confidence,
+                                "color": "green",
+                                "entity": "Hard Hat",
+                            })
+                        if ppe_res.has_vest and ppe_res.vest_box:
+                            overlay_boxes.append({
+                                "box": ppe_res.vest_box,
+                                "type": "PPE_COMPLIANT",
+                                "label": f"VEST · {int(ppe_res.vest_confidence * 100)}%",
+                                "confidence": ppe_res.vest_confidence,
+                                "color": "green",
+                                "entity": "Safety Vest",
+                            })
+                        if not ppe_res.is_compliant and getattr(cam, "pipeline_mode", "") in ("INDUSTRIAL_SAFETY", "MATERIAL_SEGMENTATION"):
+                            overlay_boxes.append({
+                                "box": p_box,
+                                "type": "PPE_VIOLATION",
+                                "label": f"PPE VIOLATION ({', '.join(ppe_res.violations)})",
+                                "confidence": 0.90,
+                                "color": "amber",
+                                "entity": "Missing PPE Gear",
+                            })
+                    except Exception as _p_err:
+                        logger.debug("Pose/PPE error: %s", _p_err)
+
+            # 6. Store Occupancy & Zone Analytics Processing
+            person_tracks_for_zone = []
+            for idx, pb in enumerate(all_person_boxes):
+                person_tracks_for_zone.append({
+                    "track_id": idx + 1,
+                    "bbox": pb,
+                    "center": (pb[0] + pb[2] / 2.0, pb[1] + pb[3] / 2.0),
+                })
+            try:
+                occ_snapshot = zone_analytics_engine.process_person_tracks(
+                    camera_id=cam.camera_id,
+                    tracks=person_tracks_for_zone,
+                    frame_width=frame_w,
+                    frame_height=frame_h,
+                )
+                detection_data.update({
+                    "occupancy": occ_snapshot.current_room_occupancy,
+                    "totalFootfallIn": occ_snapshot.total_footfall_in,
+                    "totalFootfallOut": occ_snapshot.total_footfall_out,
+                    "crowdDensity": occ_snapshot.crowd_density_level,
+                    "zoneMetrics": [asdict(zm) for zm in occ_snapshot.zone_metrics],
+                    "tripwireTallies": [asdict(tw) for tw in occ_snapshot.tripwires],
+                })
+            except Exception as _occ_err:
+                logger.debug("Occupancy zone analytics error: %s", _occ_err)
 
             # Deduplicate overlay boxes to eliminate cluttered overlapping tags
             def _calc_box_iou(b1, b2):

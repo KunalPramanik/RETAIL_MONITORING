@@ -18,6 +18,7 @@ from src.api.discovery import router as discovery_router
 from src.api.model_routes import router as model_router
 from src.api.dispatch import router as dispatch_router
 from src.api.tripwire import router as tripwire_router
+from src.api.analytics_routes import router as analytics_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -37,4 +38,5 @@ api_router.include_router(discovery_router)
 api_router.include_router(model_router)
 api_router.include_router(dispatch_router)
 api_router.include_router(tripwire_router)
+api_router.include_router(analytics_router)
 

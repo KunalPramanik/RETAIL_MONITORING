@@ -79,6 +79,38 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
           text: '#00D4FF',
           border: 'rgba(0, 212, 255, 0.4)',
         };
+      case 'fire':
+        return {
+          stroke: '#FF3D00',
+          fill: 'rgba(255, 61, 0, 0.22)',
+          bg: '#3A0D00',
+          text: '#FF6E40',
+          border: 'rgba(255, 61, 0, 0.7)',
+        };
+      case 'suspicious':
+        return {
+          stroke: '#E0245E',
+          fill: 'rgba(224, 36, 94, 0.20)',
+          bg: '#380B1E',
+          text: '#FF5C93',
+          border: 'rgba(224, 36, 94, 0.7)',
+        };
+      case 'ppe_ok':
+        return {
+          stroke: '#00E676',
+          fill: 'rgba(0, 230, 118, 0.15)',
+          bg: '#0A331A',
+          text: '#00E676',
+          border: 'rgba(0, 230, 118, 0.6)',
+        };
+      case 'ppe_violation':
+        return {
+          stroke: '#FF9100',
+          fill: 'rgba(255, 145, 0, 0.20)',
+          bg: '#3B2000',
+          text: '#FFB74D',
+          border: 'rgba(255, 145, 0, 0.7)',
+        };
       case 'static':
       default:
         return {
@@ -256,6 +288,41 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
               >
                 {displayLabel}
               </text>
+
+              {/* Skeletal Pose Keypoints & Kinematic Lines */}
+              {det.keypoints && det.connections && (
+                <g className="pose-skeleton pointer-events-none">
+                  {det.connections.map(([p1, p2], cIdx) => {
+                    const pt1 = det.keypoints![p1];
+                    const pt2 = det.keypoints![p2];
+                    if (!pt1 || !pt2) return null;
+                    return (
+                      <line
+                        key={`bone-${cIdx}`}
+                        x1={pt1[0]}
+                        y1={pt1[1]}
+                        x2={pt2[0]}
+                        y2={pt2[1]}
+                        stroke={tokens.stroke}
+                        strokeWidth={2.5}
+                        strokeLinecap="round"
+                        opacity={0.85}
+                      />
+                    );
+                  })}
+                  {Object.entries(det.keypoints).map(([kName, [kx, ky]]) => (
+                    <circle
+                      key={`joint-${kName}`}
+                      cx={kx}
+                      cy={ky}
+                      r={3.5}
+                      fill="#00E5FF"
+                      stroke="#000"
+                      strokeWidth={1}
+                    />
+                  ))}
+                </g>
+              )}
             </g>
           );
         })}
@@ -283,6 +350,36 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
               }`}
             />
             {activeTx.displayText}
+          </div>
+        </div>
+      )}
+
+      {/* ── 3. Real-Time Occupancy & Footfall Analytics HUD (Bottom-Left) ── */}
+      {detectionData && (detectionData.occupancy !== undefined || detectionData.totalFootfallIn !== undefined) && (
+        <div className="absolute bottom-2 left-2 z-20 flex items-center gap-2 font-mono text-[11px] select-none pointer-events-none">
+          <div className="px-2.5 py-1 bg-black/85 border border-white/10 backdrop-blur-md rounded flex items-center gap-3 text-white shadow-lg">
+            <span className="flex items-center gap-1">
+              <span className="text-gray-400">OCCUPANCY:</span>
+              <span className="font-bold text-teal-400">{detectionData.occupancy ?? 0}</span>
+            </span>
+            <span className="w-px h-3 bg-white/20" />
+            <span className="flex items-center gap-1">
+              <span className="text-gray-400">IN:</span>
+              <span className="font-bold text-emerald-400">{detectionData.totalFootfallIn ?? 0}</span>
+            </span>
+            <span className="w-px h-3 bg-white/20" />
+            <span className="flex items-center gap-1">
+              <span className="text-gray-400">OUT:</span>
+              <span className="font-bold text-rose-400">{detectionData.totalFootfallOut ?? 0}</span>
+            </span>
+            {detectionData.crowdDensity && (
+              <>
+                <span className="w-px h-3 bg-white/20" />
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 font-semibold text-gray-300">
+                  {detectionData.crowdDensity}
+                </span>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -9,7 +9,7 @@
     "laneId": "LANE-01",
     "isConnected": false,
     "status": "RESTORED_WAITING_VERIFICATION",
-    "lastSeenAt": "2026-09-17T11:10:47.814807+00:00",
+    "lastSeenAt": "2026-09-18T17:49:13.261339+00:00",
     "rawDescription": ""
   },
   "COM4": {
@@ -22,7 +22,7 @@
     "laneId": "LANE-01",
     "isConnected": false,
     "status": "RESTORED_WAITING_VERIFICATION",
-    "lastSeenAt": "2026-09-17T11:10:47.820127+00:00",
+    "lastSeenAt": "2026-09-18T17:49:13.265986+00:00",
     "rawDescription": ""
   },
   "COM5": {
@@ -35,7 +35,7 @@
     "laneId": "LANE-01",
     "isConnected": false,
     "status": "RESTORED_WAITING_VERIFICATION",
-    "lastSeenAt": "2026-09-17T11:10:47.831925+00:00",
+    "lastSeenAt": "2026-09-18T17:49:13.277324+00:00",
     "rawDescription": ""
   },
   "COM7": {
@@ -48,7 +48,7 @@
     "laneId": "LANE-03",
     "isConnected": false,
     "status": "RESTORED_WAITING_VERIFICATION",
-    "lastSeenAt": "2026-09-17T11:10:47.837457+00:00",
+    "lastSeenAt": "2026-09-18T17:49:13.280399+00:00",
     "rawDescription": ""
   }
 }

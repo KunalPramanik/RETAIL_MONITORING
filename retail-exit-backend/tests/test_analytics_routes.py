@@ -52,3 +52,4 @@ async def test_open_vocab_query_endpoint():
         assert data["status"] == "success"
         assert "grounded_count" in data
         assert isinstance(data["entities"], list)
+

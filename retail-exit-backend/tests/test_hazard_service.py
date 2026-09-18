@@ -46,3 +46,4 @@ def test_empty_or_none_image():
     """Verifies graceful handling of empty or None frame input."""
     assert FlameHazardDetector.detect_flames(None) == []
     assert FlameHazardDetector.detect_flames(np.array([], dtype=np.uint8)) == []
+

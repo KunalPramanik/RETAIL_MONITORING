@@ -55,3 +55,4 @@ def test_grounding_arbitrary_unseen_prompt():
     )
     assert len(results) >= 1
     assert results[0].matched_class == "Shipping Crate"
+

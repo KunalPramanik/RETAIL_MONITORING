@@ -239,3 +239,4 @@ class SuspiciousBehaviorDetector:
             confidence=0.88 if is_suspicious else 0.85,
             theft_risk_score=theft_score,
         )
+

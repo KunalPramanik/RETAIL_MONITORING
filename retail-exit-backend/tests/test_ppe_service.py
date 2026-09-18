@@ -49,3 +49,4 @@ def test_worker_missing_ppe_gear():
     assert "MISSING_HELMET" in assessment.violations
     assert "MISSING_VEST" in assessment.violations
     assert "PPE VIOLATION" in assessment.summary_label
+

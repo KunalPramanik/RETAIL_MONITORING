@@ -309,3 +309,4 @@ class OccupancyZoneEngine:
 
 
 zone_analytics_engine = OccupancyZoneEngine.get_instance()
+

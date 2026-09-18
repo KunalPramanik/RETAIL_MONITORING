@@ -39,7 +39,7 @@ class FlameHazardDetector:
     @classmethod
     def detect_flames(
         cls,
-        image_bgr: np.ndarray,
+        image_bgr: Optional[np.ndarray],
         confidence_floor: float = 0.45,
     ) -> List[FlameDetection]:
         """Detects open flames and combustion hazards dynamically in the image.
@@ -153,3 +153,4 @@ class FlameHazardDetector:
         # Sort by confidence descending
         detections.sort(key=lambda d: d.confidence, reverse=True)
         return detections
+

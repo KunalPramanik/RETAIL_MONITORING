@@ -21,15 +21,15 @@ class PPEAssessment:
     person_box: List[int]                # [x, y, w, h]
     has_helmet: bool
     helmet_confidence: float             # e.g. 0.93 for 93%
-    helmet_color: Optional[str]
-    helmet_box: Optional[List[int]]      # [x, y, w, h] of helmet
-    has_vest: bool
-    vest_confidence: float               # e.g. 0.90 for 90%
-    vest_color: Optional[str]
-    vest_box: Optional[List[int]]        # [x, y, w, h] of vest
-    is_compliant: bool
-    violations: List[str]
-    summary_label: str                   # e.g. "PPE COMPLIANT" or "PPE VIOLATION: MISSING VEST"
+    helmet_color: Optional[str] = None
+    helmet_box: Optional[List[int]] = None      # [x, y, w, h] of helmet
+    has_vest: bool = False
+    vest_confidence: float = 0.0               # e.g. 0.90 for 90%
+    vest_color: Optional[str] = None
+    vest_box: Optional[List[int]] = None        # [x, y, w, h] of vest
+    is_compliant: bool = False
+    violations: List[str] = field(default_factory=list)
+    summary_label: str = "PPE UNKNOWN"                   # e.g. "PPE COMPLIANT" or "PPE VIOLATION: MISSING VEST"
 
 
 class PPEComplianceDetector:
@@ -75,6 +75,7 @@ class PPEComplianceDetector:
                 has_vest=False,
                 vest_confidence=0.0,
                 vest_color=None,
+                vest_box=None,
                 is_compliant=False,
                 violations=["INSUFFICIENT_RESOLUTION"],
                 summary_label="PPE UNKNOWN",

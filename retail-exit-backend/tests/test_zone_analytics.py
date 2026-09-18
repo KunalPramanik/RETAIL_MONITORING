@@ -55,3 +55,4 @@ def test_zone_dwell_time_accumulation():
     assert len(checkout_metrics) == 1
     assert checkout_metrics[0].current_occupancy == 1
     assert 201 in checkout_metrics[0].active_track_ids
+

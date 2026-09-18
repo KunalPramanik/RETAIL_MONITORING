@@ -39,3 +39,4 @@ def test_pocket_concealment_detection():
     skeleton = SuspiciousBehaviorDetector.estimate_pose_and_behavior(img, person_bbox)
     assert skeleton.theft_risk_score >= 0.0
     assert skeleton.confidence > 0.50
+

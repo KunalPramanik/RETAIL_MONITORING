@@ -175,7 +175,7 @@ class OpenVocabularyGrounder:
                         results.append(
                             GroundedEntity(
                                 prompt_query=raw_query,
-                                matched_class=tax_key.title(),
+                                matched_class=(tax_key or raw_query).title(),
                                 confidence=conf,
                                 bbox=[int(bx), int(by), int(bw), int(bh)],
                                 area_pixels=int(area),
@@ -223,3 +223,4 @@ class OpenVocabularyGrounder:
         # Sort and return
         results.sort(key=lambda r: r.confidence, reverse=True)
         return results
+

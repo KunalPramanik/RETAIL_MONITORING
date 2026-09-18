@@ -916,6 +916,21 @@ async def get_camera_snapshot(
     if not cam:
         raise HTTPException(status_code=404, detail=f"Camera '{camera_id}' not found")
 
+    # 0. Instant in-memory cache check (zero disk I/O, < 1ms latency)
+    from src.engine.camera_worker import camera_worker
+    mem_frame = camera_worker.get_latest_frame_bytes(camera_id, raw=raw)
+    if mem_frame is not None and not fresh:
+        return Response(
+            content=mem_frame,
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+                "X-Frame-Source": "MemoryCache",
+            },
+        )
+
     os.makedirs("snapshots", exist_ok=True)
     snapshot_path = os.path.join("snapshots", f"preview_{camera_id}.jpg")
     raw_path = os.path.join("snapshots", f"raw_{camera_id}.jpg")

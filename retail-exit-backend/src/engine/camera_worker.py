@@ -73,6 +73,8 @@ class CameraIngestionWorker:
         self._cached_catalog_ts: float = 0.0
         self._cached_roster: List[Dict[str, Any]] = []
         self._cached_roster_ts: float = 0.0
+        self._last_raw_frames: Dict[str, bytes] = {}
+        self._last_annotated_frames: Dict[str, bytes] = {}
 
     def register_camera(self, camera_record: Any) -> None:
         """Registers a newly discovered or confirmed camera into the ingestion fleet."""
@@ -160,21 +162,28 @@ class CameraIngestionWorker:
         from src.engine.stream_manager import camera_stream_manager
         target_path = cam.sub_stream_path or cam.rtsp_path or ""
         sm_bytes, latency_ms = camera_stream_manager.get_latest_real_jpeg(
-            cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.5
+            cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.15
         )
         if sm_bytes:
             frame_bytes, source_desc = sm_bytes, f"StreamManager ({cam.ip_address})"
         else:
-            from src.api.cameras import capture_camera_frame_sync
-            frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
-                capture_camera_frame_sync,
-                str(cam.ip_address),
-                str(cam.rtsp_path or ""),
-                str(cam.credentials_ref or ""),
-                str(cam.sub_stream_path or ""),
-                1.5,
-                str(cam.stream_url or "") if cam.stream_url else None,
-            )
+            clean_ip_str = str(cam.ip_address or "").strip()
+            clean_url_str = str(cam.stream_url or "").strip()
+            is_local = clean_ip_str in ("0", "1", "2", "webcam") or clean_url_str in ("0", "1", "2")
+            if is_local:
+                # Local webcams on Windows are exclusive-access; stream_manager is capturing. Do not freeze loop with duplicate VideoCapture
+                frame_bytes = None
+            else:
+                from src.api.cameras import capture_camera_frame_sync
+                frame_bytes, source_desc, latency_ms = await asyncio.to_thread(
+                    capture_camera_frame_sync,
+                    str(cam.ip_address),
+                    str(cam.rtsp_path or ""),
+                    str(cam.credentials_ref or ""),
+                    str(cam.sub_stream_path or ""),
+                    1.2,
+                    str(cam.stream_url or "") if cam.stream_url else None,
+                )
 
         if not frame_bytes:
             # Physical camera is not streaming live video: do not process inference or create fake events
@@ -239,8 +248,11 @@ class CameraIngestionWorker:
                 self._cached_roster_ts = now_epoch
             roster = self._cached_roster
 
-            vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, catalog_products=catalog)
-            face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
+            vis_res, obj_bytes = await asyncio.to_thread(
+                VisionInferenceService.analyze_frame_bytes, frame_bytes, catalog_products=catalog
+            )
+            face_res, final_bytes, face_boxes = await asyncio.to_thread(
+                FaceRecognitionService.detect_and_match_faces,
                 frame_bytes=obj_bytes or frame_bytes,
                 enrolled_employees=roster,
                 prior_detections_count=len(vis_res.detections),
@@ -273,8 +285,14 @@ class CameraIngestionWorker:
             if face_res.decision == "MATCHED" and face_res.matched_employee_id:
                 if face_res.similarity >= conf_floor:
                     for fb in face_boxes:
+                        fx, fy, fw, fh = fb
+                        pb_x = max(0, fx - int(fw * 0.35))
+                        pb_y = max(0, fy - int(fh * 0.15))
+                        pb_w = min(frame_w - pb_x, int(fw * 1.70))
+                        pb_h = min(frame_h - pb_y, int(fh * 2.20))
+                        all_person_boxes.append([pb_x, pb_y, pb_w, pb_h])
                         overlay_boxes.append({
-                            "box": fb,
+                            "box": [pb_x, pb_y, pb_w, pb_h],
                             "type": "PERSON_MATCHED",
                             "label": f"Recognized: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
                             "confidence": round(float(face_res.similarity), 4),
@@ -282,18 +300,24 @@ class CameraIngestionWorker:
                             "entity": face_res.employee_name,
                         })
 
-            # 2. Live unrecognized persons (Red)
+            # 2. Live unrecognized persons (Cyan / Neutral, NOT alarming Red!)
             for pb in getattr(face_res, "live_person_boxes", []):
                 if face_res.decision != "MATCHED" or not face_res.matched_employee_id:
                     conf = pb.get("confidence", 0.85)
                     if conf >= conf_floor:
+                        fx, fy, fw, fh = pb["box"]
+                        pb_x = max(0, fx - int(fw * 0.35))
+                        pb_y = max(0, fy - int(fh * 0.15))
+                        pb_w = min(frame_w - pb_x, int(fw * 1.70))
+                        pb_h = min(frame_h - pb_y, int(fh * 2.20))
+                        all_person_boxes.append([pb_x, pb_y, pb_w, pb_h])
                         overlay_boxes.append({
-                            "box": pb["box"],
+                            "box": [pb_x, pb_y, pb_w, pb_h],
                             "type": "PERSON_UNMATCHED",
-                            "label": f"Unknown Person ({int(conf * 100)}%)",
+                            "label": f"Person ({int(conf * 100)}%)",
                             "confidence": round(float(conf), 4),
-                            "color": "red",
-                            "entity": None,
+                            "color": "cyan",
+                            "entity": "Person",
                         })
 
             # 3. Detected items, vehicles, cases, and people from YOLOX
@@ -324,7 +348,7 @@ class CameraIngestionWorker:
                             "type": "PERSON_UNMATCHED",
                             "label": f"Person ({int(d.confidence * 100)}%)",
                             "confidence": round(float(d.confidence), 4),
-                            "color": "red",
+                            "color": "cyan",
                             "entity": "Person",
                         })
                     continue
@@ -685,17 +709,21 @@ class CameraIngestionWorker:
             logger.warning("Preview CV annotation error on %s: %s", cam.camera_id, e)
 
         self._last_detections[cam.camera_id] = detection_data
+        self._last_raw_frames[cam.camera_id] = frame_bytes
+        self._last_annotated_frames[cam.camera_id] = annotated_bytes
 
-        os.makedirs("snapshots", exist_ok=True)
-        preview_path = os.path.join("snapshots", f"preview_{cam.camera_id}.jpg")
-        raw_path = os.path.join("snapshots", f"raw_{cam.camera_id}.jpg")
-        try:
-            with open(preview_path, "wb") as f:
-                f.write(annotated_bytes)
-            with open(raw_path, "wb") as f:
-                f.write(frame_bytes)
-        except Exception as e:
-            logger.warning("Could not write preview snapshot: %s", e)
+        # Persist snapshots asynchronously in background thread (zero event-loop blocking)
+        def _persist_to_disk(c_id: str, raw_b: bytes, ann_b: bytes):
+            try:
+                os.makedirs("snapshots", exist_ok=True)
+                with open(os.path.join("snapshots", f"preview_{c_id}.jpg"), "wb") as f:
+                    f.write(ann_b)
+                with open(os.path.join("snapshots", f"raw_{c_id}.jpg"), "wb") as f:
+                    f.write(raw_b)
+            except Exception as _disk_err:
+                logger.debug("Disk snapshot error on %s: %s", c_id, _disk_err)
+
+        asyncio.create_task(asyncio.to_thread(_persist_to_disk, cam.camera_id, frame_bytes, annotated_bytes))
 
         await session.commit()
 
@@ -713,6 +741,12 @@ class CameraIngestionWorker:
             )
 
         return annotated_bytes
+
+    def get_latest_frame_bytes(self, camera_id: str, raw: bool = True) -> Optional[bytes]:
+        """Returns the latest captured frame bytes from memory cache (0ms latency, zero disk I/O)."""
+        if raw:
+            return self._last_raw_frames.get(camera_id) or self._last_annotated_frames.get(camera_id)
+        return self._last_annotated_frames.get(camera_id) or self._last_raw_frames.get(camera_id)
 
     def get_latest_detection(self, camera_id: str) -> Dict[str, Any]:
         """Returns the latest real-time CV detection metadata for the given camera."""

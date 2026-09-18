@@ -168,6 +168,7 @@ class PPEComplianceDetector:
         edges = cv2.Canny(gray, 40, 120)
         # Upper third edges (helmet crest)
         upper_edges = edges[: int(edges.shape[0] * 0.5), :]
+        edge_density = np.sum(upper_edges > 0) / float(max(1, upper_edges.size))
         # A helmet is confirmed if safety color occupies >= 14% of head RoI
         # For White helmets, require high crest edge density to distinguish from uniform flat wall paint
         if best_color == "White":

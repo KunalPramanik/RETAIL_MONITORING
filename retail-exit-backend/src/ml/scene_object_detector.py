@@ -167,9 +167,38 @@ class SceneObjectDetector:
                 continue
 
             aspect = float(bh) / max(1.0, float(bw))
+            box_area = bw * bh
+            solidity = area / float(max(1, box_area))
+
+            # Reject hollow wireframe edges, single-line seams, and transparent outlines
+            if solidity < 0.30:
+                continue
+
+            # ── Photometric Boundary Contrast Check ──
+            # A real physical hanging item exhibits distinct chromatic contrast against the adjacent wall.
+            roi = img[by : by + bh, bx : bx + bw]
+            mean_int = np.mean(roi, axis=(0, 1))
+
+            pad = 12
+            x1 = max(0, bx - pad)
+            y1 = max(0, by - pad)
+            x2 = min(w_img, bx + bw + pad)
+            y2 = min(h_img, by + bh + pad)
+            surround = img[y1:y2, x1:x2]
+            mask = np.ones(surround.shape[:2], dtype=bool)
+            mask[by - y1 : by - y1 + bh, bx - x1 : bx - x1 + bw] = False
+            if np.any(mask):
+                mean_ext = np.mean(surround[mask], axis=0)
+                contrast = float(np.linalg.norm(mean_int - mean_ext))
+            else:
+                contrast = 0.0
+
+            # Reject flat door panels, painted wall shadows, and uniform wall plaster
+            if contrast < 22.0:
+                continue
 
             # 1. Folded Umbrella: slender vertical profile hanging from hook
-            if 3.0 <= aspect <= 14.0 and 12 <= bw <= 75 and bh >= 50:
+            if 3.0 <= aspect <= 14.0 and 16 <= bw <= 75 and bh >= 70 and area >= 800:
                 conf = round(min(0.93, 0.72 + min(0.18, (aspect - 3.0) * 0.03)), 3)
                 if conf >= min_confidence:
                     detections.append({
@@ -181,8 +210,8 @@ class SceneObjectDetector:
                         "type": "ITEM",
                     })
 
-            # 2. Hanging Bag / Tote / Shopping Bag: sack-like aspect ratio
-            elif 0.75 <= aspect <= 2.8 and bw >= 35 and bh >= 50 and (area >= 1200 or (bw * bh >= 3000)):
+            # 2. Hanging Bag / Tote / Shopping Bag: solid pouch-like aspect ratio
+            elif 0.75 <= aspect <= 2.8 and bw >= 40 and bh >= 55 and area >= 1600 and solidity >= 0.35:
                 # Ignore small square fixtures (e.g. switchboard with height < 85)
                 if bh < 85 and aspect < 1.6:
                     continue

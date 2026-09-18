@@ -139,13 +139,15 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
     const bw = Math.max(6, Math.min(rawBw, fWidth - bx - 2));
     const bh = Math.max(6, Math.min(rawBh, fHeight - by - 2));
 
-    const tokens = getColorTokens(det.color);
+    const effectiveColor = det.type === 'PERSON_UNMATCHED' && det.color === 'red' ? 'cyan' : det.color;
+    const tokens = getColorTokens(effectiveColor);
     const isStatic = det.type === 'STATIC_IMAGE';
     const isDoorway = det.type === 'DOORWAY';
 
     // Refine label display: clean prefixes and format percentage
     let displayLabel = (det.label || '')
       .replace(/^Item:\s*/i, '')
+      .replace(/Unknown Person/i, 'Person')
       .replace(/\(Folded\)/i, '')
       .replace(/\s*\((\d+)%\)$/, ' · $1%');
 

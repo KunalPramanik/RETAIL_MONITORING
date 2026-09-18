@@ -74,11 +74,14 @@ class CameraStreamSession:
         try:
             if isinstance(self.source, int) or (isinstance(self.source, str) and str(self.source).strip().isdigit()):
                 dev_idx = int(self.source)
-                # On Windows: try MSMF, then DirectShow, then default
-                cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
-                if not cap.isOpened():
+                # On Windows: DirectShow (CAP_DSHOW) opens in < 50ms and avoids MSMF 1.1s driver hangs
+                if os.name == "nt":
                     cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
-                if not cap.isOpened():
+                    if not cap.isOpened():
+                        cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
+                    if not cap.isOpened():
+                        cap = cv2.VideoCapture(dev_idx)
+                else:
                     cap = cv2.VideoCapture(dev_idx)
             else:
                 src_str = str(self.source).strip()

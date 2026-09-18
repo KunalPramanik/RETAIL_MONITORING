@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { Camera, SensorLane } from '../../types';
+import type { Camera, SensorLane, CameraDetectionUpdate } from '../../types';
 import { api, getCameraSnapshotUrl, getCameraStreamUrl } from '../../api/client';
 import { useAppData } from '../../context/AppDataContext';
 import { CameraVideoOverlay } from './CameraVideoOverlay';
@@ -366,26 +366,14 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
     return () => clearInterval(clockInterval);
   }, []);
 
-  const [liveDetection, setLiveDetection] = useState<{
-    casesDetected: number;
-    unitsDetected: number;
-    carrierName: string;
-    faceDecision: string;
-    confidence: number;
-    boxesCount: number;
-  } | null>(null);
+  const [liveDetection, setLiveDetection] = useState<CameraDetectionUpdate | null>(null);
 
   const fetchLiveDetection = useCallback(async () => {
     try {
       const data = await api.getCameraLiveDetection(camera.cameraId);
-      setLiveDetection({
-        casesDetected: data.casesDetected ?? 0,
-        unitsDetected: data.unitsDetected ?? 0,
-        carrierName: data.carrierName ?? 'UNVERIFIED',
-        faceDecision: data.faceDecision ?? 'NO_PERSON',
-        confidence: data.confidence ?? 0,
-        boxesCount: data.boxesCount ?? 0,
-      });
+      if (data) {
+        setLiveDetection(data);
+      }
     } catch {
       // ignore
     }
@@ -584,9 +572,9 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
             {/* Live Video Overlay Layer (Bounding boxes, employee tags, live consensus pill) */}
             {showAiDetections && (
               <CameraVideoOverlay
-                detectionData={camDetection}
-                frameWidth={camDetection?.frameWidth || naturalDimensions.width}
-                frameHeight={camDetection?.frameHeight || naturalDimensions.height}
+                detectionData={camDetection || liveDetection}
+                frameWidth={(camDetection || liveDetection)?.frameWidth || naturalDimensions.width}
+                frameHeight={(camDetection || liveDetection)?.frameHeight || naturalDimensions.height}
               />
             )}
           </div>
@@ -597,7 +585,7 @@ export const SingleCameraTile: React.FC<SingleCameraTileProps> = ({
           <CameraOperationsHud
             camera={camera}
             assignedLane={assignedLane}
-            detectionData={camDetection}
+            detectionData={camDetection || liveDetection}
             isOpen={isHudOpen}
             onToggle={() => setIsHudOpen((prev) => !prev)}
           />

@@ -281,7 +281,6 @@ class CameraIngestionWorker:
                             "color": "green",
                             "entity": face_res.employee_name,
                         })
-                        all_person_boxes.append(fb)
 
             # 2. Live unrecognized persons (Red)
             for pb in getattr(face_res, "live_person_boxes", []):
@@ -296,7 +295,6 @@ class CameraIngestionWorker:
                             "color": "red",
                             "entity": None,
                         })
-                        all_person_boxes.append(pb["box"])
 
             # 3. Detected items, vehicles, cases, and people from YOLOX
             cfg = get_vision_config()
@@ -306,7 +304,9 @@ class CameraIngestionWorker:
                 is_case = "case" in d.class_label.lower()
 
                 if is_person:
-                    all_person_boxes.append(d.bbox)
+                    # Only append verified vertical human bodies to body-level trackers (not face crops or horizontal slices)
+                    if d.bbox[3] >= 1.25 * d.bbox[2] and d.bbox[3] >= 140:
+                        all_person_boxes.append(d.bbox)
                     # Check if face recognition already identified or tracked this person
                     has_face_overlap = False
                     for ob in overlay_boxes:
@@ -397,35 +397,37 @@ class CameraIngestionWorker:
                                 "entity": "Suspicious Activity",
                             })
 
-                        # 5B. PPE Worker Safety Assessment
-                        ppe_res = PPEComplianceDetector.evaluate_worker_ppe(dec, p_box)
-                        if ppe_res.has_helmet and ppe_res.helmet_box:
-                            overlay_boxes.append({
-                                "box": ppe_res.helmet_box,
-                                "type": "PPE_COMPLIANT",
-                                "label": f"HELMET · {int(ppe_res.helmet_confidence * 100)}%",
-                                "confidence": ppe_res.helmet_confidence,
-                                "color": "green",
-                                "entity": "Hard Hat",
-                            })
-                        if ppe_res.has_vest and ppe_res.vest_box:
-                            overlay_boxes.append({
-                                "box": ppe_res.vest_box,
-                                "type": "PPE_COMPLIANT",
-                                "label": f"VEST · {int(ppe_res.vest_confidence * 100)}%",
-                                "confidence": ppe_res.vest_confidence,
-                                "color": "green",
-                                "entity": "Safety Vest",
-                            })
-                        if not ppe_res.is_compliant and getattr(cam, "pipeline_mode", "") in ("INDUSTRIAL_SAFETY", "MATERIAL_SEGMENTATION"):
-                            overlay_boxes.append({
-                                "box": p_box,
-                                "type": "PPE_VIOLATION",
-                                "label": f"PPE VIOLATION ({', '.join(ppe_res.violations)})",
-                                "confidence": 0.90,
-                                "color": "amber",
-                                "entity": "Missing PPE Gear",
-                            })
+                        # 5B. PPE Worker Safety Assessment (Only in Industrial / Safety mode)
+                        is_industrial_cam = getattr(cam, "pipeline_mode", "") in ("INDUSTRIAL_SAFETY", "MATERIAL_SEGMENTATION", "PPE_COMPLIANCE")
+                        if is_industrial_cam:
+                            ppe_res = PPEComplianceDetector.evaluate_worker_ppe(dec, p_box)
+                            if ppe_res.has_helmet and ppe_res.helmet_box:
+                                overlay_boxes.append({
+                                    "box": ppe_res.helmet_box,
+                                    "type": "PPE_COMPLIANT",
+                                    "label": f"HELMET · {int(ppe_res.helmet_confidence * 100)}%",
+                                    "confidence": ppe_res.helmet_confidence,
+                                    "color": "green",
+                                    "entity": "Hard Hat",
+                                })
+                            if ppe_res.has_vest and ppe_res.vest_box:
+                                overlay_boxes.append({
+                                    "box": ppe_res.vest_box,
+                                    "type": "PPE_COMPLIANT",
+                                    "label": f"VEST · {int(ppe_res.vest_confidence * 100)}%",
+                                    "confidence": ppe_res.vest_confidence,
+                                    "color": "green",
+                                    "entity": "Safety Vest",
+                                })
+                            if not ppe_res.is_compliant:
+                                overlay_boxes.append({
+                                    "box": p_box,
+                                    "type": "PPE_VIOLATION",
+                                    "label": f"PPE VIOLATION ({', '.join(ppe_res.violations)})",
+                                    "confidence": 0.90,
+                                    "color": "amber",
+                                    "entity": "Missing PPE Gear",
+                                })
                     except Exception as _p_err:
                         logger.debug("Pose/PPE error: %s", _p_err)
 
@@ -469,7 +471,24 @@ class CameraIngestionWorker:
             for ob in sorted(overlay_boxes, key=lambda x: x.get("confidence", 0.0), reverse=True):
                 if not any(_calc_box_iou(ob["box"], cb["box"]) > 0.45 and ob["type"] == cb["type"] for cb in clean_boxes):
                     clean_boxes.append(ob)
-            overlay_boxes = clean_boxes
+
+            # Foreground / Background occlusion hierarchy:
+            # If a human stands in front of a background doorway, suppress the doorway box
+            # so the cyan doorway line does not cross directly through the person's head/face
+            person_boxes_in_overlay = [b["box"] for b in clean_boxes if "PERSON" in b["type"] or b["type"] == "SUSPICIOUS_BEHAVIOR"]
+            filtered_overlay = []
+            for ob in clean_boxes:
+                if ob["type"] == "DOORWAY":
+                    ob_box = ob["box"]
+                    has_human_in_front = any(
+                        (pb[0] + pb[2] / 2.0 >= ob_box[0] and pb[0] + pb[2] / 2.0 <= ob_box[0] + ob_box[2] and
+                         pb[1] + pb[3] / 2.0 >= ob_box[1] and pb[1] + pb[3] / 2.0 <= ob_box[1] + ob_box[3])
+                        for pb in person_boxes_in_overlay
+                    )
+                    if has_human_in_front:
+                        continue
+                filtered_overlay.append(ob)
+            overlay_boxes = filtered_overlay
 
             # 4. Static face spoof images (Anti-spoofing photo attacks against biometric scanner)
             for s in getattr(face_res, "static_detections", []):

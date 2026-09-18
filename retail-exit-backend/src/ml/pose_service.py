@@ -179,11 +179,17 @@ class SuspiciousBehaviorDetector:
         }
 
         # ── Step 2: Posture Kinematics Analysis ──
-        # Aspect ratio of person: upright standing is typically H/W in [2.2 - 3.8]
+        # Aspect ratio of person: upright standing is typically H/W in [2.0 - 3.8]
         aspect_ratio = roi_h / float(max(1, roi_w))
 
+        # Full-body verification: pocket concealment and low-shelf crouching can ONLY occur
+        # when the torso, hips, and waistband are physically within the camera viewport.
+        # Bust shots, seated desk views, and headshots (aspect < 1.70 or height < 220px)
+        # must NOT trigger pocket concealment because waistbands are outside the frame.
+        has_full_body = (aspect_ratio >= 1.70) and (roi_h >= 220)
+
         # Detect crouching
-        is_crouching = aspect_ratio < 1.85 and roi_h < frame_h * 0.45
+        is_crouching = has_full_body and (aspect_ratio < 1.85) and (roi_h < frame_h * 0.45)
         posture = "CROUCHING" if is_crouching else "UPRIGHT"
 
         # ── Step 3: Concealment Detection ──
@@ -198,7 +204,7 @@ class SuspiciousBehaviorDetector:
         norm_left_dist = dist_left_to_hip / hip_width
         norm_right_dist = dist_right_to_hip / hip_width
 
-        is_pocket_concealment = norm_left_dist < 0.45 or norm_right_dist < 0.45
+        is_pocket_concealment = has_full_body and (norm_left_dist < 0.45 or norm_right_dist < 0.45)
 
         # Shoplifting risk calculation
         suspicious_flags = []
@@ -213,10 +219,10 @@ class SuspiciousBehaviorDetector:
             theft_score += 0.35
 
         # Reaching across centerline (reaching into inside jacket pocket)
-        if left_hand_x > mid_x + hip_width * 0.25:
+        if has_full_body and left_hand_x > mid_x + hip_width * 0.25:
             suspicious_flags.append("Cross-Body Jacket Concealment")
             theft_score += 0.40
-        if right_hand_x < mid_x - hip_width * 0.25:
+        if has_full_body and right_hand_x < mid_x - hip_width * 0.25:
             suspicious_flags.append("Cross-Body Jacket Concealment")
             theft_score += 0.40
 

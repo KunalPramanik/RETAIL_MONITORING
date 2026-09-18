@@ -65,7 +65,8 @@ class PPEComplianceDetector:
         roi_w = x2 - x1
         roi_h = y2 - y1
 
-        if roi_w < 15 or roi_h < 25:
+        # A valid worker body must be vertical (height > width) and sufficiently resolved
+        if roi_w < 20 or roi_h < 60 or roi_w >= roi_h:
             return PPEAssessment(
                 person_box=person_bbox,
                 has_helmet=False,
@@ -167,17 +168,18 @@ class PPEComplianceDetector:
         edges = cv2.Canny(gray, 40, 120)
         # Upper third edges (helmet crest)
         upper_edges = edges[: int(edges.shape[0] * 0.5), :]
-        edge_density = np.sum(upper_edges > 0) / float(max(1, upper_edges.size))
-
         # A helmet is confirmed if safety color occupies >= 14% of head RoI
+        # For White helmets, require high crest edge density to distinguish from uniform flat wall paint
+        if best_color == "White":
+            if best_ratio >= 0.20 and edge_density >= 0.08:
+                conf = min(0.98, 0.65 + (best_ratio * 0.7) + (edge_density * 0.6))
+                return True, round(conf, 2), "White"
+            return False, 0.10, None
+
         if best_ratio >= 0.14:
             # Score formula based on color coverage + dome reflection
             conf = min(0.98, 0.65 + (best_ratio * 0.8) + (edge_density * 0.5))
             return True, round(conf, 2), best_color
-
-        # Marginal check for white helmets under harsh glare
-        if best_color == "White" and best_ratio >= 0.12 and edge_density > 0.08:
-            return True, 0.82, "White"
 
         return False, round(max(0.1, best_ratio * 1.5), 2), None
 

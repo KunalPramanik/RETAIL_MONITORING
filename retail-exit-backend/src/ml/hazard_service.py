@@ -106,20 +106,30 @@ class FlameHazardDetector:
             # ── Step 2: Turbulence & Irregularity Metric ──
             # Smooth circle = 1.0; flames have jagged, turbulent edges (typically 1.3 - 4.5)
             roughness = (perimeter * perimeter) / (4.0 * math.pi * max(1.0, area))
+            # Reject smooth static printed rectangular logos/signs
+            if roughness < 1.20:
+                continue
 
             # ── Step 3: High-Intensity Core & Contrast ──
             roi_y = y[by : by + bh, bx : bx + bw]
             max_luminance = float(np.max(roi_y))
             mean_luminance = float(np.mean(roi_y))
 
-            # Flames typically have a bright white-yellow core (Y >= 200)
-            core_score = min(1.0, max(0.0, (max_luminance - 140.0) / 100.0))
+            # Active combustion flames MUST have an intense white-yellow core (Y >= 195)
+            # Static red ink on fabric or paper has max Y < 175
+            if max_luminance < 195:
+                continue
+
+            core_score = min(1.0, max(0.0, (max_luminance - 170.0) / 75.0))
 
             # Chromatic purity score
             roi_cr = cr[by : by + bh, bx : bx + bw]
             roi_cb = cb[by : by + bh, bx : bx + bw]
             mean_cr = float(np.mean(roi_cr))
             mean_cb = float(np.mean(roi_cb))
+            if (mean_cr - mean_cb) < 14.0:
+                continue
+
             chroma_score = min(1.0, max(0.0, (mean_cr - mean_cb) / 70.0))
 
             # Boundary roughness score (flame turbulence)

@@ -515,11 +515,14 @@ class VisionInferenceService:
 
                     # Map COCO classes to retail exit & vehicle entrance classes
                     if cid == 0:
-                        # Hand/finger filter:
-                        # Isolated hands/fingers have small height (bh < 0.20 * orig_h) or flat aspect ratio (bw/bh > 1.6) with low conf (< 0.50)
+                        # Reject flat horizontal artifacts (a person is vertical, never 1.45x wider than tall)
+                        if (bw / max(1, bh)) > 1.45:
+                            continue
+                        # Hand/finger/fragment filter:
+                        # Isolated hands/fingers have small height (bh < 0.20 * orig_h) or flat aspect ratio (bw/bh > 1.25)
                         if bh < 0.20 * orig_h and conf < 0.50:
                             continue
-                        if (bw / max(1, bh)) > 1.6 and bh < 120 and conf < 0.50:
+                        if (bw / max(1, bh)) > 1.25 and bh < 140:
                             continue
 
                         class_label = "person"

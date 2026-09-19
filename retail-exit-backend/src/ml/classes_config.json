@@ -57,6 +57,11 @@
   },
   "thresholds": {
     "confidence_floor": 0.50,
+    "confirmed_entity_standard": 0.90,
+    "fire_confirmed_threshold": 0.90,
+    "fire_hazard_floor": 0.45,
+    "suspicious_confirmed_threshold": 0.90,
+    "ppe_confirmed_threshold": 0.85,
     "person_conf_threshold": 0.50,
     "case_conf_threshold": 0.50,
     "vehicle_conf_threshold": 0.25,

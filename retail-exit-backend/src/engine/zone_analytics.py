@@ -60,6 +60,8 @@ class OccupancyAnalyticsSnapshot:
     crowd_density_level: str            # "LOW", "MODERATE", "HIGH", "OVERCROWDED"
     zone_metrics: List[ZoneMetric]
     tripwires: List[TripwireTally]
+    unique_visitors_count: int = 0
+    tracking_fidelity_status: str = "OPTIMAL"  # "OPTIMAL", "DEGRADED", "OCCLUDED"
 
 
 class OccupancyZoneEngine:
@@ -80,6 +82,8 @@ class OccupancyZoneEngine:
         self._tripwire_track_sides: Dict[Tuple[str, int, str], int] = {}
         # Cumulative footfall per camera
         self._camera_totals: Dict[str, Dict[str, int]] = {}
+        # Unique persistent visitor IDs per camera session
+        self._unique_visitors: Dict[str, Set[int]] = {}
 
     @classmethod
     def get_instance(cls) -> "OccupancyZoneEngine":
@@ -184,6 +188,9 @@ class OccupancyZoneEngine:
                 ],
             )
 
+        if camera_id not in self._unique_visitors:
+            self._unique_visitors[camera_id] = set()
+
         active_track_ids = set()
         zone_occupancies: Dict[str, List[int]] = {zid: [] for zid in self._camera_zones.get(camera_id, {})}
         zone_dwells: Dict[str, List[float]] = {zid: [] for zid in self._camera_zones.get(camera_id, {})}
@@ -192,6 +199,7 @@ class OccupancyZoneEngine:
             tid = tr.get("track_id", 0)
             bx, by, bw, bh = tr.get("bbox", [0, 0, 0, 0])
             active_track_ids.add(tid)
+            self._unique_visitors[camera_id].add(tid)
             self._active_tracks[(camera_id, tid)] = now
 
             # Foot position (bottom-center) is the most accurate ground-plane anchor
@@ -280,8 +288,24 @@ class OccupancyZoneEngine:
 
         total_in = self._camera_totals[camera_id]["in"]
         total_out = self._camera_totals[camera_id]["out"]
-        room_occ = len(active_track_ids)
         net_instore = max(0, total_in - total_out)
+
+        # Current occupancy is mathematically tied to net footfall (total_in - total_out)
+        # when tripwire tracking has observed flows, or actively visible tracks
+        if total_in > 0 or total_out > 0:
+            room_occ = max(len(active_track_ids), net_instore)
+        else:
+            room_occ = len(active_track_ids)
+
+        # Honest tracking degradation assessment
+        if len(active_track_ids) == 0 and net_instore > 0:
+            fidelity_status = "OCCLUDED"
+        elif abs(len(active_track_ids) - net_instore) > 3 and net_instore > 0:
+            fidelity_status = "DEGRADED"
+        else:
+            fidelity_status = "OPTIMAL"
+
+        unique_visitors = len(self._unique_visitors.get(camera_id, set()))
 
         # Density assessment
         frame_area_k = (frame_width * frame_height) / 1000.0
@@ -305,6 +329,8 @@ class OccupancyZoneEngine:
             crowd_density_level=density_lbl,
             zone_metrics=zone_metric_list,
             tripwires=tw_tallies,
+            unique_visitors_count=unique_visitors,
+            tracking_fidelity_status=fidelity_status,
         )
 
 

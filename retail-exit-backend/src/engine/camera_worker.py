@@ -75,6 +75,7 @@ class CameraIngestionWorker:
         self._cached_roster_ts: float = 0.0
         self._last_raw_frames: Dict[str, bytes] = {}
         self._last_annotated_frames: Dict[str, bytes] = {}
+        self._last_hazard_alert_ts: Dict[Tuple[str, str], float] = {}
 
     def register_camera(self, camera_record: Any) -> None:
         """Registers a newly discovered or confirmed camera into the ingestion fleet."""
@@ -276,7 +277,8 @@ class CameraIngestionWorker:
             except Exception as _fdim_err:
                 logger.debug("Frame dimension extraction failed (non-fatal): %s", _fdim_err)
 
-            conf_floor = get_vision_config().confidence_floor
+            cfg = get_vision_config()
+            conf_floor = cfg.confidence_floor
             overlay_boxes = []
 
             all_person_boxes: List[List[int]] = []
@@ -394,14 +396,41 @@ class CameraIngestionWorker:
                 try:
                     flames = FlameHazardDetector.detect_flames(dec)
                     for fl in flames:
+                        is_confirmed = fl.confidence >= cfg.fire_confirmed_threshold
+                        lbl = f"FIRE · {int(fl.confidence * 100)}%" if is_confirmed else f"FLAME ANOMALY · {int(fl.confidence * 100)}%"
                         overlay_boxes.append({
                             "box": fl.bbox,
                             "type": "HAZARD_FIRE",
-                            "label": f"FIRE · {int(fl.confidence * 100)}%",
+                            "label": lbl,
                             "confidence": fl.confidence,
-                            "color": "red",
+                            "color": "red" if is_confirmed else "amber",
                             "entity": "Fire / Flame",
                         })
+                        alert_key = (cam.camera_id, "FIRE_HAZARD")
+                        last_ts = self._last_hazard_alert_ts.get(alert_key, 0.0)
+                        now_monotonic = time.time()
+                        if (now_monotonic - last_ts) >= 10.0 and fl.confidence >= cfg.fire_hazard_floor:
+                            self._last_hazard_alert_ts[alert_key] = now_monotonic
+                            severity = "HIGH" if is_confirmed else "MEDIUM"
+                            fire_alert = Alert(
+                                alert_id=f"ALT-FIRE-{uuid.uuid4().hex[:6].upper()}",
+                                camera_id=cam.camera_id,
+                                alert_type="FIRE_HAZARD",
+                                severity=severity,
+                                delta_units=0,
+                                status="OPEN",
+                                created_at=now,
+                                resolution_note=f"Flame detected with {int(fl.confidence * 100)}% confidence.",
+                            )
+                            session.add(fire_alert)
+                            await session.flush()
+                            await ws_hub.broadcast_event("new_alert", {
+                                "alertId": fire_alert.alert_id,
+                                "cameraId": cam.camera_id,
+                                "alertType": fire_alert.alert_type,
+                                "severity": fire_alert.severity,
+                                "timestamp": now.isoformat(),
+                            })
                 except Exception as _flame_err:
                     logger.debug("Flame detector error: %s", _flame_err)
 
@@ -412,14 +441,44 @@ class CameraIngestionWorker:
                         # 5A. Suspicious behavior & keypoint analysis
                         pose_res = SuspiciousBehaviorDetector.estimate_pose_and_behavior(dec, p_box)
                         if pose_res.is_suspicious:
+                            is_confirmed = pose_res.confidence >= cfg.suspicious_confirmed_threshold
+                            lbl = (
+                                f"SUSPICIOUS · {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})"
+                                if is_confirmed
+                                else f"POSSIBLE ANOMALY · {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})"
+                            )
                             overlay_boxes.append({
                                 "box": p_box,
                                 "type": "SUSPICIOUS_BEHAVIOR",
-                                "label": f"SUSPICIOUS · {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})",
+                                "label": lbl,
                                 "confidence": pose_res.confidence,
-                                "color": "amber",
+                                "color": "red" if is_confirmed else "amber",
                                 "entity": "Suspicious Activity",
                             })
+                            alert_key = (cam.camera_id, "SUSPICIOUS_BEHAVIOR")
+                            last_ts = self._last_hazard_alert_ts.get(alert_key, 0.0)
+                            now_monotonic = time.time()
+                            if (now_monotonic - last_ts) >= 15.0 and is_confirmed:
+                                self._last_hazard_alert_ts[alert_key] = now_monotonic
+                                sus_alert = Alert(
+                                    alert_id=f"ALT-SUS-{uuid.uuid4().hex[:6].upper()}",
+                                    camera_id=cam.camera_id,
+                                    alert_type="SUSPICIOUS_BEHAVIOR",
+                                    severity="HIGH",
+                                    delta_units=0,
+                                    status="OPEN",
+                                    created_at=now,
+                                    resolution_note=f"Suspicious posture detected: {pose_res.suspicious_reason} ({int(pose_res.confidence * 100)}%).",
+                                )
+                                session.add(sus_alert)
+                                await session.flush()
+                                await ws_hub.broadcast_event("new_alert", {
+                                    "alertId": sus_alert.alert_id,
+                                    "cameraId": cam.camera_id,
+                                    "alertType": sus_alert.alert_type,
+                                    "severity": sus_alert.severity,
+                                    "timestamp": now.isoformat(),
+                                })
 
                         # 5B. PPE Worker Safety Assessment (Only in Industrial / Safety mode)
                         is_industrial_cam = getattr(cam, "pipeline_mode", "") in ("INDUSTRIAL_SAFETY", "MATERIAL_SEGMENTATION", "PPE_COMPLIANCE")
@@ -452,6 +511,30 @@ class CameraIngestionWorker:
                                     "color": "amber",
                                     "entity": "Missing PPE Gear",
                                 })
+                                alert_key = (cam.camera_id, "PPE_VIOLATION")
+                                last_ts = self._last_hazard_alert_ts.get(alert_key, 0.0)
+                                now_monotonic = time.time()
+                                if (now_monotonic - last_ts) >= 15.0:
+                                    self._last_hazard_alert_ts[alert_key] = now_monotonic
+                                    ppe_alert = Alert(
+                                        alert_id=f"ALT-PPE-{uuid.uuid4().hex[:6].upper()}",
+                                        camera_id=cam.camera_id,
+                                        alert_type="PPE_VIOLATION",
+                                        severity="MEDIUM",
+                                        delta_units=0,
+                                        status="OPEN",
+                                        created_at=now,
+                                        resolution_note=f"PPE Safety Violation: {', '.join(ppe_res.violations)}.",
+                                    )
+                                    session.add(ppe_alert)
+                                    await session.flush()
+                                    await ws_hub.broadcast_event("new_alert", {
+                                        "alertId": ppe_alert.alert_id,
+                                        "cameraId": cam.camera_id,
+                                        "alertType": ppe_alert.alert_type,
+                                        "severity": ppe_alert.severity,
+                                        "timestamp": now.isoformat(),
+                                    })
                     except Exception as _p_err:
                         logger.debug("Pose/PPE error: %s", _p_err)
 
@@ -477,6 +560,8 @@ class CameraIngestionWorker:
                     "crowdDensity": occ_snapshot.crowd_density_level,
                     "zoneMetrics": [asdict(zm) for zm in occ_snapshot.zone_metrics],
                     "tripwireTallies": [asdict(tw) for tw in occ_snapshot.tripwires],
+                    "uniqueVisitors": occ_snapshot.unique_visitors_count,
+                    "trackingFidelity": occ_snapshot.tracking_fidelity_status,
                 })
             except Exception as _occ_err:
                 logger.debug("Occupancy zone analytics error: %s", _occ_err)

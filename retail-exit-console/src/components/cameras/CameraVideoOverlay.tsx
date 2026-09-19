@@ -374,11 +374,38 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
               <span className="text-gray-400">OUT:</span>
               <span className="font-bold text-rose-400">{detectionData.totalFootfallOut ?? 0}</span>
             </span>
+            {detectionData.uniqueVisitors !== undefined && detectionData.uniqueVisitors > 0 && (
+              <>
+                <span className="w-px h-3 bg-white/20" />
+                <span className="flex items-center gap-1">
+                  <span className="text-gray-400">VISITORS:</span>
+                  <span className="font-bold text-sky-400">{detectionData.uniqueVisitors}</span>
+                </span>
+              </>
+            )}
             {detectionData.crowdDensity && (
               <>
                 <span className="w-px h-3 bg-white/20" />
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 font-semibold text-gray-300">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${
+                  detectionData.crowdDensity === 'HIGH' || detectionData.crowdDensity === 'OVERCROWDED'
+                    ? 'bg-rose-950/60 border-rose-500/40 text-rose-400'
+                    : detectionData.crowdDensity === 'MODERATE'
+                    ? 'bg-amber-950/60 border-amber-500/40 text-amber-400'
+                    : 'bg-white/10 border-white/10 text-gray-300'
+                }`}>
                   {detectionData.crowdDensity}
+                </span>
+              </>
+            )}
+            {detectionData.trackingFidelity && detectionData.trackingFidelity !== 'OPTIMAL' && (
+              <>
+                <span className="w-px h-3 bg-white/20" />
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-semibold ${
+                  detectionData.trackingFidelity === 'OCCLUDED'
+                    ? 'bg-rose-950/60 border-rose-500/40 text-rose-400'
+                    : 'bg-amber-950/60 border-amber-500/40 text-amber-400'
+                }`}>
+                  {detectionData.trackingFidelity}
                 </span>
               </>
             )}

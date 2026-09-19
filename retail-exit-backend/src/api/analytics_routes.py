@@ -69,6 +69,8 @@ async def get_occupancy_analytics(
         "crowdDensity": snapshot.crowd_density_level,
         "zoneMetrics": [asdict(zm) for zm in snapshot.zone_metrics],
         "tripwires": [asdict(tw) for tw in snapshot.tripwires],
+        "uniqueVisitors": snapshot.unique_visitors_count,
+        "trackingFidelity": snapshot.tracking_fidelity_status,
     }
 
 

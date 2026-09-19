@@ -247,6 +247,8 @@ export interface CameraDetectionUpdate {
   totalFootfallIn?: number;
   totalFootfallOut?: number;
   crowdDensity?: string;
+  uniqueVisitors?: number;
+  trackingFidelity?: string;
   zoneMetrics?: Array<{
     zone_id: string;
     label: string;

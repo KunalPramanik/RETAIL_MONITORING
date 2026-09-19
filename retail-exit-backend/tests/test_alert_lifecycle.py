@@ -95,3 +95,34 @@ async def test_resolve_alert_success(client, test_session):
     assert audit_entry is not None
     assert audit_entry.after_state["status"] == "RESOLVED"
 
+
+@pytest.mark.asyncio
+async def test_hazard_and_compliance_alert_types(test_session):
+    """Verifies that FIRE_HAZARD, SUSPICIOUS_BEHAVIOR, and PPE_VIOLATION satisfy DB constraints."""
+    from src.ml.model_config import get_vision_config
+    cfg = get_vision_config()
+    assert cfg.confirmed_entity_standard == 0.90
+    assert cfg.fire_confirmed_threshold == 0.90
+    assert cfg.fire_hazard_floor == 0.45
+    assert cfg.suspicious_confirmed_threshold == 0.90
+    assert cfg.ppe_confirmed_threshold == 0.85
+
+    # Test creating valid hazard and safety alerts
+    for a_type, sev in [
+        ("FIRE_HAZARD", "HIGH"),
+        ("FIRE_HAZARD", "MEDIUM"),
+        ("SUSPICIOUS_BEHAVIOR", "HIGH"),
+        ("PPE_VIOLATION", "MEDIUM"),
+    ]:
+        alert = Alert(
+            alert_id=f"ALT-TEST-{a_type[:4]}-{sev}",
+            camera_id="cam_01",
+            alert_type=a_type,
+            severity=sev,
+            delta_units=0,
+            status="OPEN",
+        )
+        test_session.add(alert)
+    await test_session.commit()
+
+

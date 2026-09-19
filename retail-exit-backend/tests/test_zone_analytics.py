@@ -56,3 +56,32 @@ def test_zone_dwell_time_accumulation():
     assert checkout_metrics[0].current_occupancy == 1
     assert 201 in checkout_metrics[0].active_track_ids
 
+
+def test_unique_visitors_and_fidelity():
+    """Verifies unique visitor counting and degradation fidelity reporting."""
+    engine = OccupancyZoneEngine()
+    cam_id = "test_cam_fidelity"
+
+    # Frame 1: track 1, 2
+    snap1 = engine.process_person_tracks(
+        cam_id,
+        [
+            {"track_id": 1, "bbox": [10, 10, 50, 100]},
+            {"track_id": 2, "bbox": [100, 10, 50, 100]},
+        ],
+    )
+    assert snap1.unique_visitors_count == 2
+    assert snap1.tracking_fidelity_status == "OPTIMAL"
+
+    # Frame 2: track 2, 3 (track 3 is new unique visitor)
+    snap2 = engine.process_person_tracks(
+        cam_id,
+        [
+            {"track_id": 2, "bbox": [100, 20, 50, 100]},
+            {"track_id": 3, "bbox": [200, 20, 50, 100]},
+        ],
+    )
+    assert snap2.unique_visitors_count == 3
+    assert snap2.current_room_occupancy == 2
+
+

@@ -18,8 +18,13 @@ CONFIG_FILE_PATH = os.path.join(os.path.dirname(__file__), "classes_config.json"
 
 @dataclass
 class VisionModelConfig:
-    # ── Confidence Floors & Gating ──
+    # ── Confidence Floors & Gating (Section 0.5 Two-Tier Standards) ──
     confidence_floor: float = 0.50  # Hard floor: only detections >= 50% reach DB verdicts & live UI overlays
+    confirmed_entity_standard: float = 0.90  # Tier 2: >= 90% threshold for confirmed identity, verified presence, high-severity alerts
+    fire_confirmed_threshold: float = 0.90   # >= 90%: Confirmed fire hazard alarm dispatch
+    fire_hazard_floor: float = 0.45          # 45% - 89%: Unconfirmed flame hazard alert
+    suspicious_confirmed_threshold: float = 0.90  # >= 90%: Confirmed suspicious behavior alert
+    ppe_confirmed_threshold: float = 0.85    # >= 85%: Confirmed PPE violation
     person_conf_threshold: float = 0.50
     item_conf_threshold: float = 0.45
     case_conf_threshold: float = 0.50
@@ -133,6 +138,11 @@ class VisionModelConfig:
             },
             "thresholds": {
                 "confidence_floor": self.confidence_floor,
+                "confirmed_entity_standard": self.confirmed_entity_standard,
+                "fire_confirmed_threshold": self.fire_confirmed_threshold,
+                "fire_hazard_floor": self.fire_hazard_floor,
+                "suspicious_confirmed_threshold": self.suspicious_confirmed_threshold,
+                "ppe_confirmed_threshold": self.ppe_confirmed_threshold,
                 "person_conf_threshold": self.person_conf_threshold,
                 "case_conf_threshold": self.case_conf_threshold,
                 "vehicle_conf_threshold": self.vehicle_conf_threshold,

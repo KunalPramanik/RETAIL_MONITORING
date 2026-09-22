@@ -70,6 +70,7 @@ class MaterialSegmentationService:
         frame: np.ndarray,
         target_roi: Optional[List[int]] = None,
         min_confidence: float = 0.40,
+        person_boxes: Optional[List[List[int]]] = None,
     ) -> SegmentationCountResult:
         """Executes instance segmentation on the frame or within an optional ROI [x, y, w, h].
 
@@ -175,39 +176,108 @@ class MaterialSegmentationService:
                 global_by = ry + by
                 global_polygon = [[rx + int(pt[0][0]), ry + int(pt[0][1])] for pt in cnt]
 
+                # Human silhouette rejection: candidate material center must not lie within person body
+                cx = global_bx + bw / 2.0
+                cy = global_by + bh / 2.0
+                if person_boxes:
+                    in_person = False
+                    for pb in person_boxes:
+                        px, py, pw, ph = pb
+                        if (px - 15 <= cx <= px + pw + 15) and (py - 15 <= cy <= py + ph + 15):
+                            in_person = True
+                            break
+                        xA = max(global_bx, px)
+                        yA = max(global_by, py)
+                        xB = min(global_bx + bw, px + pw)
+                        yB = min(global_by + bh, py + ph)
+                        inter_w = max(0, xB - xA)
+                        inter_h = max(0, yB - yA)
+                        if inter_w * inter_h > 0.20 * (bw * bh):
+                            in_person = True
+                            break
+                    if in_person:
+                        continue
+
                 aspect_ratio = float(bw) / max(1, bh)
                 rect_extent = area / float(bw * bh + 1e-6)
 
+                patch_bgr = roi_crop[by:by+bh, bx:bx+bw]
                 patch_gray = gray[by:by+bh, bx:bx+bw]
-                mean_val = float(np.mean(patch_gray)) if patch_gray.size > 0 else 0.0
+                if patch_gray.size == 0 or patch_bgr.size == 0:
+                    continue
 
-                # Class determination based on aspect ratio, geometry, and texture
-                if aspect_ratio > 3.5:
+                patch_hsv = cv2.cvtColor(patch_bgr, cv2.COLOR_BGR2HSV)
+                mean_val = float(np.mean(patch_gray))
+                std_val = float(np.std(patch_gray))
+
+                # Cardboard kraft paper HSV profile: H in [10, 35], S in [30, 200], V in [40, 220]
+                cardboard_mask = (
+                    (patch_hsv[:, :, 0] >= 10) & (patch_hsv[:, :, 0] <= 35) &
+                    (patch_hsv[:, :, 1] >= 30) & (patch_hsv[:, :, 1] <= 200) &
+                    (patch_hsv[:, :, 2] >= 40) & (patch_hsv[:, :, 2] <= 220)
+                )
+                cardboard_ratio = float(np.sum(cardboard_mask)) / float(bw * bh)
+
+                # Clay brick HSV profile: terracotta / clay / red / orange (H <= 22 or H >= 160, S >= 35, V >= 35)
+                clay_mask = (
+                    ((patch_hsv[:, :, 0] <= 22) | (patch_hsv[:, :, 0] >= 160)) &
+                    (patch_hsv[:, :, 1] >= 35) &
+                    (patch_hsv[:, :, 2] >= 35)
+                )
+                clay_ratio = float(np.sum(clay_mask)) / float(bw * bh)
+
+                # Concrete masonry paver: neutral grey/tan (S <= 25, 50 <= V <= 190)
+                concrete_mask = (
+                    (patch_hsv[:, :, 1] <= 25) &
+                    (patch_hsv[:, :, 2] >= 50) & (patch_hsv[:, :, 2] <= 190)
+                )
+                concrete_ratio = float(np.sum(concrete_mask)) / float(bw * bh)
+
+                # Horizontal coursing seams / layer joints (Sobel Y gradient peaks)
+                sobel_y = cv2.Sobel(patch_gray, cv2.CV_64F, 0, 1, ksize=3)
+                row_seams = np.mean(np.abs(sobel_y), axis=1)
+                seam_peaks = int(np.sum(row_seams > 22.0))
+
+                mean_sat = float(np.mean(patch_hsv[:, :, 1]))
+                is_cement_sack = (cardboard_ratio >= 0.20) or (mean_val >= 150 and mean_sat <= 25)
+
+                # Class determination based on physical geometry, colorimetry, and surface texture
+                class_id = None
+                class_name = None
+                confidence = 0.0
+
+                if aspect_ratio > 3.2 and std_val > 10.0:
                     class_id = "102"  # Iron Rod / Rebar bundle
                     class_name = "Bundled Iron Rods / Rebar"
                     confidence = round(min(0.96, 0.72 + rect_extent * 0.22), 3)
-                elif 2.2 <= aspect_ratio <= 3.5 and mean_val > 110:
-                    # Corrugated Aluminum Sheets & Tin Panels (bright metallic surface, planar aspect)
+                elif 2.0 <= aspect_ratio <= 3.8 and mean_val > 105:
+                    # Corrugated Aluminum Sheets & Tin Panels (bright metallic reflective surface)
                     class_id = "107"
                     class_name = "Corrugated Aluminum Sheets & Tin Panels"
                     confidence = round(min(0.95, 0.72 + rect_extent * 0.22), 3)
-                elif 1.2 <= aspect_ratio <= 2.6 and rect_extent >= 0.55:
-                    class_id = "101"  # Cement Bag (elongated sack)
-                    class_name = "Cement Bag (50kg)"
-                    confidence = round(min(0.96, 0.72 + rect_extent * 0.24), 3)
-                elif 0.85 <= aspect_ratio <= 1.18 and rect_extent >= 0.70:
-                    # Ceramic Tile Box (flat square package, high rect extent)
+                elif 0.85 <= aspect_ratio <= 1.18 and rect_extent >= 0.70 and mean_val > 80:
+                    # Ceramic Tile Box (flat square package, high rect extent, glazed brightness)
                     class_id = "106"
                     class_name = "Ceramic Tiles / Tile Box"
                     confidence = round(min(0.95, 0.72 + rect_extent * 0.23), 3)
-                elif 0.65 <= aspect_ratio <= 1.5:
-                    class_id = "104"  # Master Carton
+                elif 0.65 <= aspect_ratio <= 1.85 and rect_extent >= 0.65 and cardboard_ratio >= 0.20:
+                    # Heavy Corrugated Master Carton (cardboard kraft color + rectangular box form)
+                    class_id = "104"
                     class_name = "Heavy Corrugated Master Carton"
                     confidence = round(min(0.94, 0.70 + rect_extent * 0.25), 3)
-                else:
-                    class_id = "103"  # Brick Stack
+                elif (((clay_ratio >= 0.22 and seam_peaks >= 3) or (concrete_ratio >= 0.35 and std_val > 22.0 and seam_peaks >= 4)) and rect_extent >= 0.55):
+                    # Brick Stack / Paver Pallet (clay or concrete with verified horizontal coursing seams)
+                    class_id = "103"
                     class_name = "Brick Stack / Paver Pallet"
                     confidence = round(min(0.92, 0.68 + rect_extent * 0.20), 3)
+                elif 1.15 <= aspect_ratio <= 2.8 and rect_extent >= 0.50 and is_cement_sack:
+                    # Cement Bag (50kg) (elongated valve sack: kraft brown or white/light-grey paper valve sack)
+                    class_id = "101"
+                    class_name = "Cement Bag (50kg)"
+                    confidence = round(min(0.96, 0.72 + rect_extent * 0.24), 3)
+                else:
+                    # Negative rejection: unverified background blobs, furniture, or clothes are discarded
+                    continue
 
                 if confidence >= min_confidence:
                     assigned_color = colors[idx_color % len(colors)]

@@ -76,3 +76,40 @@ def test_annotate_frame_with_masks():
     # Check that mask overlay was applied
     assert not np.array_equal(annotated, img)
 
+
+def test_segment_materials_negative_rejection_on_uniform_and_indoor():
+    """Verify that plain drywall, dark computer screens, and office furniture produce 0 materials."""
+    # Create office scene: wall, desk, monitor, person
+    img = np.full((480, 640, 3), 200, dtype=np.uint8)  # White/cream drywall
+    # Draw dark desktop monitor (x=50, y=100, w=180, h=140, black)
+    cv2.rectangle(img, (50, 100), (230, 240), (15, 15, 15), -1)
+    # Draw blue shirt person (x=300, y=120, w=160, h=280)
+    cv2.rectangle(img, (300, 120), (460, 400), (140, 60, 30), -1)
+
+    result = MaterialSegmentationService.segment_materials(
+        img,
+        person_boxes=[[300, 120, 160, 280]],
+        min_confidence=0.40,
+    )
+    # Neither the drywall, the black screen, nor the person should be detected as bricks or cartons!
+    assert result.total_instances == 0
+    assert len(result.instances) == 0
+
+
+def test_segment_materials_carton_color_discrimination():
+    """Verify that only kraft cardboard brown is classified as Master Carton, not blue/grey boxes."""
+    # Blue box (e.g. plastic crate or painted box)
+    img_blue = np.full((400, 600, 3), 40, dtype=np.uint8)
+    cv2.rectangle(img_blue, (150, 120), (320, 260), (180, 50, 20), -1)  # BGR blue
+    res_blue = MaterialSegmentationService.segment_materials(img_blue)
+    cartons_blue = [i for i in res_blue.instances if i.class_id == "104"]
+    assert len(cartons_blue) == 0, "Blue object must not be classified as kraft corrugated carton"
+
+    # Brown kraft cardboard box (BGR ~ (60, 120, 170) -> HSV warm tan/brown)
+    img_kraft = np.full((400, 600, 3), 40, dtype=np.uint8)
+    cv2.rectangle(img_kraft, (150, 120), (320, 260), (60, 120, 170), -1)  # BGR cardboard
+    res_kraft = MaterialSegmentationService.segment_materials(img_kraft)
+    cartons_kraft = [i for i in res_kraft.instances if i.class_id == "104"]
+    assert len(cartons_kraft) >= 1, "Genuine kraft cardboard box should be recognized as Master Carton"
+
+

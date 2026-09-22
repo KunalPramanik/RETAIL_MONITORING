@@ -697,57 +697,63 @@ class CameraIngestionWorker:
                         if not cam_logs or cam_logs[-1]["text"] != msg:
                             cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "STATIC"})
 
-            # Dynamic Material Instance Segmentation & Store Material Counting across all cameras
+            # Dynamic Material Instance Segmentation & Store Material Counting (Warehouse / Inventory pipelines)
             current_mat_instances = []
             seg_counts = {}
+            is_material_mode = getattr(cam, "pipeline_mode", "STANDARD_DETECTION") in (
+                "MATERIAL_SEGMENTATION", "STORE_INVENTORY", "WAREHOUSE_DISPATCH"
+            )
             try:
-                if dec is None:
-                    nparr = np.frombuffer(frame_bytes, np.uint8)
-                    dec = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                if dec is not None:
-                    seg_res = MaterialSegmentationService.segment_materials(dec)
-                    current_mat_instances = seg_res.instances
-                    seg_counts = seg_res.counts_by_class
-                    if current_mat_instances:
-                        if getattr(cam, "pipeline_mode", "STANDARD_DETECTION") == "MATERIAL_SEGMENTATION":
-                            annotated_mat = MaterialSegmentationService.annotate_frame_with_masks(dec, current_mat_instances)
-                            success, enc_buf = cv2.imencode(".jpg", annotated_mat, [cv2.IMWRITE_JPEG_QUALITY, 85])
-                            if success:
-                                annotated_bytes = enc_buf.tobytes()
+                if is_material_mode:
+                    if dec is None:
+                        nparr = np.frombuffer(frame_bytes, np.uint8)
+                        dec = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    if dec is not None:
+                        seg_res = MaterialSegmentationService.segment_materials(
+                            dec, person_boxes=person_boxes_in_overlay
+                        )
+                        current_mat_instances = seg_res.instances
+                        seg_counts = seg_res.counts_by_class
+                        if current_mat_instances:
+                            if getattr(cam, "pipeline_mode", "STANDARD_DETECTION") == "MATERIAL_SEGMENTATION":
+                                annotated_mat = MaterialSegmentationService.annotate_frame_with_masks(dec, current_mat_instances)
+                                success, enc_buf = cv2.imencode(".jpg", annotated_mat, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                                if success:
+                                    annotated_bytes = enc_buf.tobytes()
 
-                        for inst in current_mat_instances:
-                            overlay_boxes.append({
-                                "box": inst.bbox,
-                                "type": "MATERIAL_INSTANCE",
-                                "label": f"{inst.class_name} ({int(inst.confidence * 100)}%)",
-                                "confidence": round(float(inst.confidence), 4),
-                                "color": "cyan",
-                                "entity": inst.class_name,
-                                "polygon": inst.polygon,
+                            for inst in current_mat_instances:
+                                overlay_boxes.append({
+                                    "box": inst.bbox,
+                                    "type": "MATERIAL_INSTANCE",
+                                    "label": f"{inst.class_name} ({int(inst.confidence * 100)}%)",
+                                    "confidence": round(float(inst.confidence), 4),
+                                    "color": "cyan",
+                                    "entity": inst.class_name,
+                                    "polygon": inst.polygon,
+                                })
+
+                            detection_data.update({
+                                "segmentedMaterials": [
+                                    {
+                                        "classId": i.class_id,
+                                        "className": i.class_name,
+                                        "confidence": i.confidence,
+                                        "bbox": i.bbox,
+                                        "polygon": i.polygon,
+                                        "areaPixels": i.area_pixels,
+                                    }
+                                    for i in current_mat_instances
+                                ],
+                                "materialCounts": seg_counts,
+                                "totalMaterialCount": seg_res.total_instances,
+                                "segmentationLatencyMs": seg_res.latency_ms,
                             })
 
-                        detection_data.update({
-                            "segmentedMaterials": [
-                                {
-                                    "classId": i.class_id,
-                                    "className": i.class_name,
-                                    "confidence": i.confidence,
-                                    "bbox": i.bbox,
-                                    "polygon": i.polygon,
-                                    "areaPixels": i.area_pixels,
-                                }
-                                for i in current_mat_instances
-                            ],
-                            "materialCounts": seg_counts,
-                            "totalMaterialCount": seg_res.total_instances,
-                            "segmentationLatencyMs": seg_res.latency_ms,
-                        })
-
-                        # Activity log for detected material inventory
-                        mat_log_parts = [f"{c}x {k.split(' (')[0].split(' / ')[0]}" for k, c in seg_counts.items()]
-                        mat_log_msg = f"{cam_name} — Store Inventory: {', '.join(mat_log_parts)} — {time_str}"
-                        if not cam_logs or cam_logs[-1]["text"] != mat_log_msg:
-                            cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": mat_log_msg, "type": "ITEM"})
+                            # Activity log for detected material inventory
+                            mat_log_parts = [f"{c}x {k.split(' (')[0].split(' / ')[0]}" for k, c in seg_counts.items()]
+                            mat_log_msg = f"{cam_name} — Store Inventory: {', '.join(mat_log_parts)} — {time_str}"
+                            if not cam_logs or cam_logs[-1]["text"] != mat_log_msg:
+                                cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": mat_log_msg, "type": "ITEM"})
             except Exception as _seg_err:
                 logger.warning("Material segmentation error on %s: %s", cam.camera_id, _seg_err)
 
@@ -821,7 +827,7 @@ class CameraIngestionWorker:
 
                                 pcx = bx + bw / 2.0
                                 pcy = by + bh / 2.0
-                                max_dist = max(280.0, bw * 1.8)
+                                max_dist = max(130.0, bw * 1.0)
                                 carried_mats: Dict[str, int] = {}
 
                                 for minst in current_mat_instances:

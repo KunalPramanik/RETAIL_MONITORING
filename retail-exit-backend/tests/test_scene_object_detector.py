@@ -71,3 +71,45 @@ def test_vision_service_integration_with_scene_objects(sample_indoor_scene):
     detected_labels = [d.specific_label or "" for d in res.detections]
     assert any("Doorway" in lbl for lbl in detected_labels)
 
+
+def test_detect_desktop_screen_and_doorway_rejection():
+    """Verifies that an elevated rectangular desktop monitor is detected as a screen and NOT as a doorway."""
+    # 480x640 scene with a desk and monitor
+    scene = np.full((480, 640, 3), (200, 200, 200), dtype=np.uint8)
+    # Desk surface: y=340..480
+    cv2.rectangle(scene, (0, 340), (640, 480), (120, 90, 60), -1)
+    # Desktop monitor bezel: x=180..460, y=140..340
+    cv2.rectangle(scene, (180, 140), (460, 340), (20, 20, 20), -1)
+    # Monitor screen interior (darker)
+    cv2.rectangle(scene, (190, 150), (450, 330), (35, 35, 35), -1)
+
+    # 1. Doorway detector MUST reject this desk monitor
+    doors = SceneObjectDetector.detect_doorways(scene)
+    assert len(doors) == 0, f"False doorway detected on desktop monitor: {doors}"
+
+    # 2. Desktop screen detector MUST detect the monitor
+    screens = SceneObjectDetector.detect_desktop_monitors_and_screens(scene)
+    assert len(screens) >= 1
+    assert screens[0]["specific_label"] == "Desktop Screen"
+    assert screens[0]["confidence"] >= 0.70
+
+
+def test_detect_wrist_watches():
+    """Verifies that a circular dial near a wrist keypoint is detected as a Wrist Watch."""
+    img = np.full((400, 400, 3), (180, 180, 180), dtype=np.uint8)
+    # Draw arm segment
+    cv2.line(img, (150, 100), (150, 300), (140, 150, 160), 24)
+    # Draw watch dial at wrist: center (150, 200), radius 14
+    cv2.circle(img, (150, 200), 14, (30, 30, 30), 2)
+    # Inner clock face details to trigger edge density
+    cv2.circle(img, (150, 200), 10, (50, 50, 50), 1)
+    cv2.line(img, (150, 200), (150, 193), (10, 10, 10), 2)
+    cv2.line(img, (150, 200), (157, 200), (10, 10, 10), 2)
+
+    wrist_kp = {"right_wrist": (150, 200)}
+    watches = SceneObjectDetector.detect_wrist_watches(img, wrist_keypoints=wrist_kp)
+    assert len(watches) == 1
+    assert watches[0]["specific_label"] == "Wrist Watch"
+    assert watches[0]["confidence"] >= 0.60
+
+

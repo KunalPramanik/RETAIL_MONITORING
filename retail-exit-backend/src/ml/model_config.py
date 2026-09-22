@@ -101,7 +101,7 @@ class VisionModelConfig:
         self.vehicle_classes = {1, 2, 3, 5, 7}
         self.single_item_classes = {
             24, 25, 26, 27, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
-            63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79, 80, 81
+            62, 63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79, 80, 81
         }
         self.pairwise_precision_groups = [
             ["Backpack / Bag", "Charger / Power Adapter"],

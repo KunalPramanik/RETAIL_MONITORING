@@ -147,12 +147,11 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
     // Refine label display: clean prefixes and format percentage
     let displayLabel = (det.label || '')
       .replace(/^Item:\s*/i, '')
-      .replace(/Unknown Person/i, 'Person')
       .replace(/\(Folded\)/i, '')
       .replace(/\s*\((\d+)%\)$/, ' · $1%');
 
     // Simplify compound category names (e.g., "Doorway / Exit Door" -> "Doorway", "Clock / Wall Item" -> "Clock")
-    if (displayLabel.includes(' / ')) {
+    if (displayLabel.includes(' / ') && !displayLabel.startsWith('Known:')) {
       displayLabel = displayLabel.replace(/ \/ [^·]+/, '');
     }
     displayLabel = displayLabel.trim();
@@ -220,6 +219,27 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
       det,
     };
   });
+
+  // Aggregated live per-class counts for multi-object counting overlay (Part P.1)
+  const classCounts = currentBoxes.reduce<Record<string, number>>((acc, box) => {
+    let label = (box.label || box.type)
+      .replace(/^Item:\s*/i, '')
+      .replace(/\(Folded\)/i, '')
+      .replace(/\s*\((\d+)%\)$/, '')
+      .trim();
+    if (label.includes(' / ') && !label.startsWith('Known:')) {
+      label = label.replace(/ \/ [^·]+/, '');
+    }
+    if (box.type === 'PERSON_UNMATCHED') {
+      label = 'Unknown Person';
+    } else if (box.type === 'PERSON_MATCHED' || label.startsWith('Known:')) {
+      label = 'Verified Person';
+    } else if (box.type === 'STATIC_IMAGE') {
+      label = 'Static Image';
+    }
+    acc[label] = (acc[label] || 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden select-none">
@@ -356,7 +376,25 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
         </div>
       )}
 
-      {/* ── 3. Real-Time Occupancy & Footfall Analytics HUD (Bottom-Left) ── */}
+      {/* ── 3. Live Multi-Object Per-Class Counting Overlay (Top-Right, Part P.1) ── */}
+      {Object.keys(classCounts).length > 0 && (
+        <div className="absolute top-2 right-2 z-20 flex flex-col items-end gap-1 font-mono text-[10px] select-none pointer-events-none">
+          <div className="px-2 py-1 bg-black/85 border border-white/10 backdrop-blur-md rounded shadow-lg flex flex-col gap-0.5 min-w-[110px]">
+            <div className="text-[9px] text-gray-400 font-semibold tracking-wider border-b border-white/10 pb-0.5 mb-0.5 flex justify-between items-center gap-2">
+              <span>ENTITIES</span>
+              <span className="text-teal-400 font-bold">{currentBoxes.length}</span>
+            </div>
+            {Object.entries(classCounts).map(([cls, count]) => (
+              <div key={`count-${cls}`} className="flex items-center justify-between gap-3 text-gray-200">
+                <span className="truncate max-w-[110px]">{cls}</span>
+                <span className="font-bold text-white bg-white/10 px-1 rounded text-[9px]">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── 4. Real-Time Occupancy & Footfall Analytics HUD (Bottom-Left) ── */}
       {detectionData && (detectionData.occupancy !== undefined || detectionData.totalFootfallIn !== undefined) && (
         <div className="absolute bottom-2 left-2 z-20 flex items-center gap-2 font-mono text-[11px] select-none pointer-events-none">
           <div className="px-2.5 py-1 bg-black/85 border border-white/10 backdrop-blur-md rounded flex items-center gap-3 text-white shadow-lg">

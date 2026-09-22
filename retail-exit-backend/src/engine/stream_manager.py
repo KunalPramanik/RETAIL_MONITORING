@@ -60,7 +60,8 @@ class CameraStreamSession:
                     self.has_real_frame = False
                     self.is_connected = False
 
-            self.thread = threading.Thread(target=self._capture_loop, daemon=True, name=f"Stream-{self.camera_key}")
+            target_func = self._capture_http_snapshot_loop if self._is_http_snapshot_source() else self._capture_loop
+            self.thread = threading.Thread(target=target_func, daemon=True, name=f"Stream-{self.camera_key}")
             self.thread.start()
 
     def stop(self) -> None:
@@ -186,6 +187,90 @@ class CameraStreamSession:
 
         return frame
 
+    def _is_http_snapshot_source(self) -> bool:
+        if not isinstance(self.source, str):
+            return False
+        src = self.source.lower().strip()
+        if not (src.startswith("http://") or src.startswith("https://")):
+            return False
+        snapshot_indicators = ("/snapshot", ".jpg", ".jpeg", "/shot.jpg", "/picture", "/image.cgi", "/snap.cgi", "/image")
+        return any(ind in src for ind in snapshot_indicators)
+
+    def _capture_http_snapshot_loop(self) -> None:
+        """High-throughput HTTP/HTTPS snapshot frame acquisition loop for web/IP cameras."""
+        import httpx
+        import urllib.parse
+
+        src_str = str(self.source).strip()
+        parsed = urllib.parse.urlparse(src_str)
+        auth = self.auth_tuple
+        if not auth and parsed.username is not None:
+            auth = (parsed.username, parsed.password or "")
+        elif not auth:
+            auth = ("admin", "")
+
+        port_str = f":{parsed.port}" if parsed.port and parsed.port not in (80, 443) else ""
+        netloc = f"{parsed.hostname}{port_str}"
+        clean_url = urllib.parse.urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+
+        consecutive_failures = 0
+        tick = 0
+        headers = {"Connection": "close", "User-Agent": "Mozilla/5.0"}
+
+        while self.is_running:
+            tick += 1
+            try:
+                with httpx.Client(timeout=1.5, headers=headers, follow_redirects=True) as client:
+                    resp = client.get(clean_url, auth=auth)
+
+                if resp.status_code == 200 and len(resp.content) > 500 and (
+                    resp.content.startswith(b"\xff\xd8\xff")
+                    or "image" in resp.headers.get("content-type", "")
+                    or resp.headers.get("content-type") == "application/octet-stream"
+                ):
+                    consecutive_failures = 0
+                    jpeg_bytes = resp.content
+                    nparr = np.frombuffer(jpeg_bytes, np.uint8)
+                    frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                    if frame is not None and frame.size > 0:
+                        h, w = frame.shape[:2]
+                        now = time.time()
+                        with self.lock:
+                            self.last_frame_bytes = jpeg_bytes
+                            self.last_real_frame_bytes = jpeg_bytes
+                            self.last_frame_bgr = frame
+                            if self.last_frame_time > 0:
+                                dt = now - self.last_frame_time
+                                if dt > 0:
+                                    self.fps_observed = round(0.9 * self.fps_observed + 0.1 * (1.0 / dt), 1)
+                            self.last_frame_time = now
+                            self.resolution = (w, h)
+                            self.has_real_frame = True
+                            self.is_connected = True
+                    time.sleep(0.040)
+                    continue
+                else:
+                    consecutive_failures += 1
+            except Exception:
+                consecutive_failures += 1
+
+            if consecutive_failures > 3:
+                now = time.time()
+                frame_anim = self._generate_standby_frame(tick)
+                ret_enc, buf = cv2.imencode(".jpg", frame_anim, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                if ret_enc:
+                    with self.lock:
+                        self.last_frame_bytes = buf.tobytes()
+                        self.last_frame_bgr = frame_anim
+                        self.last_frame_time = now
+                        self.fps_observed = 25.0
+                        self.resolution = (1280, 720)
+                        self.has_real_frame = False
+                        self.is_connected = False
+                time.sleep(0.4)
+            else:
+                time.sleep(0.08)
+
     def _capture_loop(self) -> None:
         """Continuous background frame acquisition loop."""
         cap = self._open_capture()
@@ -288,10 +373,19 @@ class CameraStreamManager:
         if clean_url.startswith(("http://", "https://", "rtsp://")):
             return clean_url, clean_url
 
-        # Build RTSP URL
+        # Check if rtsp_path is an HTTP URL or snapshot path
         path = rtsp_path.strip()
+        if path.startswith(("http://", "https://")):
+            return path, path
+
         if path and not path.startswith("/"):
             path = "/" + path
+
+        if path.lower().startswith(("/snapshot", "/shot.jpg", "/picture", "/cgi-bin/snapshot.cgi")) or clean_ip.endswith(":80") or clean_ip.endswith(":8080"):
+            target = f"http://{ip}{path or '/snapshot'}"
+            return target, target
+
+        # Build RTSP URL
         target = f"rtsp://{ip}:554{path}"
         return target, target
 

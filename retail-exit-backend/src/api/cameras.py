@@ -134,6 +134,14 @@ def capture_camera_frame_sync(
 
     # Parse credentials cleanly
     auth_tuples = []
+    if stream_url and ("@" in str(stream_url)):
+        try:
+            parsed_s = urllib.parse.urlparse(str(stream_url))
+            if parsed_s.username is not None:
+                auth_tuples.append((parsed_s.username, parsed_s.password or ""))
+        except Exception:
+            pass
+
     if credentials:
         clean_c = str(credentials).strip()
         if ":" in clean_c:
@@ -141,11 +149,13 @@ def capture_camera_frame_sync(
             auth_tuples.append((u, p))
         elif not clean_c.startswith("secops/"):
             auth_tuples.append((clean_c, ""))
-    else:
-        # Default to unauthenticated stream pull first
         auth_tuples.append(None)
-        # Common IP camera defaults as fallbacks
-        auth_tuples.extend([("admin", "admin"), ("admin", "12345"), ("admin", "")])
+        auth_tuples.extend([("admin", ""), ("admin", "admin"), ("admin", "12345")])
+    else:
+        # Default to unauthenticated stream pull first, then standard IP camera defaults
+        auth_tuples.append(None)
+        # Common IP camera defaults as fallbacks (Juan/Jooan/Hiseeu default is admin with blank pass)
+        auth_tuples.extend([("admin", ""), ("admin", "admin"), ("admin", "12345")])
 
     # Distinct auth tuples while preserving order
     seen = set()
@@ -180,14 +190,24 @@ def capture_camera_frame_sync(
             # Direct HTTP/HTTPS snapshot or stream
             if stream_url.startswith(("http://", "https://")):
                 try:
-                    with httpx.Client(timeout=min(timeout_sec, 1.5), follow_redirects=True) as client:
+                    headers = {"Connection": "close", "User-Agent": "Mozilla/5.0"}
+                    with httpx.Client(timeout=min(timeout_sec, 1.5), follow_redirects=True, headers=headers) as client:
                         for auth in distinct_auth:
                             try:
                                 resp = client.get(stream_url, auth=auth)
                                 if resp.status_code == 200 and len(resp.content) > 500:
-                                    if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
+                                    if (
+                                        resp.content.startswith(b"\xff\xd8\xff")
+                                        or "image" in resp.headers.get("content-type", "")
+                                        or resp.headers.get("content-type") == "application/octet-stream"
+                                    ):
                                         latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                                        return resp.content, f"Direct Stream URL ({stream_url})", latency
+                                        diag_info["stage"] = "SUCCESS"
+                                        diag_info["is_port_open"] = True
+                                        diag_info["is_handshake_ok"] = True
+                                        diag_info["suggested_stream_url"] = stream_url
+                                        diag_info["error_message"] = ""
+                                        return (resp.content, f"Direct Stream URL ({stream_url})", latency, diag_info) if return_diag else (resp.content, f"Direct Stream URL ({stream_url})", latency)
                             except Exception:
                                 pass
                 except Exception:
@@ -206,7 +226,12 @@ def capture_camera_frame_sync(
                         ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                         if ret_enc:
                             latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                            return buf.tobytes(), f"Direct Stream Video ({stream_url})", latency
+                            diag_info["stage"] = "SUCCESS"
+                            diag_info["is_port_open"] = True
+                            diag_info["is_handshake_ok"] = True
+                            diag_info["suggested_stream_url"] = stream_url
+                            diag_info["error_message"] = ""
+                            return (buf.tobytes(), f"Direct Stream Video ({stream_url})", latency, diag_info) if return_diag else (buf.tobytes(), f"Direct Stream Video ({stream_url})", latency)
                 else:
                     cap.release()
             except Exception:
@@ -338,9 +363,13 @@ def capture_camera_frame_sync(
             elif p == 80:
                 discovered_video_urls.extend([
                     (f"http://{target_host}/snapshot", "HTTP Snapshot (Port 80)"),
+                    (f"http://{target_host}:80/snapshot", "HTTP Snapshot (Port 80)"),
                     (f"http://{target_host}/video", "HTTP Video (Port 80)"),
                     (f"http://{target_host}/mjpeg", "MJPEG Stream (Port 80)"),
                     (f"http://{target_host}/live.mjpg", "Live MJPG (Port 80)"),
+                    (f"http://{target_host}/live", "HTTP Live (Port 80)"),
+                    (f"http://{target_host}/ch0", "HTTP Channel 0 (Port 80)"),
+                    (f"http://{target_host}/cgi-bin/snapshot.cgi", "CGI Snapshot (Port 80)"),
                 ])
             elif p == 8000:
                 discovered_video_urls.append(
@@ -357,22 +386,34 @@ def capture_camera_frame_sync(
     # Test discovered video endpoints
     for v_url, v_desc in discovered_video_urls:
         if v_url.startswith(("http://", "https://")):
-            # Try HTTP snapshot / single frame pull
-            try:
-                with httpx.Client(timeout=0.6, follow_redirects=True) as client:
-                    auth = distinct_auth[0] if distinct_auth else None
-                    resp = client.get(v_url, auth=auth)
-                    if resp.status_code == 200 and len(resp.content) > 500:
-                        if resp.content.startswith(b"\xff\xd8\xff") or "image" in resp.headers.get("content-type", ""):
-                            latency = round((time.perf_counter() - t0) * 1000.0, 1)
-                            diag_info["stage"] = "SUCCESS"
-                            diag_info["is_port_open"] = True
-                            diag_info["is_handshake_ok"] = True
-                            diag_info["suggested_stream_url"] = v_url
-                            diag_info["error_message"] = ""
-                            return (resp.content, f"{v_desc} ({v_url})", latency, diag_info) if return_diag else (resp.content, f"{v_desc} ({v_url})", latency)
-            except Exception:
-                pass
+            # Try HTTP snapshot / single frame pull across candidate credentials
+            for auth_item in distinct_auth:
+                try:
+                    headers = {"Connection": "close", "User-Agent": "Mozilla/5.0"}
+                    with httpx.Client(timeout=1.0, follow_redirects=True, headers=headers) as client:
+                        resp = client.get(v_url, auth=auth_item)
+                        if resp.status_code == 200 and len(resp.content) > 500:
+                            if (
+                                resp.content.startswith(b"\xff\xd8\xff")
+                                or "image" in resp.headers.get("content-type", "")
+                                or resp.headers.get("content-type") == "application/octet-stream"
+                            ):
+                                latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                                diag_info["stage"] = "SUCCESS"
+                                diag_info["is_port_open"] = True
+                                diag_info["is_handshake_ok"] = True
+                                resolved_url = v_url
+                                if auth_item and auth_item != ("__NONE__", ""):
+                                    u, p = auth_item
+                                    parsed = urllib.parse.urlparse(v_url)
+                                    port_str = f":{parsed.port}" if parsed.port and parsed.port != 80 else ""
+                                    netloc = f"{u}:{p}@{parsed.hostname}{port_str}"
+                                    resolved_url = urllib.parse.urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))
+                                diag_info["suggested_stream_url"] = resolved_url
+                                diag_info["error_message"] = ""
+                                return (resp.content, f"{v_desc} ({resolved_url})", latency, diag_info) if return_diag else (resp.content, f"{v_desc} ({resolved_url})", latency)
+                except Exception:
+                    pass
 
         # Try OpenCV on streaming video URL (e.g. /video MJPEG or RTSP 8554)
         try:
@@ -822,23 +863,23 @@ async def test_camera_connection(
         with open(snapshot_path, "wb") as f:
             f.write(frame_bytes)
 
+        working_url = (
+            diag_info.get("suggested_stream_url")
+            or (str(cam.stream_url) if (cam and cam.stream_url) else None)
+            or stream_url
+            or (f"http://{ip}{rtsp}" if (rtsp and (rtsp.startswith(("/video", "/snapshot")) or ":80" in ip or ":8080" in ip)) else f"rtsp://{ip}:554{rtsp}")
+        )
+
         if cam:
             cam.status = "ONLINE"
             cam.last_heartbeat_at = now
             cam.offline_since = None
             if sub_stream_path and not cam.sub_stream_path:
                 cam.sub_stream_path = sub_stream_path
-            if stream_url and not cam.stream_url:
-                cam.stream_url = stream_url
+            if working_url:
+                cam.stream_url = working_url
             await session.commit()
             await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
-
-        working_url = (
-            diag_info.get("suggested_stream_url")
-            or (str(cam.stream_url) if (cam and cam.stream_url) else None)
-            or stream_url
-            or (f"http://{ip}{rtsp}" if (rtsp and rtsp.startswith("/video")) or ":8080" in ip else f"rtsp://{ip}:554{rtsp}")
-        )
 
         return CameraTestConnectionResponse(
             success=True,

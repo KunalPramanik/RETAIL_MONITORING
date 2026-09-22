@@ -214,7 +214,9 @@ export type DetectionBoxType =
   | 'PPE_VIOLATION'
   | 'PEDESTRIAN'
   | 'ZONE_OCCUPANCY'
-  | 'OPEN_VOCAB';
+  | 'OPEN_VOCAB'
+  | 'DESKTOP_SCREEN'
+  | 'LAPTOP';
 
 export interface DetectionBox {
   box: [number, number, number, number]; // [x, y, w, h]
@@ -271,6 +273,18 @@ export interface CameraDetectionUpdate {
     severity?: string;
     deltaUnits?: number;
   };
+  frameAnalysisReport?: string;
+  categorizedEntities?: Array<{
+    category: string;
+    canonicalLabel: string;
+    rawLabel: string;
+    confidence: number;
+    bbox: [number, number, number, number];
+    status: string;
+    isSpoofed: boolean;
+    spoofFormat?: string;
+    registryReference?: string;
+  }>;
   recentLogs: Array<{
     id: string;
     timestamp: string;

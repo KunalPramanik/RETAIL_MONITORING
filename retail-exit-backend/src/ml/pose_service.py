@@ -138,27 +138,36 @@ class SuspiciousBehaviorDetector:
         h, s, v = cv2.split(hsv_roi)
         skin_mask = ((h >= 0) & (h <= 25) & (s >= 35) & (s <= 180) & (v >= 60)).astype(np.uint8) * 255
 
-        # Search for left and right hands/wrists
-        # Left side of person (viewer's left: x in [0, 0.5*w])
-        left_hand_x = int(rx1 + roi_w * 0.32)
-        left_hand_y = int(ry1 + roi_h * 0.56)
-        right_hand_x = int(rx1 + roi_w * 0.68)
-        right_hand_y = int(ry1 + roi_h * 0.56)
+        # Search for verified left and right hands/wrists on limb extremities (not collar/neck)
+        has_left_wrist = False
+        left_hand_x, left_hand_y = 0, 0
+        left_skin_pts = np.argwhere(skin_mask[:, : int(roi_w * 0.45)] > 0)
+        if len(left_skin_pts) > 30:
+            # Exclude neck/collar zone: upper central zone is collar skin, not hands
+            valid_left = [
+                pt for pt in left_skin_pts
+                if not (pt[0] < int(roi_h * 0.48) and pt[1] > int(roi_w * 0.22))
+            ]
+            if len(valid_left) >= 30:
+                left_hand_y = int(ry1 + np.median([p[0] for p in valid_left]))
+                left_hand_x = int(rx1 + np.median([p[1] for p in valid_left]))
+                # Must be outside upper sternum
+                if not (abs(left_hand_x - mid_x) < 0.20 * roi_w and left_hand_y < ry1 + 0.50 * roi_h):
+                    has_left_wrist = True
 
-        left_skin_pts = np.argwhere(skin_mask[:, : int(roi_w * 0.5)] > 0)
-        if len(left_skin_pts) > 20:
-            # Find center of hand cluster
-            sub_pts = left_skin_pts[left_skin_pts[:, 0] > int(roi_h * 0.35)]
-            if len(sub_pts) > 10:
-                left_hand_y = int(ry1 + np.median(sub_pts[:, 0]))
-                left_hand_x = int(rx1 + np.median(sub_pts[:, 1]))
-
-        right_skin_pts = np.argwhere(skin_mask[:, int(roi_w * 0.5) :] > 0)
-        if len(right_skin_pts) > 20:
-            sub_pts = right_skin_pts[right_skin_pts[:, 0] > int(roi_h * 0.35)]
-            if len(sub_pts) > 10:
-                right_hand_y = int(ry1 + np.median(sub_pts[:, 0]))
-                right_hand_x = int(rx1 + int(roi_w * 0.5) + np.median(sub_pts[:, 1]))
+        has_right_wrist = False
+        right_hand_x, right_hand_y = 0, 0
+        right_skin_pts = np.argwhere(skin_mask[:, int(roi_w * 0.55) :] > 0)
+        if len(right_skin_pts) > 30:
+            valid_right = [
+                pt for pt in right_skin_pts
+                if not (pt[0] < int(roi_h * 0.48) and pt[1] < int(roi_w * 0.23))
+            ]
+            if len(valid_right) >= 30:
+                right_hand_y = int(ry1 + np.median([p[0] for p in valid_right]))
+                right_hand_x = int(rx1 + int(roi_w * 0.55) + np.median([p[1] for p in valid_right]))
+                if not (abs(right_hand_x - mid_x) < 0.20 * roi_w and right_hand_y < ry1 + 0.50 * roi_h):
+                    has_right_wrist = True
 
         keypoints = {
             "nose": (mid_x, head_y),
@@ -167,8 +176,6 @@ class SuspiciousBehaviorDetector:
             "right_shoulder": (int(rx1 + roi_w * 0.75), shoulder_y),
             "left_elbow": (int(rx1 + roi_w * 0.20), elbow_y),
             "right_elbow": (int(rx1 + roi_w * 0.80), elbow_y),
-            "left_wrist": (left_hand_x, left_hand_y),
-            "right_wrist": (right_hand_x, right_hand_y),
             "mid_hip": (mid_x, hip_y),
             "left_hip": (int(rx1 + roi_w * 0.35), hip_y),
             "right_hip": (int(rx1 + roi_w * 0.65), hip_y),
@@ -177,6 +184,10 @@ class SuspiciousBehaviorDetector:
             "left_ankle": (int(rx1 + roi_w * 0.35), ankle_y),
             "right_ankle": (int(rx1 + roi_w * 0.65), ankle_y),
         }
+        if has_left_wrist:
+            keypoints["left_wrist"] = (left_hand_x, left_hand_y)
+        if has_right_wrist:
+            keypoints["right_wrist"] = (right_hand_x, right_hand_y)
 
         # ── Step 2: Posture Kinematics Analysis ──
         # Aspect ratio of person: upright standing is typically H/W in [2.0 - 3.8]

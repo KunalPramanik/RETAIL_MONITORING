@@ -49,6 +49,8 @@ from src.engine.dispatch_engine import DispatchEngine
 from src.engine.tripwire_engine import TripwireEngine
 from src.engine.fusion import MultiSensorFusionEngine
 from src.engine.verdict import VerdictEngine
+from src.ml.universal_taxonomy_service import UniversalTaxonomyService
+from src.engine.frame_analysis_report import FrameAnalysisReportGenerator
 from src.realtime.hub import ws_hub
 from src.ml.model_config import get_vision_config
 
@@ -296,7 +298,7 @@ class CameraIngestionWorker:
                         overlay_boxes.append({
                             "box": [pb_x, pb_y, pb_w, pb_h],
                             "type": "PERSON_MATCHED",
-                            "label": f"Recognized: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
+                            "label": f"Known: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
                             "confidence": round(float(face_res.similarity), 4),
                             "color": "green",
                             "entity": face_res.employee_name,
@@ -316,10 +318,10 @@ class CameraIngestionWorker:
                         overlay_boxes.append({
                             "box": [pb_x, pb_y, pb_w, pb_h],
                             "type": "PERSON_UNMATCHED",
-                            "label": f"Person ({int(conf * 100)}%)",
+                            "label": f"Unknown Person ({int(conf * 100)}%)",
                             "confidence": round(float(conf), 4),
                             "color": "cyan",
-                            "entity": "Person",
+                            "entity": "Unknown Person",
                         })
 
             # 3. Detected items, vehicles, cases, and people from YOLOX
@@ -348,10 +350,10 @@ class CameraIngestionWorker:
                         overlay_boxes.append({
                             "box": d.bbox,
                             "type": "PERSON_UNMATCHED",
-                            "label": f"Person ({int(d.confidence * 100)}%)",
+                            "label": f"Unknown Person ({int(d.confidence * 100)}%)",
                             "confidence": round(float(d.confidence), 4),
                             "color": "cyan",
-                            "entity": "Person",
+                            "entity": "Unknown Person",
                         })
                     continue
 
@@ -365,6 +367,10 @@ class CameraIngestionWorker:
 
                 item_label = d.specific_label or d.class_label
                 is_door = d.class_label == "doorway"
+                is_screen = any(k in item_label.lower() for k in ("screen", "monitor", "display"))
+                is_laptop = "laptop" in item_label.lower()
+                is_watch = "watch" in item_label.lower()
+
                 if is_veh:
                     b_type = "VEHICLE"
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
@@ -375,6 +381,14 @@ class CameraIngestionWorker:
                     b_color = "green"
                 elif is_door:
                     b_type = "DOORWAY"
+                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_screen:
+                    b_type = "DESKTOP_SCREEN"
+                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_laptop:
+                    b_type = "LAPTOP"
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
                     b_color = "cyan"
                 else:
@@ -480,7 +494,23 @@ class CameraIngestionWorker:
                                     "timestamp": now.isoformat(),
                                 })
 
-                        # 5B. PPE Worker Safety Assessment (Only in Industrial / Safety mode)
+                        # 5B. Wrist watch detection from pose keypoints
+                        if pose_res.keypoints:
+                            from src.ml.scene_object_detector import SceneObjectDetector
+                            wrist_watches = SceneObjectDetector.detect_wrist_watches(dec, wrist_keypoints=pose_res.keypoints)
+                            for ww in wrist_watches:
+                                wb = ww["bbox"]
+                                if not any(abs(wb[0] - ob["box"][0]) < 25 and abs(wb[1] - ob["box"][1]) < 25 for ob in overlay_boxes if ob["type"] == "ITEM"):
+                                    overlay_boxes.append({
+                                        "box": wb,
+                                        "type": "ITEM",
+                                        "label": f"{ww['specific_label']} ({int(ww['confidence'] * 100)}%)",
+                                        "confidence": round(float(ww["confidence"]), 4),
+                                        "color": "amber",
+                                        "entity": ww["specific_label"],
+                                    })
+
+                        # 5C. PPE Worker Safety Assessment (Only in Industrial / Safety mode)
                         is_industrial_cam = getattr(cam, "pipeline_mode", "") in ("INDUSTRIAL_SAFETY", "MATERIAL_SEGMENTATION", "PPE_COMPLIANCE")
                         if is_industrial_cam:
                             ppe_res = PPEComplianceDetector.evaluate_worker_ppe(dec, p_box)
@@ -635,7 +665,7 @@ class CameraIngestionWorker:
 
             if overlay_boxes:
                 if any(b["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED") for b in overlay_boxes):
-                    person_desc = face_res.employee_name if (face_res.decision == "MATCHED" and face_res.matched_employee_id) else "Person"
+                    person_desc = f"Known: {face_res.employee_name}" if (face_res.decision == "MATCHED" and face_res.matched_employee_id) else "Unknown Person"
                     msg = f"{cam_name} — {person_desc} Detected — {time_str}"
                     if not cam_logs or cam_logs[-1]["text"] != msg:
                         cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "PERSON"})
@@ -771,6 +801,16 @@ class CameraIngestionWorker:
                     "displayText": f"TX-{cam.camera_id[:4]} | Consensus Pending",
                 }
 
+            # Universal Multi-Class Taxonomy & Standard FRAME ANALYSIS REPORT
+            categorized_entities = [
+                UniversalTaxonomyService.classify_detection(ob, person_boxes=person_boxes_in_overlay)
+                for ob in overlay_boxes
+            ]
+            frame_report = FrameAnalysisReportGenerator.generate_report(
+                categorized_entities=categorized_entities,
+                operational_confidence=round(vis_res.vision_confidence if vis_res.vision_confidence else 0.95, 2),
+            )
+
             detection_data.update({
                 "frameTs": now.isoformat(),
                 "frameWidth": frame_w,
@@ -778,6 +818,21 @@ class CameraIngestionWorker:
                 "pipelineMode": getattr(cam, "pipeline_mode", "STANDARD_DETECTION"),
                 "boxes": overlay_boxes,
                 "entityCount": len(overlay_boxes),
+                "frameAnalysisReport": frame_report,
+                "categorizedEntities": [
+                    {
+                        "category": e.category,
+                        "canonicalLabel": e.canonical_label,
+                        "rawLabel": e.raw_label,
+                        "confidence": round(e.confidence, 4),
+                        "bbox": e.bbox,
+                        "status": e.operational_status,
+                        "isSpoofed": e.is_spoofed,
+                        "spoofFormat": e.spoof_format,
+                        "registryReference": e.registry_reference,
+                    }
+                    for e in categorized_entities
+                ],
                 "casesDetected": vis_res.cases_detected,
                 "unitsDetected": vis_res.vision_count,
                 "carrierName": carrier_label,

@@ -5,6 +5,7 @@ import type { SensorLane } from '../types';
 import { CameraManagementPanel } from '../components/cameras/CameraManagementPanel';
 import { StaticImageLogTable } from '../components/cameras/StaticImageLogTable';
 import { UsbHardwareManager } from '../components/hardware/UsbHardwareManager';
+import { ModelManagementPanel } from '../components/ml/ModelManagementPanel';
 import { Settings, Sliders, Volume2, ShieldAlert, Radio, Sun, Moon, Check, Clock, Image as ImageIcon } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
@@ -381,6 +382,9 @@ export const SettingsView: React.FC = () => {
             onRefresh={refreshStaticImages}
           />
         </div>
+
+        {/* Section 5c: Machine Learning Models, Automated Fine-Tuning & Lifecycle Control */}
+        <ModelManagementPanel />
 
         {/* Section 6: Part I Compliance — Zero-Data Audit Purge */}
         <div className="p-4 bg-panel border border-hairline rounded-sm space-y-3">

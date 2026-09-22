@@ -169,6 +169,22 @@ class ActiveLearningService:
             logger.error("Error submitting annotation: %s", e)
             return False, str(e)
 
+    def list_reviewed_samples(self) -> List[Dict[str, Any]]:
+        """Returns all human-curated and verified samples ready for fine-tuning."""
+        curated: List[Dict[str, Any]] = []
+        if not os.path.exists(CURATED_DIR):
+            return curated
+        for fname in os.listdir(CURATED_DIR):
+            if fname.endswith(".json"):
+                fpath = os.path.join(CURATED_DIR, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    curated.append(data)
+                except Exception as e:
+                    logger.debug("Error reading %s: %s", fpath, e)
+        return sorted(curated, key=lambda x: x.get("curated_at", ""), reverse=True)
+
 
 active_learning_service = ActiveLearningService.get_instance()
 

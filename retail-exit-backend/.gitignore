@@ -17,6 +17,10 @@ uploads/invoices/*
 snapshots/*
 !snapshots/.gitkeep
 
+# Model weights and checkpoints
+src/ml/weights/checkpoints/*
+!src/ml/weights/checkpoints/.gitkeep
+
 # Logs
 *.log
 

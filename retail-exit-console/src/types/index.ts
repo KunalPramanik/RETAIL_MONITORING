@@ -459,4 +459,54 @@ export interface EmployeeMovementSummaryResponse {
   movements: EmployeeMovementRecord[];
 }
 
+export interface ModelMetricsData {
+  map_50: number;
+  case_unit_recall: number;
+  empty_scene_fp_rate: number;
+  pairwise_precision: number;
+  latency_ms: number;
+  eval_dataset_size: number;
+  evaluated_at?: string;
+}
+
+export interface ModelVersionData {
+  model_version: string;
+  model_name: string;
+  weights_path: string;
+  status: 'production' | 'shadow' | 'candidate' | 'archived';
+  created_at: string;
+  base_model?: string;
+  dataset_version?: string;
+  metrics: ModelMetricsData;
+  shadow_traffic_pct?: number;
+  notes?: string;
+}
+
+export interface ModelRegistryResponse {
+  active_production_version: string;
+  active_shadow_version: string | null;
+  shadow_traffic_pct: number;
+  models: ModelVersionData[];
+}
+
+export interface TrainingJobStatusResponse {
+  job_id: string | null;
+  status: 'IDLE' | 'PREPARING' | 'TRAINING' | 'EVALUATING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  progress_pct: number;
+  current_epoch?: number;
+  total_epochs?: number;
+  train_loss?: number;
+  val_loss?: number;
+  learning_rate?: number;
+  candidate_version?: string;
+  metrics?: ModelMetricsData;
+  passed_gates?: boolean;
+  gate_failures?: string[];
+  message: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
+}
+
+
 

@@ -20,6 +20,8 @@ import type {
   UsbDeviceRecord,
   UsbStatusResponse,
   EmployeeMovementSummaryResponse,
+  ModelRegistryResponse,
+  TrainingJobStatusResponse,
 } from '../types';
 
 function getEffectiveApiBase(): string {
@@ -596,5 +598,67 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+
+  // ── ML Model Lifecycle & Fine-Tuning ──────────────────────────────
+  async getModels(): Promise<ModelRegistryResponse> {
+    return request<ModelRegistryResponse>('/ml/models');
+  },
+
+  async startModelTraining(params: {
+    epochs?: number;
+    learningRate?: number;
+    batchSize?: number;
+    targetClasses?: string[];
+    baseModelVersion?: string;
+    autoPromote?: boolean;
+    autoShadow?: boolean;
+    shadowTrafficPct?: number;
+  }): Promise<{ success: boolean; message: string; status: string }> {
+    return request('/ml/train', {
+      method: 'POST',
+      body: JSON.stringify({
+        epochs: params.epochs,
+        learning_rate: params.learningRate,
+        batch_size: params.batchSize,
+        target_classes: params.targetClasses,
+        base_model_version: params.baseModelVersion,
+        auto_promote: params.autoPromote,
+        auto_shadow: params.autoShadow,
+        shadow_traffic_pct: params.shadowTrafficPct,
+      }),
+    });
+  },
+
+  async getTrainingStatus(): Promise<TrainingJobStatusResponse> {
+    return request<TrainingJobStatusResponse>('/ml/train/status');
+  },
+
+  async cancelTraining(): Promise<{ success: boolean; message: string }> {
+    return request('/ml/train/cancel', {
+      method: 'POST',
+    });
+  },
+
+  async promoteModel(modelVersion: string, bypassGate = false): Promise<{ success: boolean; message: string; active_production_version: string }> {
+    return request('/ml/models/promote', {
+      method: 'POST',
+      body: JSON.stringify({ model_version: modelVersion, bypass_gate: bypassGate }),
+    });
+  },
+
+  async rollbackModel(modelVersion: string): Promise<{ success: boolean; message: string; active_production_version: string }> {
+    return request('/ml/models/rollback', {
+      method: 'POST',
+      body: JSON.stringify({ model_version: modelVersion }),
+    });
+  },
+
+  async setShadowMode(modelVersion: string | null, trafficPct = 25.0): Promise<any> {
+    return request('/ml/models/shadow', {
+      method: 'POST',
+      body: JSON.stringify({ model_version: modelVersion, traffic_pct: trafficPct }),
+    });
+  },
 };
+
 

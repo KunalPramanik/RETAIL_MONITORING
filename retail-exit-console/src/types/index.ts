@@ -195,6 +195,7 @@ export type ViewType =
   | 'alerts'
   | 'dispatch'
   | 'tripwire'
+  | 'materials'
   | 'products'
   | 'employees'
   | 'invoices'
@@ -506,6 +507,54 @@ export interface TrainingJobStatusResponse {
   started_at?: string;
   completed_at?: string;
   duration_seconds?: number;
+}
+
+export interface PackageDefinitionRecord {
+  definitionId: string;
+  materialId: string;
+  unitsPerPackage: number;
+  packageBarcode?: string;
+  rfidPrefix?: string;
+  grossWeightKg?: number;
+  netWeightKg?: number;
+  toleranceRangePct: number;
+  effectiveStart: string;
+  effectiveEnd?: string;
+  evidenceSource: string;
+  approvalStatus: 'PENDING' | 'APPROVED' | 'SUPERSEDED';
+  createdAt: string;
+}
+
+export interface MaterialRecord {
+  materialId: string;
+  name: string;
+  skuCode: string;
+  category: string;
+  deploymentProfile: 'RETAIL_EXIT' | 'WAREHOUSE_DISPATCH' | 'INDUSTRIAL_PERIMETER';
+  countUnit: string;
+  packagingType: string;
+  dimensions?: Record<string, any>;
+  nominalUnitWeightKg?: number;
+  weightTolerancePct: number;
+  lengthM?: number;
+  diameterMm?: number;
+  areaSqm?: number;
+  volumeCbm?: number;
+  bundleQuantity?: number;
+  unitsPerPackage: number;
+  barcode?: string;
+  rfidEpcPrefix?: string;
+  visualAttributes?: Record<string, any>;
+  approvedModelClass?: string;
+  status: 'DRAFT' | 'DATA_COLLECTION' | 'ANNOTATION' | 'TRAINING' | 'EVALUATION' | 'SHADOW' | 'APPROVED' | 'ACTIVE';
+  effectiveFrom: string;
+  revision: number;
+  createdBy: string;
+  approvedBy?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  packageDefinitions: PackageDefinitionRecord[];
 }
 
 

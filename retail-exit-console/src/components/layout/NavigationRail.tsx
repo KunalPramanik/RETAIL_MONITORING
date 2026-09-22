@@ -15,6 +15,7 @@ import {
   VolumeX,
   Truck,
   ShieldAlert,
+  PackageCheck,
 } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useAppData } from '../../context/AppDataContext';
@@ -53,6 +54,7 @@ export const NavigationRail: React.FC<NavigationRailProps> = ({ activeView, onSe
     },
     { id: 'dispatch', label: 'Dock Dispatch', icon: Truck },
     { id: 'tripwire', label: 'Perimeter Tripwire', icon: ShieldAlert },
+    { id: 'materials', label: 'Materials & Packaging', icon: PackageCheck },
     { id: 'products', label: 'Products & Cases', icon: Boxes },
     { id: 'employees', label: 'Employee Roster', icon: Users },
     { id: 'invoices', label: 'OCR Invoices', icon: FileSpreadsheet },

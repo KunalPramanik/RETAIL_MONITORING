@@ -17,6 +17,7 @@ from src.api.hardware import router as hardware_router
 from src.api.discovery import router as discovery_router
 from src.api.model_routes import router as model_router
 from src.api.dispatch import router as dispatch_router
+from src.api.materials import router as materials_router
 from src.api.tripwire import router as tripwire_router
 from src.api.analytics_routes import router as analytics_router
 
@@ -26,6 +27,7 @@ api_router.include_router(kpis_router)
 api_router.include_router(events_router)
 api_router.include_router(alerts_router)
 api_router.include_router(products_router)
+api_router.include_router(materials_router)
 api_router.include_router(employees_router)
 api_router.include_router(invoices_router)
 api_router.include_router(reports_router)

@@ -22,6 +22,8 @@ import type {
   EmployeeMovementSummaryResponse,
   ModelRegistryResponse,
   TrainingJobStatusResponse,
+  MaterialRecord,
+  PackageDefinitionRecord,
 } from '../types';
 
 function getEffectiveApiBase(): string {
@@ -659,6 +661,52 @@ export const api = {
       body: JSON.stringify({ model_version: modelVersion, traffic_pct: trafficPct }),
     });
   },
+
+  // ── Dynamic Material & Packaging Master (Section 5) ───────────────
+  async getMaterials(params?: { profile?: string; category?: string; status?: string; query?: string }): Promise<MaterialRecord[]> {
+    const q = new URLSearchParams();
+    if (params?.profile) q.set('profile', params.profile);
+    if (params?.category) q.set('category', params.category);
+    if (params?.status) q.set('status', params.status);
+    if (params?.query) q.set('query', params.query);
+    const qs = q.toString();
+    return request<MaterialRecord[]>(`/materials${qs ? `?${qs}` : ''}`);
+  },
+
+  async createMaterial(data: Partial<MaterialRecord>): Promise<MaterialRecord> {
+    return request<MaterialRecord>('/materials', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateMaterial(materialId: string, data: Partial<MaterialRecord>): Promise<MaterialRecord> {
+    return request<MaterialRecord>(`/materials/${materialId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async transitionMaterialLifecycle(materialId: string, targetStatus: string, notes?: string, approvedBy?: string): Promise<MaterialRecord> {
+    return request<MaterialRecord>(`/materials/${materialId}/lifecycle`, {
+      method: 'POST',
+      body: JSON.stringify({ targetStatus, notes, approvedBy }),
+    });
+  },
+
+  async addPackageDefinition(materialId: string, data: Partial<PackageDefinitionRecord>): Promise<PackageDefinitionRecord> {
+    return request<PackageDefinitionRecord>(`/materials/${materialId}/package-definitions`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteMaterial(materialId: string): Promise<void> {
+    return request<void>(`/materials/${materialId}`, {
+      method: 'DELETE',
+    });
+  },
 };
+
 
 

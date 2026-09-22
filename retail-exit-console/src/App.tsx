@@ -14,6 +14,7 @@ import { ReportsView } from './views/ReportsView';
 import { SettingsView } from './views/SettingsView';
 import { DispatchView } from './views/DispatchView';
 import { PerimeterTripwireView } from './views/PerimeterTripwireView';
+import { MaterialsView } from './views/MaterialsView';
 import { AlertOctagon, Zap, Lock } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -104,6 +105,7 @@ const AppContent: React.FC = () => {
             {activeView === 'alerts' && <AlertsView />}
             {activeView === 'dispatch' && <DispatchView />}
             {activeView === 'tripwire' && <PerimeterTripwireView />}
+            {activeView === 'materials' && <MaterialsView />}
             {activeView === 'products' && <ProductsView />}
             {activeView === 'employees' && <EmployeesView />}
             {activeView === 'invoices' && <InvoicesView />}

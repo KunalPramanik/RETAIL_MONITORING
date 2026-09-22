@@ -109,6 +109,86 @@ class Product(Base):
     vision_detections = relationship("VisionDetection", back_populates="product")
 
 
+class Material(Base):
+    """Dynamic Material Catalog entity per Section 5.1 & 5.3 of Master Prompt.
+    
+    Supports dynamic onboarding, physical dimensions, nominal unit weights,
+    tolerances, and 8-stage lifecycle without any hardcoded inventory classes.
+    """
+    __tablename__ = "material"
+
+    material_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Any = Column(String(255), nullable=False)
+    sku_code: Any = Column(String(64), unique=True, nullable=False, index=True)
+    category: Any = Column(String(64), nullable=False)  # STACKED_MATERIAL, BULK_GOODS, DISCRETE_PACKAGE, HAZARD, GENERAL
+    deployment_profile: Any = Column(String(64), nullable=False, default="WAREHOUSE_DISPATCH")
+    count_unit: Any = Column(String(32), nullable=False, default="piece")  # piece, bag, sheet, tile, rod, bundle, carton, pallet
+    packaging_type: Any = Column(String(64), nullable=False, default="loose_unit")  # loose_unit, sealed_case, open_case, bundle, stack, sheet, rod, roll, pallet
+    dimensions: Any = Column(JSONType, nullable=True)  # {"length_cm": ..., "width_cm": ..., "height_cm": ...}
+    nominal_unit_weight_kg: Any = Column(Numeric(10, 3), nullable=True)
+    weight_tolerance_pct: Any = Column(Numeric(5, 2), nullable=False, default=5.0)
+    length_m: Any = Column(Numeric(8, 3), nullable=True)
+    diameter_mm: Any = Column(Numeric(8, 2), nullable=True)
+    area_sqm: Any = Column(Numeric(8, 3), nullable=True)
+    volume_cbm: Any = Column(Numeric(8, 3), nullable=True)
+    bundle_quantity: Any = Column(Integer, nullable=True)
+    units_per_package: Any = Column(Integer, nullable=False, default=1)
+    barcode: Any = Column(String(64), nullable=True)
+    rfid_epc_prefix: Any = Column(String(64), nullable=True)
+    visual_attributes: Any = Column(JSONType, nullable=True)  # {"color": ..., "texture": ..., "shape": ...}
+    approved_model_class: Any = Column(String(64), nullable=True)
+    status: Any = Column(String(32), nullable=False, default="DRAFT")
+    effective_from: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    revision: Any = Column(Integer, nullable=False, default=1)
+    created_by: Any = Column(String(128), nullable=False, default="system")
+    approved_by: Any = Column(String(128), nullable=True)
+    notes: Any = Column(Text, nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('DRAFT', 'DATA_COLLECTION', 'ANNOTATION', 'TRAINING', 'EVALUATION', 'SHADOW', 'APPROVED', 'ACTIVE')",
+            name="chk_material_status",
+        ),
+        CheckConstraint(
+            "deployment_profile IN ('RETAIL_EXIT', 'WAREHOUSE_DISPATCH', 'INDUSTRIAL_PERIMETER')",
+            name="chk_material_deployment_profile",
+        ),
+    )
+
+    package_definitions = relationship("PackageDefinition", back_populates="material", cascade="all, delete-orphan")
+
+
+class PackageDefinition(Base):
+    """Versioned case, pack, or bundle packaging definition per Section 5.2.
+    
+    Prevents mutating historical pack-size values and preserves arithmetic auditability.
+    """
+    __tablename__ = "package_definition"
+
+    definition_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    material_id: Any = Column(String(36), ForeignKey("material.material_id", ondelete="CASCADE"), nullable=False, index=True)
+    units_per_package: Any = Column(Integer, nullable=False)
+    package_barcode: Any = Column(String(64), nullable=True)
+    rfid_prefix: Any = Column(String(64), nullable=True)
+    gross_weight_kg: Any = Column(Numeric(10, 3), nullable=True)
+    net_weight_kg: Any = Column(Numeric(10, 3), nullable=True)
+    tolerance_range_pct: Any = Column(Numeric(5, 2), nullable=False, default=5.0)
+    effective_start: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    effective_end: Any = Column(DateTime(timezone=True), nullable=True)
+    evidence_source: Any = Column(String(64), nullable=False, default="MANUFACTURER_SPEC")
+    approval_status: Any = Column(String(32), nullable=False, default="APPROVED")
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint("units_per_package > 0", name="chk_pkg_def_units_pos"),
+        CheckConstraint("approval_status IN ('PENDING', 'APPROVED', 'SUPERSEDED')", name="chk_pkg_def_status"),
+    )
+
+    material = relationship("Material", back_populates="package_definitions")
+
+
 class Employee(Base):
     __tablename__ = "employee"
 
@@ -256,7 +336,7 @@ class ExitEvent(Base):
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 
     __table_args__ = (
-        CheckConstraint("verdict IN ('PASS', 'MISMATCH')", name="chk_exit_event_verdict"),
+        CheckConstraint("verdict IN ('PASS', 'MATCH', 'MISMATCH', 'PARTIAL', 'UNVERIFIED', 'REVIEW_REQUIRED')", name="chk_exit_event_verdict"),
         CheckConstraint("severity IN ('NONE', 'LOW', 'MEDIUM', 'HIGH')", name="chk_exit_event_severity"),
         Index("idx_exit_event_lane_ts", "lane_id", "ts"),
     )

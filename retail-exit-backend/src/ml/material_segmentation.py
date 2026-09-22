@@ -444,3 +444,312 @@ class MaterialSegmentationService:
                 )
 
         return annotated
+
+    @classmethod
+    def estimate_quantity_from_weight(
+        cls,
+        gross_weight_kg: float,
+        tare_kg: float,
+        nominal_unit_weight_kg: float,
+        tolerance_pct: float = 5.0,
+        calibration_revision: str = "CAL-STD-2026",
+        sensor_quality_score: float = 0.98,
+    ) -> Dict[str, Any]:
+        """Calculates estimated material quantity from usable weight delta per Section 6.3.
+        Formula: estimated_quantity = usable_weight_delta / approved_nominal_unit_weight.
+        Exposes complete arithmetic, tolerance bands, tare, and sensor quality.
+        """
+        usable_weight_delta = max(0.0, float(gross_weight_kg) - float(tare_kg))
+        if nominal_unit_weight_kg <= 0:
+            return {
+                "usable_weight_delta_kg": round(usable_weight_delta, 3),
+                "approved_nominal_unit_weight_kg": nominal_unit_weight_kg,
+                "raw_ratio": 0.0,
+                "estimated_quantity": 0,
+                "status": "UNRESOLVED_NOMINAL_WEIGHT",
+                "tare_kg": round(float(tare_kg), 3),
+                "tolerance_pct": tolerance_pct,
+                "calibration_revision": calibration_revision,
+                "sensor_quality_score": sensor_quality_score,
+                "formula": "usable_weight_delta / approved_nominal_unit_weight",
+            }
+
+        raw_ratio = usable_weight_delta / float(nominal_unit_weight_kg)
+        rounded_qty = int(round(raw_ratio))
+        expected_weight = rounded_qty * float(nominal_unit_weight_kg)
+        delta_err_pct = (
+            abs(usable_weight_delta - expected_weight) / max(1.0, expected_weight) * 100.0
+            if expected_weight > 0
+            else 0.0
+        )
+        status = "CONFIRMED_MATCH" if delta_err_pct <= tolerance_pct else "WEIGHT_OUT_OF_TOLERANCE"
+
+        return {
+            "usable_weight_delta_kg": round(usable_weight_delta, 3),
+            "approved_nominal_unit_weight_kg": nominal_unit_weight_kg,
+            "raw_ratio": round(raw_ratio, 4),
+            "estimated_quantity": rounded_qty,
+            "status": status,
+            "delta_error_pct": round(delta_err_pct, 2),
+            "tare_kg": round(float(tare_kg), 3),
+            "tolerance_pct": tolerance_pct,
+            "calibration_revision": calibration_revision,
+            "sensor_quality_score": sensor_quality_score,
+            "formula": "usable_weight_delta / approved_nominal_unit_weight",
+        }
+
+    @classmethod
+    def resolve_case_to_units(
+        cls,
+        package_type: str,
+        units_per_case: int,
+        detected_count: int = 1,
+        is_verified_partial: bool = False,
+        partial_units: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Resolves package objects into exact unit quantities per Section 6.4.
+        If package_type == SINGLE_UNIT: unit_quantity = 1
+        If package_type == FULL_CASE: unit_quantity = approved_pack_definition.units_per_case
+        If package_type == PARTIAL_CASE: verified partial quantity or REVIEW_REQUIRED.
+        """
+        pkg = package_type.upper()
+        if pkg in ("SINGLE_UNIT", "LOOSE_UNIT", "PIECE"):
+            units = 1 * detected_count
+            status = "RESOLVED_SINGLE"
+        elif pkg in ("FULL_CASE", "SEALED_CASE", "BUNDLE", "PALLET"):
+            units = max(1, units_per_case) * detected_count
+            status = "RESOLVED_FULL_CASE"
+        elif pkg in ("PARTIAL_CASE", "OPEN_CASE"):
+            if is_verified_partial and partial_units is not None:
+                units = partial_units
+                status = "RESOLVED_VERIFIED_PARTIAL"
+            else:
+                units = 0
+                status = "REVIEW_REQUIRED"
+        else:
+            units = max(1, units_per_case) * detected_count
+            status = "RESOLVED_DEFAULT"
+
+        return {
+            "package_type": pkg,
+            "units_per_package": units_per_case,
+            "detected_packages": detected_count,
+            "resolved_units": units,
+            "status": status,
+            "requires_review": (status == "REVIEW_REQUIRED"),
+            "arithmetic": f"{detected_count} x {units_per_case} = {units}" if status == "RESOLVED_FULL_CASE" else f"{units} units",
+        }
+
+
+# Module-level aliases and functions for Section 6 compliance
+
+MaterialSegmentationEngine = MaterialSegmentationService
+
+
+def estimate_quantity_from_weight(
+    measured_gross_kg: float,
+    tare_kg: float,
+    nominal_unit_weight_kg: float,
+    tolerance_pct: float = 5.0,
+    calibration_revision: str = "CAL-STD-2026",
+    sensor_quality_score: float = 0.98,
+) -> Dict[str, Any]:
+    """Calculates estimated material quantity from usable weight delta per Section 6.3.
+    Formula: usable_weight_delta / approved_nominal_unit_weight
+    Exposes complete arithmetic, tare, tolerance, and confidence.
+    """
+    if tare_kg >= measured_gross_kg:
+        return {
+            "estimated_units": 0,
+            "usable_weight_delta_kg": 0.0,
+            "tare_kg": float(tare_kg),
+            "within_tolerance": False,
+            "confidence": 0.0,
+            "status": "UNRESOLVED",
+            "formula": "usable_weight_delta / approved_nominal_unit_weight",
+            "notes": "Tare exceeds or equals gross weight; physical impossibility",
+        }
+
+    usable_weight_delta = max(0.0, float(measured_gross_kg) - float(tare_kg))
+    if nominal_unit_weight_kg <= 0:
+        return {
+            "estimated_units": 0,
+            "usable_weight_delta_kg": round(usable_weight_delta, 3),
+            "tare_kg": float(tare_kg),
+            "within_tolerance": False,
+            "confidence": 0.0,
+            "status": "UNRESOLVED_NOMINAL_WEIGHT",
+            "formula": "usable_weight_delta / approved_nominal_unit_weight",
+            "notes": "Nominal unit weight is non-positive",
+        }
+
+    raw_ratio = usable_weight_delta / float(nominal_unit_weight_kg)
+    rounded_qty = int(round(raw_ratio))
+    expected_weight = rounded_qty * float(nominal_unit_weight_kg)
+    delta_err_pct = (
+        abs(usable_weight_delta - expected_weight) / max(1.0, expected_weight) * 100.0
+        if expected_weight > 0
+        else 0.0
+    )
+    within_tolerance = delta_err_pct <= tolerance_pct
+    confidence = max(0.0, min(1.0, 1.0 - (delta_err_pct / 100.0))) if within_tolerance else 0.5
+
+    notes = "Within nominal tolerance" if within_tolerance else f"Weight variance exceeds tolerance ({delta_err_pct:.1f}% > {tolerance_pct}%)"
+
+    return {
+        "estimated_units": rounded_qty,
+        "raw_ratio": round(raw_ratio, 4),
+        "usable_weight_delta_kg": round(usable_weight_delta, 3),
+        "tare_kg": round(float(tare_kg), 3),
+        "within_tolerance": within_tolerance,
+        "delta_error_pct": round(delta_err_pct, 2),
+        "confidence": round(confidence, 3),
+        "status": "CONFIRMED_MATCH" if within_tolerance else "WEIGHT_OUT_OF_TOLERANCE",
+        "formula": "usable_weight_delta / approved_nominal_unit_weight",
+        "calibration_revision": calibration_revision,
+        "sensor_quality_score": sensor_quality_score,
+        "notes": notes,
+    }
+
+
+def resolve_case_to_units(
+    detected_packages: int = 1,
+    package_type: str = "single_unit",
+    units_per_package: int = 1,
+    is_sealed: bool = True,
+    is_verified_partial: bool = False,
+    partial_units: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Resolves package objects into exact unit quantities per Section 6.4."""
+    pkg = package_type.lower()
+    if pkg in ("single_unit", "loose_unit", "piece", "loose"):
+        return {
+            "package_type": package_type,
+            "units_per_package": 1,
+            "detected_packages": detected_packages,
+            "resolved_units": detected_packages,
+            "status": "MATCH",
+            "review_required": False,
+            "formula": "detected_packages * 1",
+            "notes": "Single loose unit resolution",
+        }
+
+    if not is_sealed:
+        if is_verified_partial and partial_units is not None:
+            return {
+                "package_type": package_type,
+                "units_per_package": units_per_package,
+                "detected_packages": detected_packages,
+                "resolved_units": partial_units,
+                "status": "PARTIAL",
+                "review_required": False,
+                "reason_code": "VERIFIED_PARTIAL_PACKAGE",
+                "notes": "Verified partial package with operator confirmation",
+            }
+        return {
+            "package_type": package_type,
+            "units_per_package": units_per_package,
+            "detected_packages": detected_packages,
+            "resolved_units": 0,
+            "status": "REVIEW_REQUIRED",
+            "review_required": True,
+            "reason_code": "UNVERIFIED_PACKAGE_INTEGRITY",
+            "notes": "Unverified or broken case seal requires human verification",
+        }
+
+    total_units = detected_packages * max(1, units_per_package)
+    return {
+        "package_type": package_type,
+        "units_per_package": units_per_package,
+        "detected_packages": detected_packages,
+        "resolved_units": total_units,
+        "status": "MATCH",
+        "review_required": False,
+        "formula": "detected_packages * units_per_package",
+        "notes": "Sealed case package resolved",
+    }
+
+
+class DenseStackCountingEngine:
+    """Counting engine for dense, overlapping materials (rebar, bricks, pipes) with honest degradation."""
+
+    @classmethod
+    def count_dense_stack(
+        cls,
+        boxes: List[List[int]],
+        scores: List[float],
+        material_type: str = "general",
+        min_confidence: float = 0.50,
+        max_iou_threshold: float = 0.65,
+    ) -> Dict[str, Any]:
+        """Calculates stack count or honestly degrades to uncertainty per Section 6.2."""
+        if not boxes:
+            return {
+                "count": 0,
+                "uncertainty_flag": False,
+                "reason_code": "EMPTY_STACK",
+                "confidence_avg": 0.0,
+                "honest_explanation": "No material instances detected in stack region",
+            }
+
+        valid_scores = [s for s in scores if s >= min_confidence]
+        low_score_count = len(scores) - len(valid_scores)
+
+        # Calculate pairwise bounding box IOU to detect dense occlusion
+        high_overlap_pairs = 0
+        n = len(boxes)
+        for i in range(n):
+            for j in range(i + 1, n):
+                b1, b2 = boxes[i], boxes[j]
+                # Intersection area
+                x1 = max(b1[0], b2[0])
+                y1 = max(b1[1], b2[1])
+                x2 = min(b1[2], b2[2])
+                y2 = min(b1[3], b2[3])
+                w = max(0, x2 - x1)
+                h = max(0, y2 - y1)
+                inter = w * h
+                area1 = max(1, (b1[2] - b1[0]) * (b1[3] - b1[1]))
+                area2 = max(1, (b2[2] - b2[0]) * (b2[3] - b2[1]))
+                union = area1 + area2 - inter
+                iou = inter / union if union > 0 else 0
+                if iou > max_iou_threshold:
+                    high_overlap_pairs += 1
+
+        avg_conf = float(np.mean(scores)) if scores else 0.0
+
+        # Honest degradation triggers:
+        if avg_conf < min_confidence or (low_score_count / max(1, len(scores))) > 0.5:
+            return {
+                "count": len(valid_scores),
+                "raw_detections": len(boxes),
+                "uncertainty_flag": True,
+                "reason_code": "LOW_STACK_CONFIDENCE",
+                "confidence_avg": round(avg_conf, 3),
+                "honest_explanation": (
+                    f"Dense stack confidence ({avg_conf:.2f}) below threshold ({min_confidence:.2f}). "
+                    "Honest degradation applied: human verification required."
+                ),
+            }
+
+        if high_overlap_pairs > 0:
+            return {
+                "count": len(boxes),
+                "uncertainty_flag": True,
+                "reason_code": "COUNT_UNRESOLVED",
+                "confidence_avg": round(avg_conf, 3),
+                "honest_explanation": (
+                    f"Severe instance occlusion detected ({high_overlap_pairs} overlapping pairs). "
+                    "Stack instances cannot be resolved with certainty without manual review."
+                ),
+            }
+
+        return {
+            "count": len(boxes),
+            "uncertainty_flag": False,
+            "reason_code": "RESOLVED_STACK_COUNT",
+            "confidence_avg": round(avg_conf, 3),
+            "honest_explanation": None,
+        }
+
+

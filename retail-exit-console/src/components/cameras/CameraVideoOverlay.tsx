@@ -394,6 +394,48 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
         </div>
       )}
 
+      {/* ── 3b. Active Material Carriers / Movement Attribution HUD (Top-Left) ── */}
+      {detectionData?.activeCarriers && detectionData.activeCarriers.length > 0 && (
+        <div className="absolute top-2 left-2 z-20 flex flex-col gap-1 font-mono text-[11px] select-none pointer-events-none max-w-sm">
+          {detectionData.activeCarriers.map((carrier, cIdx) => (
+            <div
+              key={`carrier-${cIdx}`}
+              className="px-2.5 py-1 bg-black/90 border border-cyan/40 backdrop-blur-md rounded shadow-lg flex items-center gap-2 text-white"
+            >
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                carrier.direction === 'ENTRY'
+                  ? 'bg-emerald-950/80 border border-emerald-500/50 text-emerald-400'
+                  : 'bg-amber-950/80 border border-amber-500/50 text-amber'
+              }`}>
+                {carrier.direction}
+              </span>
+              <span className="font-semibold text-cyan truncate max-w-[120px]">{carrier.personName}:</span>
+              <span className="text-gray-300 truncate">
+                {Object.entries(carrier.materials).map(([m, q]) => `${q}x ${m.split(' (')[0].split(' / ')[0]}`).join(', ')}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── 3c. Store Material Inventory Counter Bar (Bottom-Center) ── */}
+      {detectionData?.materialCounts && Object.keys(detectionData.materialCounts).length > 0 && (
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 font-mono text-[10px] select-none pointer-events-none">
+          <div className="px-3 py-1 bg-black/90 border border-teal-500/40 backdrop-blur-md rounded shadow-xl flex items-center gap-2.5 text-white">
+            <span className="text-teal-400 font-bold tracking-wider">STORE INVENTORY:</span>
+            {Object.entries(detectionData.materialCounts).map(([mat, count], mIdx) => (
+              <React.Fragment key={`mat-hud-${mIdx}`}>
+                {mIdx > 0 && <span className="w-px h-2.5 bg-white/20" />}
+                <span className="flex items-center gap-1">
+                  <span className="text-gray-300 truncate max-w-[130px]">{mat.split(' (')[0].split(' / ')[0]}</span>
+                  <span className="font-bold text-teal-300 bg-white/10 px-1 rounded">{count}</span>
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── 4. Real-Time Occupancy & Footfall Analytics HUD (Bottom-Left) ── */}
       {detectionData && (detectionData.occupancy !== undefined || detectionData.totalFootfallIn !== undefined) && (
         <div className="absolute bottom-2 left-2 z-20 flex items-center gap-2 font-mono text-[11px] select-none pointer-events-none">

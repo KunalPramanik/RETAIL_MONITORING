@@ -19,6 +19,7 @@ import type {
   DiscoveredDevice,
   UsbDeviceRecord,
   UsbStatusResponse,
+  EmployeeMovementSummaryResponse,
 } from '../types';
 
 function getEffectiveApiBase(): string {
@@ -263,6 +264,10 @@ export const api = {
     return request<{ success: boolean; message: string }>(`/employees/${employeeId}/photo`, {
       method: 'DELETE',
     });
+  },
+
+  async getEmployeeMovement(employeeId: string): Promise<EmployeeMovementSummaryResponse> {
+    return request<EmployeeMovementSummaryResponse>(`/employees/${employeeId}/movement`);
   },
 
   // ── Invoices ──────────────────────────────────────────────────────

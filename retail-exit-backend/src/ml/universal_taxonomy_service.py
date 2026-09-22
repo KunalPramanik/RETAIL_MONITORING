@@ -135,6 +135,10 @@ class UniversalTaxonomyService:
         "steel": (CAT_MATERIALS, "Structural Iron / Steel Rods"),
         "brick": (CAT_MATERIALS, "Bricks / Masonry Blocks"),
         "timber": (CAT_MATERIALS, "Bundled Raw Stock"),
+        "tile": (CAT_MATERIALS, "Ceramic Tiles / Tile Box"),
+        "tiles": (CAT_MATERIALS, "Ceramic Tiles / Tile Box"),
+        "aluminum": (CAT_MATERIALS, "Corrugated Aluminum Sheets & Tin Panels"),
+        "tin": (CAT_MATERIALS, "Corrugated Aluminum Sheets & Tin Panels"),
 
         # PPE & Safety
         "helmet": (CAT_PPE, "Hard Hat / Helmet"),

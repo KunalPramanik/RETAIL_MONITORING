@@ -178,16 +178,29 @@ class MaterialSegmentationService:
                 aspect_ratio = float(bw) / max(1, bh)
                 rect_extent = area / float(bw * bh + 1e-6)
 
+                patch_gray = gray[by:by+bh, bx:bx+bw]
+                mean_val = float(np.mean(patch_gray)) if patch_gray.size > 0 else 0.0
+
                 # Class determination based on aspect ratio, geometry, and texture
-                if 1.1 <= aspect_ratio <= 3.2 and rect_extent >= 0.55:
+                if aspect_ratio > 3.5:
+                    class_id = "102"  # Iron Rod / Rebar bundle
+                    class_name = "Bundled Iron Rods / Rebar"
+                    confidence = round(min(0.96, 0.72 + rect_extent * 0.22), 3)
+                elif 2.2 <= aspect_ratio <= 3.5 and mean_val > 110:
+                    # Corrugated Aluminum Sheets & Tin Panels (bright metallic surface, planar aspect)
+                    class_id = "107"
+                    class_name = "Corrugated Aluminum Sheets & Tin Panels"
+                    confidence = round(min(0.95, 0.72 + rect_extent * 0.22), 3)
+                elif 1.2 <= aspect_ratio <= 2.6 and rect_extent >= 0.55:
                     class_id = "101"  # Cement Bag (elongated sack)
                     class_name = "Cement Bag (50kg)"
                     confidence = round(min(0.96, 0.72 + rect_extent * 0.24), 3)
-                elif aspect_ratio > 3.2:
-                    class_id = "102"  # Iron Rod / Rebar bundle
-                    class_name = "Bundled Iron Rods / Rebar"
-                    confidence = round(min(0.95, 0.70 + rect_extent * 0.22), 3)
-                elif 0.7 <= aspect_ratio <= 1.4:
+                elif 0.85 <= aspect_ratio <= 1.18 and rect_extent >= 0.70:
+                    # Ceramic Tile Box (flat square package, high rect extent)
+                    class_id = "106"
+                    class_name = "Ceramic Tiles / Tile Box"
+                    confidence = round(min(0.95, 0.72 + rect_extent * 0.23), 3)
+                elif 0.65 <= aspect_ratio <= 1.5:
                     class_id = "104"  # Master Carton
                     class_name = "Heavy Corrugated Master Carton"
                     confidence = round(min(0.94, 0.70 + rect_extent * 0.25), 3)

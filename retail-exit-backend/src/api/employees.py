@@ -3,12 +3,20 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict, Tuple
 from datetime import datetime, timezone, timedelta
 import logging
 
 from src.db.session import get_db
-from src.db.models import Employee, ExitEvent, get_utc_now
+from src.db.models import (
+    Employee,
+    ExitEvent,
+    ExitEventLineItem,
+    Lane,
+    Product,
+    TripwireCrossingEvent,
+    get_utc_now,
+)
 from src.db.audit import log_audit_entry
 from src.schemas.employees import (
     EmployeeResponse,
@@ -16,6 +24,9 @@ from src.schemas.employees import (
     EmployeeHistoryResponse,
     EmployeeHistoryItem,
     EmployeePhotoResponse,
+    EmployeeMovementSummaryResponse,
+    EmployeeMovementRecord,
+    MaterialMovementItem,
 )
 from src.ml.face_service import FaceRecognitionService
 
@@ -286,5 +297,161 @@ async def delete_employee_photo(
         logger.debug("Could not invalidate camera worker roster cache: %s", e)
 
     return {"success": True, "message": f"Biometric face profile removed for {emp.name}."}
+
+
+@router.get("/{employee_id}/movement", response_model=EmployeeMovementSummaryResponse)
+async def get_employee_movement(
+    employee_id: str,
+    session: AsyncSession = Depends(get_db),
+):
+    """Retrieves multi-camera movement tracking history (entry/exit counts and materials handled) for an employee."""
+    is_unknown = employee_id.lower() in ("unknown", "unverified")
+
+    if is_unknown:
+        emp_name = "Unknown Personnel"
+        events_filter = ExitEvent.employee_id.is_(None)
+        tw_filter = TripwireCrossingEvent.matched_employee_id.is_(None)
+    else:
+        result = await session.execute(select(Employee).where(Employee.employee_id == employee_id))
+        emp = result.scalar_one_or_none()
+        if not emp:
+            raise HTTPException(status_code=404, detail=f"Employee '{employee_id}' not found")
+        emp_name = emp.name
+        events_filter = (ExitEvent.employee_id == employee_id)
+        tw_filter = (TripwireCrossingEvent.matched_employee_id == employee_id)
+
+    # Fetch lanes for human-readable labels
+    lanes_res = await session.execute(select(Lane))
+    lanes_map = {l.lane_id: l.label for l in lanes_res.scalars().all()}
+
+    # Fetch exit events
+    events_res = await session.execute(
+        select(ExitEvent).where(events_filter).order_by(desc(ExitEvent.ts)).limit(100)
+    )
+    events = events_res.scalars().all()
+
+    # Pre-fetch line items and products for these events
+    event_ids = [e.event_id for e in events]
+    line_items_by_event: Dict[str, List[Tuple[ExitEventLineItem, Product]]] = {}
+    if event_ids:
+        li_res = await session.execute(
+            select(ExitEventLineItem, Product)
+            .join(Product, ExitEventLineItem.product_id == Product.product_id)
+            .where(ExitEventLineItem.event_id.in_(event_ids))
+        )
+        for li, prod in li_res.all():
+            line_items_by_event.setdefault(li.event_id, []).append((li, prod))
+
+    # Also fetch tripwire crossings
+    tw_res = await session.execute(
+        select(TripwireCrossingEvent).where(tw_filter).order_by(desc(TripwireCrossingEvent.timestamp)).limit(50)
+    )
+    crossings = tw_res.scalars().all()
+
+    total_entries = 0
+    total_exits = 0
+    materials_summary: Dict[str, Dict[str, int]] = {}
+    movement_records: List[EmployeeMovementRecord] = []
+
+    for ev in events:
+        notes_str = str(ev.notes or "").upper()
+        if "ENTRY" in notes_str or "INBOUND" in notes_str:
+            direction = "ENTRY"
+            total_entries += 1
+        else:
+            direction = "EXIT"
+            total_exits += 1
+
+        cam_label = lanes_map.get(ev.lane_id, f"Lane {ev.lane_id}")
+        carried: List[MaterialMovementItem] = []
+
+        # From line items
+        ev_items = line_items_by_event.get(ev.event_id, [])
+        for li, prod in ev_items:
+            qty = li.cases_qty if li.cases_qty > 0 else li.units_qty
+            carried.append(MaterialMovementItem(
+                materialName=prod.name,
+                skuCode=prod.sku_code,
+                quantity=qty,
+                direction=direction,
+            ))
+            mat_stat = materials_summary.setdefault(prod.name, {"in": 0, "out": 0, "net": 0})
+            if direction == "ENTRY":
+                mat_stat["in"] += qty
+                mat_stat["net"] += qty
+            else:
+                mat_stat["out"] += qty
+                mat_stat["net"] -= qty
+
+        # Fallback if line items empty but cases/units detected
+        if not carried and (ev.cases_detected > 0 or ev.units_detected > 0):
+            qty = ev.cases_detected if ev.cases_detected > 0 else ev.units_detected
+            carried.append(MaterialMovementItem(
+                materialName="General Inventory Cargo",
+                skuCode="CARGO-GEN",
+                quantity=qty,
+                direction=direction,
+            ))
+            mat_stat = materials_summary.setdefault("General Inventory Cargo", {"in": 0, "out": 0, "net": 0})
+            if direction == "ENTRY":
+                mat_stat["in"] += qty
+                mat_stat["net"] += qty
+            else:
+                mat_stat["out"] += qty
+                mat_stat["net"] -= qty
+
+        movement_records.append(EmployeeMovementRecord(
+            eventId=str(ev.event_id),
+            timestamp=ev.ts.isoformat() if ev.ts else "",
+            laneId=str(ev.lane_id),
+            cameraName=cam_label,
+            direction=direction,
+            personIdentity=emp_name,
+            isKnown=not is_unknown,
+            materialsCarried=carried,
+            casesDetected=int(ev.cases_detected or 0),
+            unitsDetected=int(ev.units_detected or 0),
+            snapshotUrl=ev.snapshot_url,
+        ))
+
+    # Add tripwire crossings if any
+    for cr in crossings:
+        direction = cr.direction if cr.direction in ("ENTRY", "EXIT") else "TRAVERSAL"
+        if direction == "ENTRY":
+            total_entries += 1
+        elif direction == "EXIT":
+            total_exits += 1
+
+        cam_label = lanes_map.get(cr.camera_id, f"Gate {cr.camera_id}")
+        movement_records.append(EmployeeMovementRecord(
+            eventId=str(cr.crossing_id),
+            timestamp=cr.timestamp.isoformat() if cr.timestamp else "",
+            laneId=str(cr.camera_id),
+            cameraName=cam_label,
+            direction=direction,
+            personIdentity=emp_name,
+            isKnown=not is_unknown,
+            materialsCarried=[],
+            casesDetected=0,
+            unitsDetected=0,
+            snapshotUrl=cr.snapshot_url,
+        ))
+
+    # Sort all movements chronologically descending
+    movement_records.sort(key=lambda r: r.timestamp, reverse=True)
+    last_seen_cam = movement_records[0].cameraName if movement_records else None
+    last_seen_ts = movement_records[0].timestamp if movement_records else None
+
+    return EmployeeMovementSummaryResponse(
+        employeeId=employee_id,
+        name=emp_name,
+        totalEntries=total_entries,
+        totalExits=total_exits,
+        totalTraversals=len(movement_records),
+        lastSeenCamera=last_seen_cam,
+        lastSeenTimestamp=last_seen_ts,
+        materialsHandledSummary=materials_summary,
+        movements=movement_records,
+    )
 
 

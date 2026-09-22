@@ -275,6 +275,18 @@ export interface CameraDetectionUpdate {
     severity?: string;
     deltaUnits?: number;
   };
+  segmentedMaterials?: MaterialInstanceItem[];
+  materialCounts?: Record<string, number>;
+  totalMaterialCount?: number;
+  activeCarriers?: Array<{
+    personName: string;
+    isKnown: boolean;
+    employeeId?: string | null;
+    direction: 'ENTRY' | 'EXIT' | 'TRAVERSAL';
+    materials: Record<string, number>;
+    summary: string;
+    box: [number, number, number, number];
+  }>;
   frameAnalysisReport?: string;
   categorizedEntities?: Array<{
     category: string;
@@ -412,6 +424,39 @@ export interface TripwireCrossingRecord {
   isTailgating: boolean;
   tailgatingDetails?: Record<string, any>;
   snapshotUrl?: string;
+}
+
+export interface MaterialMovementItem {
+  materialName: string;
+  skuCode?: string;
+  quantity: number;
+  direction: 'ENTRY' | 'EXIT';
+}
+
+export interface EmployeeMovementRecord {
+  eventId: string;
+  timestamp: string;
+  laneId: string;
+  cameraName: string;
+  direction: 'ENTRY' | 'EXIT' | 'TRAVERSAL';
+  personIdentity: string;
+  isKnown: boolean;
+  materialsCarried: MaterialMovementItem[];
+  casesDetected: number;
+  unitsDetected: number;
+  snapshotUrl?: string;
+}
+
+export interface EmployeeMovementSummaryResponse {
+  employeeId: string;
+  name: string;
+  totalEntries: number;
+  totalExits: number;
+  totalTraversals: number;
+  lastSeenCamera?: string;
+  lastSeenTimestamp?: string;
+  materialsHandledSummary: Record<string, { in: number; out: number; net: number }>;
+  movements: EmployeeMovementRecord[];
 }
 
 

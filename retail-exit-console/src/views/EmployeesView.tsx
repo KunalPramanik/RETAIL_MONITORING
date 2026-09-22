@@ -1,8 +1,28 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAppData } from '../context/AppDataContext';
-import type { Employee, ExitEvent } from '../types';
+import type { Employee, ExitEvent, EmployeeMovementSummaryResponse } from '../types';
+import { api } from '../api/client';
 import { Modal } from '../components/common/Modal';
-import { Users, UserPlus, AlertTriangle, ShieldCheck, History, Search, Camera, Upload, Trash2, CheckCircle2 } from 'lucide-react';
+import {
+  Users,
+  UserPlus,
+  AlertTriangle,
+  ShieldCheck,
+  History,
+  Search,
+  Camera,
+  Upload,
+  Trash2,
+  CheckCircle2,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Boxes,
+  Package,
+  Clock,
+  Compass,
+  Eye,
+  Loader2,
+} from 'lucide-react';
 
 export const EmployeesView: React.FC = () => {
   const { employees, events, addEmployee, uploadEmployeePhoto, deleteEmployeePhoto } = useAppData();
@@ -10,7 +30,17 @@ export const EmployeesView: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [inspectingEmployee, setInspectingEmployee] = useState<Employee | null>(null);
 
-  // Biometric Photo Enrollment Modal State
+  // In-line Photo Registration State
+  const [addPhotoFile, setAddPhotoFile] = useState<File | null>(null);
+  const [addPhotoPreviewUrl, setAddPhotoPreviewUrl] = useState<string | null>(null);
+  const [isSavingPersonnel, setIsSavingPersonnel] = useState(false);
+  const [addPersonnelError, setAddPersonnelError] = useState<string | null>(null);
+
+  // Multi-Camera Movement & Material Tracking State
+  const [movementSummary, setMovementSummary] = useState<EmployeeMovementSummaryResponse | null>(null);
+  const [isLoadingMovement, setIsLoadingMovement] = useState(false);
+
+  // Biometric Photo Enrollment Modal State (for existing employees)
   const [photoModalEmployee, setPhotoModalEmployee] = useState<Employee | null>(null);
   const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
@@ -28,6 +58,29 @@ export const EmployeesView: React.FC = () => {
     mismatchCount30d: 0,
   });
 
+  // Fetch real-time multi-camera movement history when inspecting an employee
+  useEffect(() => {
+    if (!inspectingEmployee) {
+      setMovementSummary(null);
+      return;
+    }
+    let isMounted = true;
+    setIsLoadingMovement(true);
+    api.getEmployeeMovement(inspectingEmployee.employeeId)
+      .then((data) => {
+        if (isMounted) setMovementSummary(data);
+      })
+      .catch((err) => {
+        console.warn('Failed to load employee movement tracking:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingMovement(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [inspectingEmployee]);
+
   const handleOpenAdd = () => {
     setFormData({
       name: '',
@@ -37,14 +90,30 @@ export const EmployeesView: React.FC = () => {
       activeFlag: true,
       mismatchCount30d: 0,
     });
+    setAddPhotoFile(null);
+    setAddPhotoPreviewUrl(null);
+    setAddPersonnelError(null);
     setIsAddModalOpen(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) return;
-    addEmployee(formData);
-    setIsAddModalOpen(false);
+    setIsSavingPersonnel(true);
+    setAddPersonnelError(null);
+    try {
+      const created = await addEmployee(formData);
+      if (addPhotoFile && created?.employeeId) {
+        await uploadEmployeePhoto(created.employeeId, addPhotoFile);
+      }
+      setIsAddModalOpen(false);
+      setAddPhotoFile(null);
+      setAddPhotoPreviewUrl(null);
+    } catch (err: any) {
+      setAddPersonnelError(err.message || 'Failed to register personnel or enroll photo.');
+    } finally {
+      setIsSavingPersonnel(false);
+    }
   };
 
   const filteredEmployees = employees.filter((emp: Employee) => {
@@ -77,13 +146,31 @@ export const EmployeesView: React.FC = () => {
             </p>
           </div>
 
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold rounded-sm bg-amber/20 hover:bg-amber/30 text-amber border border-amber/40 transition-colors self-start sm:self-auto"
-          >
-            <UserPlus className="w-3.5 h-3.5" />
-            Register Personnel
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              onClick={() => setInspectingEmployee({
+                employeeId: 'unknown',
+                name: 'Unknown / Unverified Personnel',
+                role: 'Unregistered Visitor / Carrier',
+                rfidBadgeId: 'NO-BADGE',
+                shiftId: 'N/A',
+                activeFlag: false,
+                mismatchCount30d: 0,
+              })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold rounded-sm bg-panel-raised hover:bg-hairline/40 text-text-pri border border-hairline transition-colors"
+              title="Inspect camera movements and materials handled by unidentified individuals"
+            >
+              <Eye className="w-3.5 h-3.5 text-cyan" />
+              Audit Unknown Personnel
+            </button>
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold rounded-sm bg-amber/20 hover:bg-amber/30 text-amber border border-amber/40 transition-colors"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              Register Personnel
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -300,14 +387,14 @@ export const EmployeesView: React.FC = () => {
         </div>
       </div>
 
-      {/* Employee Event History Modal */}
+      {/* Employee Event History & Multi-Camera Movement Tracking Modal */}
       {inspectingEmployee && (
         <Modal
           isOpen={!!inspectingEmployee}
           onClose={() => setInspectingEmployee(null)}
-          title={`Exit History: ${inspectingEmployee.name}`}
+          title={`Movement & Material Audit: ${inspectingEmployee.name}`}
           subtitle={`Role: ${inspectingEmployee.role} · Badge: ${inspectingEmployee.rfidBadgeId} · 30d Mismatches: ${inspectingEmployee.mismatchCount30d}`}
-          maxWidth="xl"
+          maxWidth="2xl"
         >
           <div className="space-y-4">
             {inspectingEmployee.mismatchCount30d >= 3 && (
@@ -324,12 +411,167 @@ export const EmployeesView: React.FC = () => {
               </div>
             )}
 
-            <div className="border border-hairline rounded-sm overflow-hidden">
-              <div className="px-3 py-2 bg-panel font-semibold text-xs-tech text-text-pri border-b border-hairline">
-                Recent Outflow Traversals ({employeeEvents.length} records in active log)
+            {/* 1. Multi-Camera Movement Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-3 bg-panel-raised border border-hairline rounded-sm space-y-1">
+                <div className="flex items-center justify-between text-xs-tech text-text-sec">
+                  <span>ENTRIES (IN)</span>
+                  <ArrowDownLeft className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <div className="text-lg font-bold font-mono text-emerald-400">
+                  {movementSummary?.totalEntries ?? 0}
+                </div>
+                <div className="text-[10px] text-text-sec">Inbound Camera Passes</div>
               </div>
-              <div className="divide-y divide-hairline/50 max-h-64 overflow-y-auto font-mono text-xs-tech">
-                {employeeEvents.length > 0 ? (
+
+              <div className="p-3 bg-panel-raised border border-hairline rounded-sm space-y-1">
+                <div className="flex items-center justify-between text-xs-tech text-text-sec">
+                  <span>EXITS (OUT)</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-amber" />
+                </div>
+                <div className="text-lg font-bold font-mono text-amber">
+                  {movementSummary?.totalExits ?? 0}
+                </div>
+                <div className="text-[10px] text-text-sec">Outbound Camera Passes</div>
+              </div>
+
+              <div className="p-3 bg-panel-raised border border-hairline rounded-sm space-y-1">
+                <div className="flex items-center justify-between text-xs-tech text-text-sec">
+                  <span>TRAVERSALS</span>
+                  <Compass className="w-3.5 h-3.5 text-cyan" />
+                </div>
+                <div className="text-lg font-bold font-mono text-cyan">
+                  {movementSummary?.totalTraversals ?? 0}
+                </div>
+                <div className="text-[10px] text-text-sec">All Cameras Combined</div>
+              </div>
+
+              <div className="p-3 bg-panel-raised border border-hairline rounded-sm space-y-1">
+                <div className="flex items-center justify-between text-xs-tech text-text-sec">
+                  <span>LAST SEEN</span>
+                  <Clock className="w-3.5 h-3.5 text-text-sec" />
+                </div>
+                <div className="text-xs-tech font-semibold text-text-pri truncate" title={movementSummary?.lastSeenCamera || 'N/A'}>
+                  {movementSummary?.lastSeenCamera || 'N/A'}
+                </div>
+                <div className="text-[10px] text-text-sec truncate font-mono">
+                  {movementSummary?.lastSeenTimestamp ? new Date(movementSummary.lastSeenTimestamp).toLocaleTimeString() : 'No activity'}
+                </div>
+              </div>
+            </div>
+
+            {/* 2. Store & Warehouse Materials Handled Breakdown */}
+            {movementSummary && Object.keys(movementSummary.materialsHandledSummary).length > 0 && (
+              <div className="border border-hairline rounded-sm overflow-hidden bg-panel">
+                <div className="px-3 py-2 bg-panel-raised font-semibold text-xs-tech text-text-pri border-b border-hairline flex items-center gap-2">
+                  <Boxes className="w-3.5 h-3.5 text-amber" />
+                  <span>Materials Handled & Dispatched Across All Cameras</span>
+                </div>
+                <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {Object.entries(movementSummary.materialsHandledSummary).map(([matName, stats]) => (
+                    <div key={matName} className="p-2.5 rounded-sm bg-canvas/60 border border-hairline space-y-1.5">
+                      <div className="text-xs-tech font-semibold text-text-pri truncate" title={matName}>
+                        {matName}
+                      </div>
+                      <div className="flex items-center justify-between font-mono text-[11px]">
+                        <span className="text-emerald-400">IN: +{stats.in}</span>
+                        <span className="text-amber">OUT: -{stats.out}</span>
+                        <span className={`font-bold ${stats.net >= 0 ? 'text-teal-400' : 'text-status-high'}`}>
+                          NET: {stats.net >= 0 ? `+${stats.net}` : stats.net}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Chronological Movement & Material Dispatch Ledger */}
+            <div className="border border-hairline rounded-sm overflow-hidden">
+              <div className="px-3 py-2 bg-panel font-semibold text-xs-tech text-text-pri border-b border-hairline flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <History className="w-3.5 h-3.5 text-amber" />
+                  Movement Ledger & Material Attributions
+                </span>
+                {isLoadingMovement && (
+                  <span className="text-xs-tech text-text-sec flex items-center gap-1">
+                    <Loader2 className="w-3 h-3 animate-spin text-amber" />
+                    Synchronizing camera streams...
+                  </span>
+                )}
+              </div>
+
+              <div className="divide-y divide-hairline/50 max-h-72 overflow-y-auto font-mono text-xs-tech bg-panel/40">
+                {movementSummary && movementSummary.movements.length > 0 ? (
+                  movementSummary.movements.map((mov) => (
+                    <div
+                      key={mov.eventId}
+                      className="p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-panel-raised transition-colors"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            mov.direction === 'ENTRY'
+                              ? 'bg-emerald-950/60 border border-emerald-500/40 text-emerald-400'
+                              : mov.direction === 'EXIT'
+                              ? 'bg-amber-950/60 border border-amber-500/40 text-amber'
+                              : 'bg-white/10 text-text-sec'
+                          }`}>
+                            {mov.direction}
+                          </span>
+                          <span className="font-bold text-text-pri">{mov.cameraName}</span>
+                          <span className="text-text-sec text-[11px] font-sans">
+                            {mov.timestamp ? new Date(mov.timestamp).toLocaleTimeString() : ''}
+                          </span>
+                        </div>
+
+                        {/* Materials Carried */}
+                        {mov.materialsCarried.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            {mov.materialsCarried.map((mat, mIdx) => (
+                              <span
+                                key={`${mov.eventId}-mat-${mIdx}`}
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-cyan/10 border border-cyan/30 text-cyan text-[10px]"
+                              >
+                                <Package className="w-2.5 h-2.5" />
+                                {mat.quantity}x {mat.materialName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : mov.casesDetected > 0 || mov.unitsDetected > 0 ? (
+                          <div className="text-[11px] text-text-sec font-sans">
+                            Carrying {mov.casesDetected} cases ({mov.unitsDetected} units)
+                          </div>
+                        ) : (
+                          <div className="text-[11px] text-text-sec/60 font-sans italic">
+                            No materials carried (Personnel traversal only)
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 self-start sm:self-auto text-right">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                          mov.isKnown
+                            ? 'bg-status-ok/20 text-status-ok border border-status-ok/30'
+                            : 'bg-status-high/20 text-status-high border border-status-high/30'
+                        }`}>
+                          {mov.isKnown ? '✓ Known (512-d)' : '⚠ Unknown Person'}
+                        </span>
+                        {mov.snapshotUrl && (
+                          <a
+                            href={mov.snapshotUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 rounded hover:bg-hairline/40 text-text-sec hover:text-text-pri"
+                            title="View Camera Snapshot"
+                          >
+                            <Camera className="w-3.5 h-3.5 text-amber" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : employeeEvents.length > 0 ? (
                   employeeEvents.map((ev: ExitEvent) => (
                     <div
                       key={ev.eventId}
@@ -364,14 +606,16 @@ export const EmployeesView: React.FC = () => {
                     </div>
                   ))
                 ) : (
-                  <div className="p-6 text-center text-text-sec font-sans">
-                    No individual traversals recorded for this employee in the current live buffer.
+                  <div className="p-8 text-center text-text-sec font-sans space-y-1">
+                    <Compass className="w-6 h-6 mx-auto text-hairline" />
+                    <div className="text-text-pri font-medium">No traversals recorded for this subject</div>
+                    <div className="text-[11px]">Subject has not passed active camera tripwires or exit portals yet.</div>
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-end pt-2 border-t border-hairline">
               <button
                 onClick={() => setInspectingEmployee(null)}
                 className="px-4 py-1.5 text-xs-tech rounded-sm bg-panel border border-hairline text-text-pri hover:bg-hairline/30"
@@ -454,6 +698,79 @@ export const EmployeesView: React.FC = () => {
             />
           </div>
 
+          {/* In-Line Biometric Photo Enrollment */}
+          <div className="pt-2 border-t border-hairline space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs-tech font-medium text-text-sec">
+                Biometric Portrait Photo (ArcFace 512-d Enrollment)
+              </label>
+              <span className="text-[11px] text-amber font-mono">
+                {addPhotoFile ? '✓ Photo Selected' : 'Optional · Recommended'}
+              </span>
+            </div>
+
+            {addPersonnelError && (
+              <div className="p-2.5 rounded-sm bg-red-950/40 border border-status-high/50 text-status-high text-xs-tech flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{addPersonnelError}</span>
+              </div>
+            )}
+
+            <div className="border-2 border-dashed border-hairline hover:border-amber/60 rounded-sm p-3 text-center transition-colors bg-canvas/60">
+              {addPhotoPreviewUrl ? (
+                <div className="flex items-center justify-center gap-4">
+                  <div className="w-20 h-20 rounded-sm overflow-hidden border-2 border-amber/60 bg-black shrink-0">
+                    <img src={addPhotoPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="text-left space-y-1">
+                    <span className="text-xs-tech text-text-pri font-medium block truncate max-w-[200px]">
+                      {addPhotoFile?.name}
+                    </span>
+                    <span className="text-[11px] text-text-sec font-mono block">
+                      {(addPhotoFile ? addPhotoFile.size / 1024 : 0).toFixed(1)} KB · Ready to enroll
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddPhotoFile(null);
+                        setAddPhotoPreviewUrl(null);
+                      }}
+                      className="text-[11px] text-status-high hover:underline flex items-center gap-1"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                      Remove Photo
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className="cursor-pointer flex flex-col items-center justify-center gap-1.5 py-2">
+                  <div className="w-8 h-8 rounded-full bg-amber/10 flex items-center justify-center text-amber">
+                    <Camera className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs-tech text-text-pri font-medium">
+                    Upload Employee Face Photo
+                  </span>
+                  <span className="text-[11px] text-text-sec">
+                    Select JPEG/PNG portrait to enroll 512-d facial embedding instantly
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setAddPhotoFile(f);
+                        setAddPhotoPreviewUrl(URL.createObjectURL(f));
+                        setAddPersonnelError(null);
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          </div>
+
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-hairline">
             <button
               type="button"
@@ -464,9 +781,17 @@ export const EmployeesView: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 text-black transition-colors"
+              disabled={isSavingPersonnel}
+              className="px-4 py-1.5 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 text-black transition-colors disabled:opacity-50 flex items-center gap-1.5"
             >
-              Save Personnel Record
+              {isSavingPersonnel ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Registering & Enrolling...
+                </>
+              ) : (
+                'Save Personnel Record'
+              )}
             </button>
           </div>
         </form>

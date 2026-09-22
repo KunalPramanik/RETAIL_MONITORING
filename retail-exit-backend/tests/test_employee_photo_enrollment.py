@@ -114,3 +114,4 @@ async def test_known_vs_unknown_face_matching():
     res_unknown = FaceRecognitionService.match_carrier(unknown_probe, roster)
     assert res_unknown.decision in ("NO_MATCH", "LOW_CONFIDENCE")
     assert res_unknown.matched_employee_id is None
+

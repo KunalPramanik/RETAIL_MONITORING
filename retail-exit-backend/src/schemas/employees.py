@@ -1,7 +1,7 @@
 """Employee Pydantic Schemas"""
 
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, List
+from typing import Optional, List, Dict
 
 
 class EmployeeBase(BaseModel):
@@ -60,4 +60,38 @@ class EmployeeHistoryResponse(BaseModel):
     mismatches30d: int
     repeatOffenderRisk: bool
     events: List[EmployeeHistoryItem]
+
+
+class MaterialMovementItem(BaseModel):
+    materialName: str
+    skuCode: Optional[str] = None
+    quantity: int
+    direction: str  # "ENTRY" | "EXIT"
+
+
+class EmployeeMovementRecord(BaseModel):
+    eventId: str
+    timestamp: str
+    laneId: str
+    cameraName: str
+    direction: str  # "ENTRY" | "EXIT" | "TRAVERSAL"
+    personIdentity: str
+    isKnown: bool
+    materialsCarried: List[MaterialMovementItem] = []
+    casesDetected: int = 0
+    unitsDetected: int = 0
+    snapshotUrl: Optional[str] = None
+
+
+class EmployeeMovementSummaryResponse(BaseModel):
+    employeeId: str
+    name: str
+    totalEntries: int
+    totalExits: int
+    totalTraversals: int
+    lastSeenCamera: Optional[str] = None
+    lastSeenTimestamp: Optional[str] = None
+    materialsHandledSummary: Dict[str, Dict[str, int]] = {}  # materialName -> {"in": int, "out": int, "net": int}
+    movements: List[EmployeeMovementRecord] = []
+
 

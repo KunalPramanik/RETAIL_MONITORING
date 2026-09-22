@@ -9,6 +9,7 @@ broadcasts live events to the frontend via WebSockets.
 import asyncio
 import os
 import time
+import math
 import logging
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, timezone
@@ -696,21 +697,25 @@ class CameraIngestionWorker:
                         if not cam_logs or cam_logs[-1]["text"] != msg:
                             cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "STATIC"})
 
-            # Material Instance Segmentation pipeline routing
-            if getattr(cam, "pipeline_mode", "STANDARD_DETECTION") == "MATERIAL_SEGMENTATION":
-                try:
-                    if dec is None:
-                        nparr = np.frombuffer(frame_bytes, np.uint8)
-                        dec = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-                    if dec is not None:
-                        seg_res = MaterialSegmentationService.segment_materials(dec)
-                        if seg_res.instances:
-                            annotated_mat = MaterialSegmentationService.annotate_frame_with_masks(dec, seg_res.instances)
+            # Dynamic Material Instance Segmentation & Store Material Counting across all cameras
+            current_mat_instances = []
+            seg_counts = {}
+            try:
+                if dec is None:
+                    nparr = np.frombuffer(frame_bytes, np.uint8)
+                    dec = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                if dec is not None:
+                    seg_res = MaterialSegmentationService.segment_materials(dec)
+                    current_mat_instances = seg_res.instances
+                    seg_counts = seg_res.counts_by_class
+                    if current_mat_instances:
+                        if getattr(cam, "pipeline_mode", "STANDARD_DETECTION") == "MATERIAL_SEGMENTATION":
+                            annotated_mat = MaterialSegmentationService.annotate_frame_with_masks(dec, current_mat_instances)
                             success, enc_buf = cv2.imencode(".jpg", annotated_mat, [cv2.IMWRITE_JPEG_QUALITY, 85])
                             if success:
                                 annotated_bytes = enc_buf.tobytes()
 
-                        for inst in seg_res.instances:
+                        for inst in current_mat_instances:
                             overlay_boxes.append({
                                 "box": inst.bbox,
                                 "type": "MATERIAL_INSTANCE",
@@ -731,16 +736,23 @@ class CameraIngestionWorker:
                                     "polygon": i.polygon,
                                     "areaPixels": i.area_pixels,
                                 }
-                                for i in seg_res.instances
+                                for i in current_mat_instances
                             ],
-                            "materialCounts": seg_res.counts_by_class,
+                            "materialCounts": seg_counts,
                             "totalMaterialCount": seg_res.total_instances,
                             "segmentationLatencyMs": seg_res.latency_ms,
                         })
-                except Exception as _seg_err:
-                    logger.warning("Material segmentation error on %s: %s", cam.camera_id, _seg_err)
 
-            # Virtual Tripwire trajectory crossing & anti-tailgating evaluation
+                        # Activity log for detected material inventory
+                        mat_log_parts = [f"{c}x {k.split(' (')[0].split(' / ')[0]}" for k, c in seg_counts.items()]
+                        mat_log_msg = f"{cam_name} — Store Inventory: {', '.join(mat_log_parts)} — {time_str}"
+                        if not cam_logs or cam_logs[-1]["text"] != mat_log_msg:
+                            cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": mat_log_msg, "type": "ITEM"})
+            except Exception as _seg_err:
+                logger.warning("Material segmentation error on %s: %s", cam.camera_id, _seg_err)
+
+            # Virtual Tripwire, Multi-Camera Trajectory & Person-Material Attribution
+            active_carriers = []
             try:
                 tripwires_res = await session.execute(
                     select(VirtualTripwireConfig).where(
@@ -749,7 +761,7 @@ class CameraIngestionWorker:
                     )
                 )
                 active_tripwires = tripwires_res.scalars().all()
-                if active_tripwires and overlay_boxes:
+                if overlay_boxes:
                     cam_tracks = self._track_history.setdefault(cam.camera_id, {})
                     for b_idx, ob in enumerate(overlay_boxes):
                         if ob["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED", "VEHICLE"):
@@ -762,18 +774,29 @@ class CameraIngestionWorker:
                             prev_pt = cam_tracks.get(track_id)
                             cam_tracks[track_id] = curr_pt
 
+                            # Calculate movement trajectory direction: Inbound (ENTRY) vs Outbound (EXIT)
+                            person_dir = "TRAVERSAL"
                             if prev_pt:
+                                dy = curr_pt[1] - prev_pt[1]
+                                if dy < -0.012:
+                                    person_dir = "ENTRY"
+                                elif dy > 0.012:
+                                    person_dir = "EXIT"
+
+                            # Tripwire crossing evaluation
+                            if prev_pt and active_tripwires:
                                 for tw in active_tripwires:
                                     if len(tw.line_coords) >= 2:
                                         l_start = (float(tw.line_coords[0][0]), float(tw.line_coords[0][1]))
                                         l_end = (float(tw.line_coords[1][0]), float(tw.line_coords[1][1]))
-                                        has_crossed, direction = TripwireEngine.check_trajectory_crossing(
+                                        has_crossed, tw_direction = TripwireEngine.check_trajectory_crossing(
                                             p_prev=prev_pt,
                                             p_curr=curr_pt,
                                             line_start=l_start,
                                             line_end=l_end,
                                         )
-                                        if has_crossed and (tw.direction_mode in ("BOTH", direction)):
+                                        if has_crossed and (tw.direction_mode in ("BOTH", tw_direction)):
+                                            person_dir = tw_direction
                                             emp_match = None
                                             if face_res.decision == "MATCHED":
                                                 emp_match = {
@@ -785,12 +808,55 @@ class CameraIngestionWorker:
                                                 tripwire_id=tw.tripwire_id,
                                                 camera_id=cam.camera_id,
                                                 track_id=track_id,
-                                                direction=direction,
+                                                direction=tw_direction,
                                                 entity_type="PERSON" if "PERSON" in ob["type"] else "VEHICLE",
                                                 matched_employee=emp_match,
                                             )
+
+                            # If entity is a Person, associate proximate materials and track carrier attribution
+                            if "PERSON" in ob["type"]:
+                                is_known = (face_res.decision == "MATCHED" and bool(face_res.matched_employee_id))
+                                person_name = face_res.employee_name if is_known else "Unknown Person"
+                                emp_id = face_res.matched_employee_id if is_known else None
+
+                                pcx = bx + bw / 2.0
+                                pcy = by + bh / 2.0
+                                max_dist = max(280.0, bw * 1.8)
+                                carried_mats: Dict[str, int] = {}
+
+                                for minst in current_mat_instances:
+                                    mbx, mby, mbw, mbh = minst.bbox
+                                    mcx = mbx + mbw / 2.0
+                                    mcy = mby + mbh / 2.0
+                                    dist = math.hypot(mcx - pcx, mcy - pcy)
+                                    if dist <= max_dist:
+                                        carried_mats[minst.class_name] = carried_mats.get(minst.class_name, 0) + 1
+
+                                mat_parts = [f"{cnt}x {cname.split(' (')[0].split(' / ')[0]}" for cname, cnt in carried_mats.items()]
+                                mat_desc = ", ".join(mat_parts) if mat_parts else ""
+
+                                if carried_mats:
+                                    summary_carrier = f"{person_name} [{person_dir}] ({mat_desc})"
+                                    ob["label"] = summary_carrier
+                                    carrier_rec = {
+                                        "personName": person_name,
+                                        "isKnown": is_known,
+                                        "employeeId": emp_id,
+                                        "direction": person_dir,
+                                        "materials": carried_mats,
+                                        "summary": summary_carrier,
+                                        "box": ob["box"],
+                                    }
+                                    active_carriers.append(carrier_rec)
+                                    carrier_log = f"{cam_name} — Carrier: {summary_carrier} — {time_str}"
+                                    if not cam_logs or cam_logs[-1]["text"] != carrier_log:
+                                        cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": carrier_log, "type": "PERSON"})
+                                else:
+                                    ob["label"] = f"{person_name} [{person_dir}]"
             except Exception as _tw_err:
                 logger.warning("Tripwire evaluation error on %s: %s", cam.camera_id, _tw_err)
+
+            detection_data["activeCarriers"] = active_carriers
 
             # In-progress compliance tag
             active_tx = self._active_transactions.get(cam.camera_id)
@@ -1057,6 +1123,75 @@ class CameraIngestionWorker:
             )
             session.add(det)
 
+        # 8b. Real Store Material Counting & ExitEventLineItem Attribution
+        event_line_items = []
+        try:
+            nparr = np.frombuffer(frame_bytes, np.uint8)
+            dec_mat = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if dec_mat is not None:
+                mat_seg_res = MaterialSegmentationService.segment_materials(dec_mat)
+                if mat_seg_res.instances:
+                    existing_prods = {p.name.lower(): p for p in products}
+                    existing_by_sku = {p.sku_code.upper(): p for p in products}
+
+                    sku_map = {
+                        "Cement Bag (50kg)": ("MAT-CEM-50KG", "Building Materials", 1, 9.50, 95.00),
+                        "Bundled Iron Rods / Rebar": ("MAT-ROD-REBAR", "Building Materials", 1, 24.00, 240.00),
+                        "Brick Stack / Paver Pallet": ("MAT-BRK-RED", "Building Materials", 1, 0.85, 425.00),
+                        "Heavy Corrugated Master Carton": ("MAT-BOX-HEAVY", "Packaging", 1, 4.20, 42.00),
+                        "Industrial Wooden Pallet": ("MAT-PLT-WOOD", "Logistics", 1, 18.50, 185.00),
+                        "Ceramic Tiles / Tile Box": ("MAT-TIL-CERAMIC", "Building Materials", 1, 15.00, 150.00),
+                        "Corrugated Aluminum Sheets & Tin Panels": ("MAT-ALU-TIN", "Building Materials", 1, 28.00, 280.00),
+                    }
+
+                    for mat_name, count in mat_seg_res.counts_by_class.items():
+                        target_prod = existing_prods.get(mat_name.lower())
+                        if not target_prod:
+                            sku_info = sku_map.get(mat_name)
+                            if sku_info:
+                                sku_code, category, pack_size, u_price, c_price = sku_info
+                                target_prod = existing_by_sku.get(sku_code)
+                                if not target_prod:
+                                    target_prod = Product(
+                                        product_id=str(uuid.uuid4()),
+                                        sku_code=sku_code,
+                                        name=mat_name,
+                                        category=category,
+                                        pack_size=pack_size,
+                                        unit_price=u_price,
+                                        case_price=c_price,
+                                        created_at=now,
+                                    )
+                                    session.add(target_prod)
+                                    await session.flush()
+                                    existing_by_sku[sku_code] = target_prod
+                                    existing_prods[mat_name.lower()] = target_prod
+
+                        if target_prod:
+                            line_item = ExitEventLineItem(
+                                line_item_id=str(uuid.uuid4()),
+                                event_id=event_id,
+                                product_id=target_prod.product_id,
+                                cases_qty=count,
+                                units_qty=count * (target_prod.pack_size or 1),
+                            )
+                            session.add(line_item)
+                            event_line_items.append({
+                                "lineItemId": line_item.line_item_id,
+                                "productId": target_prod.product_id,
+                                "skuCode": target_prod.sku_code,
+                                "name": target_prod.name,
+                                "casesQty": line_item.cases_qty,
+                                "unitsQty": line_item.units_qty,
+                            })
+
+                    dir_tag = "EXIT" if "EXIT" in trigger_reason.upper() else "ENTRY"
+                    carrier_name = face_result.employee_name if face_result.decision == "MATCHED" and face_result.matched_employee_id else "Unknown Person"
+                    mat_desc = ", ".join([f"{c}x {n}" for n, c in mat_seg_res.counts_by_class.items()])
+                    event.notes = f"[{dir_tag}] Carrier: {carrier_name}. Handled: {mat_desc}. Trigger: {trigger_reason}."
+        except Exception as _mat_err:
+            logger.warning("Material line items generation error: %s", _mat_err)
+
         # 9. Record Real Face Match Attempt
         face_attempt = FaceMatchAttempt(
             event_id=event_id,
@@ -1120,7 +1255,7 @@ class CameraIngestionWorker:
             "severity": event.severity,
             "snapshotUrl": event.snapshot_url,
             "notes": event.notes,
-            "lineItems": [],
+            "lineItems": event_line_items,
         }
         await ws_hub.broadcast_event("new_event", event_payload)
         if alert_payload:

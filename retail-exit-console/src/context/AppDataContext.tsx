@@ -70,6 +70,8 @@ interface AppDataContextType {
   deleteProduct: (productId: string) => Promise<void>;
   addEmployee: (employee: { name: string; role: string; rfidBadgeId: string; shiftId?: string }) => Promise<Employee>;
   updateEmployee: (employee: Employee) => void;
+  uploadEmployeePhoto: (employeeId: string, file: File) => Promise<{ employeeId: string; name: string; hasFaceEnrolled: boolean; message: string }>;
+  deleteEmployeePhoto: (employeeId: string) => Promise<void>;
   updateSettings: (newSettings: Partial<SystemSettings>) => Promise<void>;
   toggleLaneTurnstile: (laneId: string) => Promise<void>;
   injectSimulatedScenario: (scenarioType: 'CLEAN_PASS' | 'CASE_PACK_OVER' | 'RFID_BLINDSPOT' | 'REPEAT_OFFENDER_HIGH' | 'UNDER_DECLARE_OCR') => Promise<void>;
@@ -473,6 +475,32 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setEmployees((prev) => prev.map((e) => (e.employeeId === employee.employeeId ? employee : e)));
   };
 
+  const uploadEmployeePhoto = async (
+    employeeId: string,
+    file: File
+  ): Promise<{ employeeId: string; name: string; hasFaceEnrolled: boolean; message: string }> => {
+    const res = await api.uploadEmployeePhoto(employeeId, file);
+    setEmployees((prev) =>
+      prev.map((e) =>
+        e.employeeId === employeeId
+          ? { ...e, hasFaceEnrolled: true, embeddingUpdatedAt: new Date().toISOString() }
+          : e
+      )
+    );
+    return res;
+  };
+
+  const deleteEmployeePhoto = async (employeeId: string): Promise<void> => {
+    await api.deleteEmployeePhoto(employeeId);
+    setEmployees((prev) =>
+      prev.map((e) =>
+        e.employeeId === employeeId
+          ? { ...e, hasFaceEnrolled: false, embeddingUpdatedAt: undefined }
+          : e
+      )
+    );
+  };
+
   const addCamera = async (data: { label: string; ipAddress: string; rtspPath: string; streamUrl?: string; laneId?: string; credentials?: string; pairingMethod?: "MANUAL" | "QR_CAMERA_DISPLAYED" | "QR_APP_GENERATED" }): Promise<Camera> => {
     const created = await api.createCamera(data);
     setCameras((prev) => [created, ...prev.filter((c) => c.cameraId !== created.cameraId)]);
@@ -625,6 +653,8 @@ export const AppDataProvider: React.FC<{ children: React.ReactNode }> = ({ child
         deleteProduct,
         addEmployee,
         updateEmployee,
+        uploadEmployeePhoto,
+        deleteEmployeePhoto,
         updateSettings,
         toggleLaneTurnstile,
         injectSimulatedScenario,

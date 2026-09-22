@@ -242,6 +242,29 @@ export const api = {
     return request<ExitEvent[]>(`/employees/${employeeId}/history`);
   },
 
+  async uploadEmployeePhoto(
+    employeeId: string,
+    file: File
+  ): Promise<{ employeeId: string; name: string; hasFaceEnrolled: boolean; message: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/employees/${employeeId}/photo`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Failed to enroll employee photo');
+    }
+    return res.json();
+  },
+
+  async deleteEmployeePhoto(employeeId: string): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>(`/employees/${employeeId}/photo`, {
+      method: 'DELETE',
+    });
+  },
+
   // ── Invoices ──────────────────────────────────────────────────────
   async getInvoices(query?: string): Promise<Invoice[]> {
     const qs = query ? `?query=${encodeURIComponent(query)}` : '';

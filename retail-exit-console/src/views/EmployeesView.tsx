@@ -2,13 +2,21 @@ import React, { useState } from 'react';
 import { useAppData } from '../context/AppDataContext';
 import type { Employee, ExitEvent } from '../types';
 import { Modal } from '../components/common/Modal';
-import { Users, UserPlus, AlertTriangle, ShieldCheck, History, Search } from 'lucide-react';
+import { Users, UserPlus, AlertTriangle, ShieldCheck, History, Search, Camera, Upload, Trash2, CheckCircle2 } from 'lucide-react';
 
 export const EmployeesView: React.FC = () => {
-  const { employees, events, addEmployee } = useAppData();
+  const { employees, events, addEmployee, uploadEmployeePhoto, deleteEmployeePhoto } = useAppData();
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [inspectingEmployee, setInspectingEmployee] = useState<Employee | null>(null);
+
+  // Biometric Photo Enrollment Modal State
+  const [photoModalEmployee, setPhotoModalEmployee] = useState<Employee | null>(null);
+  const [selectedPhotoFile, setSelectedPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoSuccess, setPhotoSuccess] = useState<string | null>(null);
 
   // Form State for Add/Edit
   const [formData, setFormData] = useState<Omit<Employee, 'employeeId'>>({
@@ -107,13 +115,13 @@ export const EmployeesView: React.FC = () => {
             <thead>
               <tr className="border-b border-hairline bg-canvas/60 text-xs-tech text-text-sec font-normal">
                 <th className="py-2 px-3 font-normal">Employee Name</th>
+                <th className="py-2 px-3 font-normal">Biometric Face Profile</th>
                 <th className="py-2 px-3 font-normal">Assigned Role</th>
                 <th className="py-2 px-3 font-normal">RFID Badge Key</th>
                 <th className="py-2 px-3 font-normal">Shift Schedule</th>
                 <th className="py-2 px-3 font-normal">Status</th>
-                <th className="py-2 px-3 font-normal text-right">30-Day Mismatch Count</th>
                 <th className="py-2 px-3 font-normal text-right">Risk Standing</th>
-                <th className="py-2 px-3 text-right">Audit</th>
+                <th className="py-2 px-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -135,14 +143,59 @@ export const EmployeesView: React.FC = () => {
                         </div>
                       </td>
 
-                      {/* Badge ID */}
-                      <td className="py-2.5 px-3 font-mono text-text-sec whitespace-nowrap">
-                        {emp.rfidBadgeId}
+                      {/* Biometric Face Profile */}
+                      <td className="py-2.5 px-3 whitespace-nowrap">
+                        {emp.hasFaceEnrolled ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-teal-950/40 text-status-ok border border-status-ok/40 font-mono text-[11px] font-semibold">
+                              <ShieldCheck className="w-3 h-3" />
+                              FACE ENROLLED
+                            </span>
+                            <button
+                              onClick={() => {
+                                setPhotoModalEmployee(emp);
+                                setSelectedPhotoFile(null);
+                                setPhotoPreviewUrl(null);
+                                setPhotoError(null);
+                                setPhotoSuccess(null);
+                              }}
+                              className="p-1 hover:bg-panel-raised rounded text-text-sec hover:text-amber transition-colors"
+                              title="Update Biometric Photo"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-amber-950/20 text-amber border border-amber/30 font-mono text-[10px]">
+                              <AlertTriangle className="w-3 h-3" />
+                              NO PHOTO
+                            </span>
+                            <button
+                              onClick={() => {
+                                setPhotoModalEmployee(emp);
+                                setSelectedPhotoFile(null);
+                                setPhotoPreviewUrl(null);
+                                setPhotoError(null);
+                                setPhotoSuccess(null);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-semibold rounded-sm bg-amber/20 hover:bg-amber/30 text-amber border border-amber/40 transition-colors"
+                            >
+                              <Upload className="w-3 h-3" />
+                              Enroll Photo
+                            </button>
+                          </div>
+                        )}
                       </td>
 
                       {/* Role */}
                       <td className="py-2.5 px-3 text-text-pri whitespace-nowrap">
                         {emp.role}
+                      </td>
+
+                      {/* Badge ID */}
+                      <td className="py-2.5 px-3 font-mono text-text-sec whitespace-nowrap">
+                        {emp.rfidBadgeId}
                       </td>
 
                       {/* Shift */}
@@ -171,7 +224,7 @@ export const EmployeesView: React.FC = () => {
                       </td>
 
                       {/* 30d Mismatch History / Risk Tier */}
-                      <td className="py-2.5 px-3 whitespace-nowrap">
+                      <td className="py-2.5 px-3 whitespace-nowrap text-right">
                         {isRepeatOffender ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-red-950/30 text-status-high border border-status-high/40 font-mono text-[10px] font-bold">
                             <AlertTriangle className="w-3 h-3" />
@@ -190,13 +243,27 @@ export const EmployeesView: React.FC = () => {
                       </td>
 
                       {/* Actions */}
-                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap space-x-1">
+                        <button
+                          onClick={() => {
+                            setPhotoModalEmployee(emp);
+                            setSelectedPhotoFile(null);
+                            setPhotoPreviewUrl(null);
+                            setPhotoError(null);
+                            setPhotoSuccess(null);
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs-tech font-semibold rounded-sm bg-panel-raised hover:bg-hairline/40 text-amber border border-amber/30 transition-colors"
+                          title="Enroll or Update Biometric Photo"
+                        >
+                          <Camera className="w-3 h-3" />
+                          Photo
+                        </button>
                         <button
                           onClick={() => setInspectingEmployee(emp)}
                           className="inline-flex items-center gap-1 px-2.5 py-1 text-xs-tech font-semibold rounded-sm bg-panel-raised hover:bg-hairline/40 text-text-pri border border-hairline transition-colors"
                         >
                           <History className="w-3.5 h-3.5 text-amber" />
-                          Event Trail
+                          Audit
                         </button>
                       </td>
                     </tr>
@@ -204,7 +271,7 @@ export const EmployeesView: React.FC = () => {
                 })
               ) : employees.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-16 text-center text-xs-tech text-text-sec">
+                  <td colSpan={8} className="py-16 text-center text-xs-tech text-text-sec">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <Users className="w-7 h-7 text-hairline" />
                       <span className="text-text-pri font-medium">No personnel enrolled in badge registry</span>
@@ -223,7 +290,7 @@ export const EmployeesView: React.FC = () => {
                 </tr>
               ) : (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-xs-tech text-text-sec">
+                  <td colSpan={8} className="py-12 text-center text-xs-tech text-text-sec">
                     No personnel matched search query "{searchQuery}".
                   </td>
                 </tr>
@@ -404,6 +471,188 @@ export const EmployeesView: React.FC = () => {
           </div>
         </form>
       </Modal>
+
+      {/* Biometric Face Photo Enrollment Modal */}
+      {photoModalEmployee && (
+        <Modal
+          isOpen={!!photoModalEmployee}
+          onClose={() => {
+            setPhotoModalEmployee(null);
+            setSelectedPhotoFile(null);
+            setPhotoPreviewUrl(null);
+            setPhotoError(null);
+            setPhotoSuccess(null);
+          }}
+          title={`Biometric Face Enrollment — ${photoModalEmployee.name}`}
+          subtitle="Enrolls high-accuracy 512-d ArcFace facial embeddings for Known Person surveillance classification."
+          maxWidth="md"
+        >
+          <div className="space-y-4">
+            {/* Status overview */}
+            <div className="p-3 bg-panel-raised border border-hairline rounded-sm flex items-center justify-between text-xs-tech">
+              <div>
+                <span className="text-text-sec block text-[11px]">PERSONNEL ID</span>
+                <span className="font-mono text-mono-val">{photoModalEmployee.employeeId}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-text-sec block text-[11px]">BIOMETRIC STATUS</span>
+                <span className={photoModalEmployee.hasFaceEnrolled ? 'text-status-ok font-semibold' : 'text-amber font-semibold'}>
+                  {photoModalEmployee.hasFaceEnrolled ? '✓ Face Vector Active (512-d)' : '⚠ Unregistered (Treated as Unknown Person)'}
+                </span>
+              </div>
+            </div>
+
+            {/* Error or Success feedback banners */}
+            {photoError && (
+              <div className="p-3 rounded-sm bg-red-950/40 border border-status-high/50 text-status-high text-xs-tech flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{photoError}</span>
+              </div>
+            )}
+            {photoSuccess && (
+              <div className="p-3 rounded-sm bg-teal-950/40 border border-status-ok/50 text-status-ok text-xs-tech flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{photoSuccess}</span>
+              </div>
+            )}
+
+            {/* Photo Selection / Dropzone */}
+            <div className="border-2 border-dashed border-hairline hover:border-amber/60 rounded-sm p-4 text-center transition-colors bg-canvas/60">
+              {photoPreviewUrl ? (
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-36 h-36 rounded-sm overflow-hidden border-2 border-amber/60 relative group shadow-md bg-black mx-auto">
+                    <img
+                      src={photoPreviewUrl}
+                      alt="Face Preview"
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                  <span className="text-xs-tech text-text-sec font-mono">
+                    {selectedPhotoFile?.name} ({(selectedPhotoFile ? selectedPhotoFile.size / 1024 : 0).toFixed(1)} KB)
+                  </span>
+                  <label className="cursor-pointer px-2.5 py-1 text-xs-tech rounded-sm bg-panel border border-hairline hover:bg-hairline/30 text-text-pri inline-flex items-center gap-1.5 transition-colors mx-auto">
+                    <Camera className="w-3.5 h-3.5 text-amber" />
+                    Select Different Photo
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          setSelectedPhotoFile(f);
+                          setPhotoPreviewUrl(URL.createObjectURL(f));
+                          setPhotoError(null);
+                          setPhotoSuccess(null);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+              ) : (
+                <label className="cursor-pointer flex flex-col items-center gap-2 py-4">
+                  <Camera className="w-8 h-8 text-text-sec/80 group-hover:text-amber transition-colors" />
+                  <span className="text-xs-tech text-text-pri font-semibold">
+                    Click to select employee portrait photo
+                  </span>
+                  <span className="text-[11px] text-text-sec">
+                    Supported: JPG, PNG, WebP. Ensure subject is directly facing camera.
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        setSelectedPhotoFile(f);
+                        setPhotoPreviewUrl(URL.createObjectURL(f));
+                        setPhotoError(null);
+                        setPhotoSuccess(null);
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-2 border-t border-hairline">
+              <div>
+                {photoModalEmployee.hasFaceEnrolled && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm(`Are you sure you want to remove the biometric face profile for ${photoModalEmployee.name}?`)) return;
+                      try {
+                        await deleteEmployeePhoto(photoModalEmployee.employeeId);
+                        setPhotoSuccess(`Biometric face profile removed for ${photoModalEmployee.name}.`);
+                        setPhotoModalEmployee({ ...photoModalEmployee, hasFaceEnrolled: false });
+                      } catch (err: any) {
+                        setPhotoError(err.message || 'Failed to remove face profile.');
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs-tech rounded-sm border border-red-900/40 text-status-high hover:bg-red-950/20 inline-flex items-center gap-1.5 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Remove Face Profile
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoModalEmployee(null);
+                    setSelectedPhotoFile(null);
+                    setPhotoPreviewUrl(null);
+                    setPhotoError(null);
+                    setPhotoSuccess(null);
+                  }}
+                  className="px-3 py-1.5 text-xs-tech rounded-sm border border-hairline hover:bg-hairline/30 text-text-sec transition-colors"
+                >
+                  Close
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedPhotoFile || isUploadingPhoto}
+                  onClick={async () => {
+                    if (!selectedPhotoFile) return;
+                    setIsUploadingPhoto(true);
+                    setPhotoError(null);
+                    setPhotoSuccess(null);
+                    try {
+                      const res = await uploadEmployeePhoto(photoModalEmployee.employeeId, selectedPhotoFile);
+                      setPhotoSuccess(res.message);
+                      setPhotoModalEmployee({ ...photoModalEmployee, hasFaceEnrolled: true });
+                      setSelectedPhotoFile(null);
+                      setPhotoPreviewUrl(null);
+                    } catch (err: any) {
+                      setPhotoError(err.message || 'Failed to enroll biometric face.');
+                    } finally {
+                      setIsUploadingPhoto(false);
+                    }
+                  }}
+                  className="px-4 py-1.5 text-xs-tech font-semibold rounded-sm bg-amber hover:bg-amber/90 text-black inline-flex items-center gap-1.5 disabled:opacity-50 transition-colors"
+                >
+                  {isUploadingPhoto ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      Extracting Biometric Vector...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-3.5 h-3.5" />
+                      Enroll Biometric Face
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

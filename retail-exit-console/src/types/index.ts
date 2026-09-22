@@ -93,6 +93,8 @@ export interface Employee {
   activeFlag: boolean;
   mismatchCount30d: number;
   avatarSeed?: string;
+  hasFaceEnrolled?: boolean;
+  embeddingUpdatedAt?: string;
 }
 
 export interface InvoiceLineItem {

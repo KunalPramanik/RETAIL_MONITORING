@@ -27,8 +27,18 @@ class EmployeeUpdate(BaseModel):
 class EmployeeResponse(EmployeeBase):
     employeeId: str
     mismatchCount30d: int = 0
+    hasFaceEnrolled: bool = False
+    embeddingUpdatedAt: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class EmployeePhotoResponse(BaseModel):
+    employeeId: str
+    name: str
+    hasFaceEnrolled: bool
+    embeddingDimension: int = 512
+    message: str
 
 
 class EmployeeHistoryItem(BaseModel):

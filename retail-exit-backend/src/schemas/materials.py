@@ -68,6 +68,8 @@ class MaterialResponse(BaseModel):
     volumeCbm: Optional[float] = Field(None, validation_alias=AliasChoices("volumeCbm", "volume_cbm"))
     bundleQuantity: Optional[int] = Field(None, validation_alias=AliasChoices("bundleQuantity", "bundle_quantity"))
     unitsPerPackage: int = Field(1, validation_alias=AliasChoices("unitsPerPackage", "units_per_package"))
+    countingTier: str = Field("SINGLE_UNIT", validation_alias=AliasChoices("countingTier", "counting_tier"))
+    counting_tier: Optional[str] = "SINGLE_UNIT"
     barcode: Optional[str] = None
     rfidEpcPrefix: Optional[str] = Field(None, validation_alias=AliasChoices("rfidEpcPrefix", "rfid_epc_prefix"))
     visualAttributes: Optional[Dict[str, Any]] = Field(None, validation_alias=AliasChoices("visualAttributes", "visual_attributes"))
@@ -93,6 +95,7 @@ class MaterialCreate(BaseModel):
     deploymentProfile: str = Field("WAREHOUSE_DISPATCH", validation_alias=AliasChoices("deploymentProfile", "deployment_profile", "profile"))
     countUnit: str = Field("piece", validation_alias=AliasChoices("countUnit", "count_unit"))
     packagingType: str = Field("loose_unit", validation_alias=AliasChoices("packagingType", "packaging_type"))
+    countingTier: str = Field("SINGLE_UNIT", validation_alias=AliasChoices("countingTier", "counting_tier"))
     dimensions: Optional[Dict[str, Any]] = None
     nominalUnitWeightKg: Optional[float] = Field(None, validation_alias=AliasChoices("nominalUnitWeightKg", "nominal_unit_weight_kg"))
     weightTolerancePct: float = Field(5.0, ge=0.0, le=50.0, validation_alias=AliasChoices("weightTolerancePct", "weight_tolerance_pct"))
@@ -118,6 +121,7 @@ class MaterialUpdate(BaseModel):
     deploymentProfile: Optional[str] = Field(None, validation_alias=AliasChoices("deploymentProfile", "deployment_profile"))
     countUnit: Optional[str] = Field(None, validation_alias=AliasChoices("countUnit", "count_unit"))
     packagingType: Optional[str] = Field(None, validation_alias=AliasChoices("packagingType", "packaging_type"))
+    countingTier: Optional[str] = Field(None, validation_alias=AliasChoices("countingTier", "counting_tier"))
     dimensions: Optional[Dict[str, Any]] = None
     nominalUnitWeightKg: Optional[float] = Field(None, validation_alias=AliasChoices("nominalUnitWeightKg", "nominal_unit_weight_kg"))
     weightTolerancePct: Optional[float] = Field(None, validation_alias=AliasChoices("weightTolerancePct", "weight_tolerance_pct"))
@@ -144,4 +148,66 @@ class LifecycleTransitionRequest(BaseModel):
     )
     notes: Optional[str] = None
     approvedBy: Optional[str] = Field(None, validation_alias=AliasChoices("approvedBy", "approved_by", "actor"))
+
+
+class DefectItemResult(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    instanceIndex: int = Field(..., validation_alias=AliasChoices("instanceIndex", "instance_index"))
+    classId: Optional[str] = Field(None, validation_alias=AliasChoices("classId", "class_id"))
+    className: str = Field(..., validation_alias=AliasChoices("className", "class_name"))
+    bbox: List[int]  # [x, y, w, h]
+    polygon: Optional[List[List[int]]] = None
+    isDefective: bool = Field(..., validation_alias=AliasChoices("isDefective", "is_defective"))
+    defectType: Optional[str] = Field(None, validation_alias=AliasChoices("defectType", "defect_type"))
+    defectConfidence: float = Field(0.0, validation_alias=AliasChoices("defectConfidence", "defect_confidence"))
+    defectSeverity: str = Field("NONE", validation_alias=AliasChoices("defectSeverity", "defect_severity"))
+    honestDegradation: bool = Field(False, validation_alias=AliasChoices("honestDegradation", "honest_degradation"))
+    degradationReason: Optional[str] = Field(None, validation_alias=AliasChoices("degradationReason", "degradation_reason"))
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class DefectInspectionResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    totalInstances: int = Field(..., validation_alias=AliasChoices("totalInstances", "total_instances"))
+    defectiveInstances: int = Field(..., validation_alias=AliasChoices("defectiveInstances", "defective_instances"))
+    alertRaised: bool = Field(..., validation_alias=AliasChoices("alertRaised", "alert_raised"))
+    alertId: Optional[str] = Field(None, validation_alias=AliasChoices("alertId", "alert_id"))
+    latencyMs: float = Field(..., validation_alias=AliasChoices("latencyMs", "latency_ms"))
+    items: List[DefectItemResult]
+
+
+class DefectInspectionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    imageBase64: Optional[str] = Field(None, validation_alias=AliasChoices("imageBase64", "image_base64"))
+    targetRoi: Optional[List[int]] = Field(None, validation_alias=AliasChoices("targetRoi", "target_roi"))
+    minConfidence: float = Field(0.95, validation_alias=AliasChoices("minConfidence", "min_confidence"))
+    materialId: Optional[str] = Field(None, validation_alias=AliasChoices("materialId", "material_id"))
+
+
+class TierCountResolveRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    materialId: str = Field(..., validation_alias=AliasChoices("materialId", "material_id"))
+    rawDetectedCount: int = Field(..., validation_alias=AliasChoices("rawDetectedCount", "raw_detected_count"))
+    observedWeightKg: Optional[float] = Field(None, validation_alias=AliasChoices("observedWeightKg", "observed_weight_kg"))
+    forceTier: Optional[str] = Field(None, validation_alias=AliasChoices("forceTier", "force_tier"))
+
+
+class TierCountResolveResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
+    materialId: str = Field(..., validation_alias=AliasChoices("materialId", "material_id"))
+    skuCode: str = Field(..., validation_alias=AliasChoices("skuCode", "sku_code"))
+    name: str
+    countingTier: str = Field(..., validation_alias=AliasChoices("countingTier", "counting_tier"))
+    unitsPerPackage: int = Field(..., validation_alias=AliasChoices("unitsPerPackage", "units_per_package"))
+    resolvedTotalUnits: int = Field(..., validation_alias=AliasChoices("resolvedTotalUnits", "resolved_total_units"))
+    resolvedPackagesCount: int = Field(..., validation_alias=AliasChoices("resolvedPackagesCount", "resolved_packages_count"))
+    formulaApplied: str = Field(..., validation_alias=AliasChoices("formulaApplied", "formula_applied"))
+    arithmeticTrace: str = Field(..., validation_alias=AliasChoices("arithmeticTrace", "arithmetic_trace"))
+    honestDegradation: bool = Field(False, validation_alias=AliasChoices("honestDegradation", "honest_degradation"))
+    notes: Optional[str] = None
 

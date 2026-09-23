@@ -24,6 +24,8 @@ import type {
   TrainingJobStatusResponse,
   MaterialRecord,
   PackageDefinitionRecord,
+  DefectInspectionResponse,
+  TierCountResolveResponse,
 } from '../types';
 
 function getEffectiveApiBase(): string {
@@ -704,6 +706,20 @@ export const api = {
   async deleteMaterial(materialId: string): Promise<void> {
     return request<void>(`/materials/${materialId}`, {
       method: 'DELETE',
+    });
+  },
+
+  async inspectMaterialDefects(imageBase64: string, minConfidence = 0.95, targetRoi?: [number, number, number, number]): Promise<DefectInspectionResponse> {
+    return request<DefectInspectionResponse>('/materials/defect-inspect', {
+      method: 'POST',
+      body: JSON.stringify({ imageBase64, minConfidence, targetRoi }),
+    });
+  },
+
+  async resolveTierCount(materialId: string, rawDetectedCount: number, observedWeightKg?: number, forceTier?: string): Promise<TierCountResolveResponse> {
+    return request<TierCountResolveResponse>(`/materials/${materialId}/resolve-tier-count`, {
+      method: 'POST',
+      body: JSON.stringify({ materialId, rawDetectedCount, observedWeightKg, forceTier }),
     });
   },
 };

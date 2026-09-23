@@ -58,6 +58,11 @@ def _sync_upgrade_sqlite_schema(sync_conn):
         hb_cols = [row[1] for row in res.fetchall()]
         if "dropped_frames" not in hb_cols:
             sync_conn.execute(text("ALTER TABLE camera_heartbeat ADD COLUMN dropped_frames INTEGER DEFAULT 0"))
+
+        res = sync_conn.execute(text("PRAGMA table_info(material)"))
+        mat_cols = [row[1] for row in res.fetchall()]
+        if mat_cols and "counting_tier" not in mat_cols:
+            sync_conn.execute(text("ALTER TABLE material ADD COLUMN counting_tier VARCHAR(32) DEFAULT 'SINGLE_UNIT'"))
     except Exception:
         pass
 

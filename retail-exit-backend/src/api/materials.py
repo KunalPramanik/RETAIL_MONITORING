@@ -13,7 +13,7 @@ from sqlalchemy import select, desc
 from sqlalchemy.orm import selectinload
 
 from src.db.session import get_db
-from src.db.models import Material, PackageDefinition, get_utc_now
+from src.db.models import Material, PackageDefinition, Alert, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.materials import (
     MaterialResponse,
@@ -22,7 +22,13 @@ from src.schemas.materials import (
     LifecycleTransitionRequest,
     PackageDefinitionResponse,
     PackageDefinitionCreate,
+    DefectInspectionRequest,
+    DefectInspectionResponse,
+    DefectItemResult,
+    TierCountResolveRequest,
+    TierCountResolveResponse,
 )
+from src.ml.defect_detection import MaterialDefectService
 from src.cache import cache_service
 from src.api.deps_auth import require_roles
 
@@ -83,6 +89,8 @@ def _serialize_material(m: Material) -> MaterialResponse:
         volumeCbm=float(m.volume_cbm) if m.volume_cbm is not None else None,
         bundleQuantity=int(m.bundle_quantity) if m.bundle_quantity is not None else None,
         unitsPerPackage=int(m.units_per_package or 1),
+        countingTier=str(getattr(m, "counting_tier", "SINGLE_UNIT") or "SINGLE_UNIT"),
+        counting_tier=str(getattr(m, "counting_tier", "SINGLE_UNIT") or "SINGLE_UNIT"),
         barcode=m.barcode,
         rfidEpcPrefix=m.rfid_epc_prefix,
         visualAttributes=m.visual_attributes or {},
@@ -149,6 +157,7 @@ async def create_material(
         deployment_profile=body.deploymentProfile.strip().upper(),
         count_unit=body.countUnit.strip().lower(),
         packaging_type=body.packagingType.strip().lower(),
+        counting_tier=(body.countingTier or "SINGLE_UNIT").strip().upper(),
         dimensions=body.dimensions,
         nominal_unit_weight_kg=body.nominalUnitWeightKg,
         weight_tolerance_pct=body.weightTolerancePct,
@@ -259,6 +268,8 @@ async def update_material(
         material.count_unit = body.countUnit.strip().lower()
     if body.packagingType is not None:
         material.packaging_type = body.packagingType.strip().lower()
+    if body.countingTier is not None:
+        material.counting_tier = body.countingTier.strip().upper()
     if body.dimensions is not None:
         material.dimensions = body.dimensions
     if body.nominalUnitWeightKg is not None:
@@ -453,3 +464,163 @@ async def delete_material(
     await session.commit()
     await cache_service.invalidate("materials")
     return None
+
+
+@router.post("/defect-inspect", response_model=DefectInspectionResponse)
+async def inspect_material_defects(
+    body: DefectInspectionRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """Executes two-stage defect and damage detection on an image per Part W.3."""
+    import base64
+    import cv2
+    import numpy as np
+
+    if not body.imageBase64:
+        raise HTTPException(status_code=400, detail="imageBase64 is required for defect inspection.")
+
+    try:
+        raw_b64 = body.imageBase64
+        if "," in raw_b64:
+            raw_b64 = raw_b64.split(",", 1)[1]
+        img_bytes = base64.b64decode(raw_b64)
+        nparr = np.frombuffer(img_bytes, np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if frame is None or frame.size == 0:
+            raise ValueError("Decoded image is empty or invalid format.")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to decode image: {e}")
+
+    # Run two-stage inspection
+    result = MaterialDefectService.inspect_frame_defects(
+        frame=frame,
+        target_roi=body.targetRoi,
+        min_confidence=body.minConfidence,
+    )
+
+    alert_id = None
+    if result.alert_triggered:
+        import uuid
+        now = get_utc_now()
+        alert_id = f"alt_def_{uuid.uuid4().hex[:8]}"
+        severity = "HIGH" if result.critical_defects_count > 0 else "MEDIUM"
+        alert = Alert(
+            alert_id=alert_id,
+            camera_id=None,
+            event_id=None,
+            alert_type="MATERIAL_DEFECT",
+            severity=severity,
+            delta_units=result.defective_instances,
+            status="OPEN",
+            resolution_note=f"Automated Part W Defect Detection: {result.defective_instances} damaged instances identified with >= {int(body.minConfidence * 100)}% confidence.",
+            created_at=now,
+        )
+        session.add(alert)
+        await session.commit()
+
+    items = [
+        DefectItemResult(
+            instanceIndex=inst.instance_index,
+            classId=inst.class_id,
+            className=inst.class_name,
+            bbox=inst.bbox,
+            polygon=inst.polygon,
+            isDefective=inst.is_defective,
+            defectType=inst.defect_type,
+            defectConfidence=inst.defect_confidence,
+            defectSeverity=inst.defect_severity,
+            honestDegradation=inst.honest_degradation,
+            degradationReason=inst.degradation_reason,
+            details=inst.defect_details,
+        )
+        for inst in result.instances
+    ]
+
+    return DefectInspectionResponse(
+        totalInstances=result.total_instances,
+        defectiveInstances=result.defective_instances,
+        alertRaised=result.alert_triggered,
+        alertId=alert_id,
+        latencyMs=result.latency_ms,
+        items=items,
+    )
+
+
+@router.post("/{material_id}/resolve-tier-count", response_model=TierCountResolveResponse)
+async def resolve_tier_count(
+    material_id: str,
+    body: TierCountResolveRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """Resolves raw detected counts to exact, unambiguous inventory units based on counting tier."""
+    stmt = (
+        select(Material)
+        .options(selectinload(Material.package_definitions))
+        .where((Material.material_id == material_id) | (Material.sku_code == material_id))
+    )
+    res = await session.execute(stmt)
+    material = res.scalar_one_or_none()
+    if not material:
+        raise HTTPException(status_code=404, detail=f"Material '{material_id}' not found.")
+
+    tier = (body.forceTier or material.counting_tier or "SINGLE_UNIT").strip().upper()
+    units_per_pkg = int(material.units_per_package or 1)
+
+    # Find active package definition if available
+    if material.package_definitions:
+        for pd in material.package_definitions:
+            if pd.approval_status == "APPROVED" and pd.effective_end is None:
+                units_per_pkg = int(pd.units_per_package)
+                break
+
+    resolved_units = 0
+    resolved_packages = 0
+    formula = ""
+    trace = ""
+    honest_degradation = False
+    notes = None
+
+    if tier == "SINGLE_UNIT":
+        resolved_units = max(0, body.rawDetectedCount)
+        resolved_packages = resolved_units
+        formula = "resolved_units = raw_count"
+        trace = f"{body.rawDetectedCount} units detected (1:1 single unit identity mapping)"
+    elif tier == "PACKAGED_BOX":
+        resolved_packages = max(0, body.rawDetectedCount)
+        resolved_units = resolved_packages * units_per_pkg
+        formula = f"resolved_units = raw_boxes * units_per_package ({units_per_pkg})"
+        trace = f"{resolved_packages} boxes detected @ {units_per_pkg} units/box = {resolved_units} total units"
+    elif tier == "BULK_MATERIAL":
+        nominal_wt = float(material.nominal_unit_weight_kg) if material.nominal_unit_weight_kg else None
+        if body.observedWeightKg is not None and nominal_wt and nominal_wt > 0:
+            resolved_units = max(0, int(round(body.observedWeightKg / nominal_wt)))
+            resolved_packages = 1
+            formula = f"resolved_units = round(observed_weight_kg / nominal_unit_weight_kg [{nominal_wt:.2f}])"
+            trace = f"Observed weight {body.observedWeightKg:.2f} kg / {nominal_wt:.2f} kg/unit = {resolved_units} units"
+        else:
+            resolved_units = max(0, body.rawDetectedCount)
+            resolved_packages = 1
+            formula = "resolved_units = segmented_instance_count"
+            trace = f"{body.rawDetectedCount} bulk instances segmented via polygonal mask analysis"
+            if nominal_wt is None and body.observedWeightKg is not None:
+                honest_degradation = True
+                notes = "Material missing nominal_unit_weight_kg; fell back to raw vision count"
+    else:
+        resolved_units = max(0, body.rawDetectedCount)
+        resolved_packages = resolved_units
+        formula = "fallback: 1:1"
+        trace = f"Unrecognized tier '{tier}'; defaulted to 1:1 unit count"
+
+    return TierCountResolveResponse(
+        materialId=str(material.material_id),
+        skuCode=str(material.sku_code),
+        name=str(material.name),
+        countingTier=tier,
+        unitsPerPackage=units_per_pkg,
+        resolvedTotalUnits=resolved_units,
+        resolvedPackagesCount=resolved_packages,
+        formulaApplied=formula,
+        arithmeticTrace=trace,
+        honestDegradation=honest_degradation,
+        notes=notes,
+    )

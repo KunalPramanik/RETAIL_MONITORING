@@ -133,6 +133,7 @@ class Material(Base):
     volume_cbm: Any = Column(Numeric(8, 3), nullable=True)
     bundle_quantity: Any = Column(Integer, nullable=True)
     units_per_package: Any = Column(Integer, nullable=False, default=1)
+    counting_tier: Any = Column(String(32), nullable=False, default="SINGLE_UNIT")  # SINGLE_UNIT, PACKAGED_BOX, BULK_MATERIAL
     barcode: Any = Column(String(64), nullable=True)
     rfid_epc_prefix: Any = Column(String(64), nullable=True)
     visual_attributes: Any = Column(JSONType, nullable=True)  # {"color": ..., "texture": ..., "shape": ...}
@@ -154,6 +155,10 @@ class Material(Base):
         CheckConstraint(
             "deployment_profile IN ('RETAIL_EXIT', 'WAREHOUSE_DISPATCH', 'INDUSTRIAL_PERIMETER')",
             name="chk_material_deployment_profile",
+        ),
+        CheckConstraint(
+            "counting_tier IN ('SINGLE_UNIT', 'PACKAGED_BOX', 'BULK_MATERIAL')",
+            name="chk_material_counting_tier",
         ),
     )
 
@@ -527,7 +532,7 @@ class Alert(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "alert_type IN ('SENSOR_DISAGREEMENT', 'OVER_CARRY', 'UNDER_DECLARE', 'UNAUTHORIZED_ACCESS', 'INTRUSION', 'CAMERA_OFFLINE', 'FIRE_HAZARD', 'SUSPICIOUS_BEHAVIOR', 'PPE_VIOLATION')",
+            "alert_type IN ('SENSOR_DISAGREEMENT', 'OVER_CARRY', 'UNDER_DECLARE', 'UNAUTHORIZED_ACCESS', 'INTRUSION', 'CAMERA_OFFLINE', 'FIRE_HAZARD', 'SUSPICIOUS_BEHAVIOR', 'PPE_VIOLATION', 'MATERIAL_DEFECT')",
             name="chk_alert_type",
         ),
         CheckConstraint("severity IN ('LOW', 'MEDIUM', 'HIGH')", name="chk_alert_severity"),

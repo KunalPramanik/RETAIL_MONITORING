@@ -111,6 +111,14 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
           text: '#FFB74D',
           border: 'rgba(255, 145, 0, 0.7)',
         };
+      case 'defect':
+        return {
+          stroke: '#D946EF', // Fuchsia / Magenta alert
+          fill: 'rgba(217, 70, 239, 0.22)',
+          bg: '#380B38',
+          text: '#F0ABFC',
+          border: 'rgba(217, 70, 239, 0.8)',
+        };
       case 'static':
       default:
         return {
@@ -236,6 +244,8 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
       label = 'Verified Person';
     } else if (box.type === 'STATIC_IMAGE') {
       label = 'Static Image';
+    } else if (box.type === 'DEFECT_DAMAGE' || box.color === 'defect' || label.toLowerCase().includes('defect')) {
+      label = `Defect: ${label.replace(/^(defect|damage)[:\s-]*/i, '')}`;
     }
     acc[label] = (acc[label] || 0) + 1;
     return acc;

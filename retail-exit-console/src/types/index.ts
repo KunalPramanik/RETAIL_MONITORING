@@ -75,7 +75,7 @@ export interface Alert {
   alertId: string;
   eventId?: string;
   cameraId?: string;
-  alertType: "SENSOR_DISAGREEMENT" | "OVER_CARRY" | "UNDER_DECLARE" | "UNAUTHORIZED_ACCESS" | "INTRUSION" | "CAMERA_OFFLINE";
+  alertType: "SENSOR_DISAGREEMENT" | "OVER_CARRY" | "UNDER_DECLARE" | "UNAUTHORIZED_ACCESS" | "INTRUSION" | "CAMERA_OFFLINE" | "FIRE_HAZARD" | "SUSPICIOUS_BEHAVIOR" | "PPE_VIOLATION" | "MATERIAL_DEFECT";
   severity: Severity;
   deltaUnits: number;
   createdAt: string;
@@ -211,6 +211,7 @@ export type DetectionBoxType =
   | 'VEHICLE'
   | 'DOORWAY'
   | 'MATERIAL_INSTANCE'
+  | 'DEFECT_DAMAGE'
   | 'HAZARD_FIRE'
   | 'SUSPICIOUS_BEHAVIOR'
   | 'PPE_COMPLIANT'
@@ -226,7 +227,7 @@ export interface DetectionBox {
   type: DetectionBoxType;
   label: string;
   confidence: number;
-  color: 'green' | 'red' | 'amber' | 'static' | 'cyan' | 'fire' | 'suspicious' | 'ppe_ok' | 'ppe_violation';
+  color: 'green' | 'red' | 'amber' | 'static' | 'cyan' | 'fire' | 'suspicious' | 'ppe_ok' | 'ppe_violation' | 'defect';
   entity?: string;
   keypoints?: Record<string, [number, number]>;
   connections?: [string, string][];
@@ -533,6 +534,7 @@ export interface MaterialRecord {
   deploymentProfile: 'RETAIL_EXIT' | 'WAREHOUSE_DISPATCH' | 'INDUSTRIAL_PERIMETER';
   countUnit: string;
   packagingType: string;
+  countingTier: 'SINGLE_UNIT' | 'PACKAGED_BOX' | 'BULK_MATERIAL';
   dimensions?: Record<string, any>;
   nominalUnitWeightKg?: number;
   weightTolerancePct: number;
@@ -555,6 +557,44 @@ export interface MaterialRecord {
   createdAt: string;
   updatedAt: string;
   packageDefinitions: PackageDefinitionRecord[];
+}
+
+export interface DefectItemResult {
+  instanceIndex: number;
+  classId?: string;
+  className: string;
+  bbox: [number, number, number, number];
+  polygon?: [number, number][];
+  isDefective: boolean;
+  defectType?: string;
+  defectConfidence: number;
+  defectSeverity: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH';
+  honestDegradation: boolean;
+  degradationReason?: string;
+  details?: Record<string, any>;
+}
+
+export interface DefectInspectionResponse {
+  totalInstances: number;
+  defectiveInstances: number;
+  alertRaised: boolean;
+  alertId?: string;
+  latencyMs: number;
+  items: DefectItemResult[];
+}
+
+export interface TierCountResolveResponse {
+  materialId: string;
+  skuCode: string;
+  name: string;
+  countingTier: 'SINGLE_UNIT' | 'PACKAGED_BOX' | 'BULK_MATERIAL';
+  unitsPerPackage: number;
+  resolvedTotalUnits: number;
+  resolvedPackagesCount: number;
+  formulaApplied: string;
+  arithmeticTrace: string;
+  honestDegradation: boolean;
+  notes?: string;
 }
 
 

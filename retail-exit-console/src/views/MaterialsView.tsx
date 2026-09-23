@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../api/client';
-import type { MaterialRecord, PackageDefinitionRecord } from '../types';
+import type { MaterialRecord, PackageDefinitionRecord, DefectInspectionResponse } from '../types';
 import { Modal } from '../components/common/Modal';
 import {
   Boxes,
@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   RotateCw,
   PackageCheck,
+  ShieldAlert,
 } from 'lucide-react';
 
 const LIFECYCLE_STAGES = [
@@ -40,6 +41,12 @@ export const MaterialsView: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; isError?: boolean } | null>(null);
 
+  // Defect Inspection Modal State (Part W.3)
+  const [isDefectModalOpen, setIsDefectModalOpen] = useState(false);
+  const [defectLoading, setDefectLoading] = useState(false);
+  const [defectInspectionResult, setDefectInspectionResult] = useState<DefectInspectionResponse | null>(null);
+  const [defectTestPreset, setDefectTestPreset] = useState<'torn_cement' | 'cracked_tile' | 'intact_box'>('torn_cement');
+
   // Onboarding Wizard Form State
   const [onboardStep, setOnboardStep] = useState<number>(1);
   const [formData, setFormData] = useState({
@@ -49,6 +56,7 @@ export const MaterialsView: React.FC = () => {
     deploymentProfile: 'WAREHOUSE_DISPATCH',
     countUnit: 'piece',
     packagingType: 'loose_unit',
+    countingTier: 'SINGLE_UNIT' as 'SINGLE_UNIT' | 'PACKAGED_BOX' | 'BULK_MATERIAL',
     lengthCm: 60,
     widthCm: 40,
     heightCm: 15,
@@ -102,6 +110,7 @@ export const MaterialsView: React.FC = () => {
       deploymentProfile: 'WAREHOUSE_DISPATCH',
       countUnit: 'bag',
       packagingType: 'stack',
+      countingTier: 'SINGLE_UNIT',
       lengthCm: 60,
       widthCm: 40,
       heightCm: 15,
@@ -114,6 +123,81 @@ export const MaterialsView: React.FC = () => {
       notes: '',
     });
     setIsOnboardModalOpen(true);
+  };
+
+  const generatePresetDataUrl = (preset: 'torn_cement' | 'cracked_tile' | 'intact_box'): string => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 400;
+    canvas.height = 300;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+
+    // Dark background
+    ctx.fillStyle = '#222';
+    ctx.fillRect(0, 0, 400, 300);
+
+    if (preset === 'torn_cement') {
+      // Kraft brown sack
+      ctx.fillStyle = '#9e7b4f';
+      ctx.fillRect(50, 50, 200, 150);
+      // Large rupture plume of grey-white cement dust
+      ctx.fillStyle = '#d5d5d5';
+      ctx.beginPath();
+      ctx.arc(150, 120, 65, 0, Math.PI * 2);
+      ctx.fill();
+      // Jagged dark tear fissure
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(100, 110);
+      ctx.lineTo(130, 135);
+      ctx.lineTo(150, 110);
+      ctx.lineTo(170, 140);
+      ctx.lineTo(200, 115);
+      ctx.stroke();
+    } else if (preset === 'cracked_tile') {
+      // Glazed white tile
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillRect(80, 60, 200, 180);
+      // Multiple penetrating fracture lines
+      ctx.strokeStyle = '#050505';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(95, 75);
+      ctx.lineTo(200, 170);
+      ctx.lineTo(265, 220);
+      ctx.moveTo(200, 170);
+      ctx.lineTo(140, 225);
+      ctx.moveTo(110, 120);
+      ctx.lineTo(250, 140);
+      ctx.stroke();
+    } else {
+      // Intact corrugated carton
+      ctx.fillStyle = '#b38247';
+      ctx.fillRect(70, 70, 200, 160);
+      ctx.strokeStyle = '#734e20';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(70, 70, 200, 160);
+      ctx.beginPath();
+      ctx.moveTo(70, 100);
+      ctx.lineTo(270, 100);
+      ctx.stroke();
+    }
+
+    return canvas.toDataURL('image/jpeg', 0.9);
+  };
+
+  const handleRunDefectInspection = async () => {
+    try {
+      setDefectLoading(true);
+      const dataUrl = generatePresetDataUrl(defectTestPreset);
+      const result = await api.inspectMaterialDefects(dataUrl, 0.95);
+      setDefectInspectionResult(result);
+    } catch (err: any) {
+      setError(err?.message || 'Defect inspection failed');
+    } finally {
+      setDefectLoading(false);
+    }
   };
 
   const handleCreateMaterial = async (e: React.FormEvent) => {
@@ -130,6 +214,7 @@ export const MaterialsView: React.FC = () => {
         deploymentProfile: formData.deploymentProfile as any,
         countUnit: formData.countUnit,
         packagingType: formData.packagingType,
+        countingTier: formData.countingTier,
         dimensions: {
           length_cm: formData.lengthCm,
           width_cm: formData.widthCm,
@@ -223,6 +308,18 @@ export const MaterialsView: React.FC = () => {
             >
               <RotateCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-amber' : ''}`} />
               Refresh
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setIsDefectModalOpen(true);
+                setDefectInspectionResult(null);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs-tech font-semibold rounded-sm bg-panel-raised hover:bg-hairline/40 text-fuchsia-400 border border-fuchsia-500/40 transition-colors"
+            >
+              <ShieldAlert className="w-4 h-4 text-fuchsia-400" />
+              Test Defect Detection (Part W.3)
             </button>
 
             <button
@@ -366,6 +463,7 @@ export const MaterialsView: React.FC = () => {
                   <th className="p-2 font-normal">Material Name</th>
                   <th className="p-2 font-normal">Category</th>
                   <th className="p-2 font-normal">Profile</th>
+                  <th className="p-2 font-normal">Counting Tier</th>
                   <th className="p-2 font-normal text-right">Units/Pkg</th>
                   <th className="p-2 font-normal text-right">Nominal Weight</th>
                   <th className="p-2 font-normal text-right">Dimensions</th>
@@ -397,6 +495,19 @@ export const MaterialsView: React.FC = () => {
                       <td className="p-2 text-text-sec text-[11px] font-sans">
                         <span className="px-1.5 py-0.2 rounded text-[10px] bg-canvas border border-hairline">
                           {m.deploymentProfile.replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="p-2">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                            m.countingTier === 'PACKAGED_BOX'
+                              ? 'bg-amber-950/40 text-amber border border-amber/40'
+                              : m.countingTier === 'BULK_MATERIAL'
+                              ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-400/40'
+                              : 'bg-canvas text-text-sec border border-hairline'
+                          }`}
+                        >
+                          {m.countingTier || 'SINGLE_UNIT'}
                         </span>
                       </td>
                       <td className="p-2 text-right">
@@ -789,6 +900,24 @@ export const MaterialsView: React.FC = () => {
                       <option value="INDUSTRIAL_PERIMETER">Industrial Perimeter Profile</option>
                     </select>
                   </div>
+
+                  <div className="col-span-2">
+                    <label className="text-text-sec block mb-1">Formalized Counting Tier (Part W.1) *</label>
+                    <select
+                      value={formData.countingTier}
+                      onChange={(e) => setFormData({ ...formData, countingTier: e.target.value as any })}
+                      className="w-full px-2.5 py-1.5 bg-canvas border border-hairline rounded-sm text-text-pri font-bold text-amber"
+                    >
+                      <option value="SINGLE_UNIT">SINGLE_UNIT — 1:1 Discrete unit identity mapping (e.g. single item)</option>
+                      <option value="PACKAGED_BOX">PACKAGED_BOX — Master carton/case containing N units inside</option>
+                      <option value="BULK_MATERIAL">BULK_MATERIAL — Continuous or dense-stacked physical goods (cement, rebar, bricks)</option>
+                    </select>
+                    <span className="text-[10px] text-text-sec block mt-1">
+                      {formData.countingTier === 'SINGLE_UNIT' && 'Zero ambiguity: each physical detected entity corresponds to exactly 1 inventory unit.'}
+                      {formData.countingTier === 'PACKAGED_BOX' && 'Eliminates box vs unit ambiguity: counts in boxes and mathematically resolves to total units via package definition.'}
+                      {formData.countingTier === 'BULK_MATERIAL' && 'Dense stacks or continuous goods counted via polygonal watershed instance segmentation or load-cell weight delta.'}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex justify-end pt-2">
@@ -1031,6 +1160,185 @@ export const MaterialsView: React.FC = () => {
               </div>
             )}
           </form>
+        </Modal>
+      )}
+
+      {/* ── Two-Stage Defect & Damage Inspection Modal (Part W.3) ── */}
+      {isDefectModalOpen && (
+        <Modal
+          isOpen={isDefectModalOpen}
+          onClose={() => {
+            setIsDefectModalOpen(false);
+            setDefectInspectionResult(null);
+          }}
+          title="Part W.3 — Two-Stage Defect & Damage Detection Test Bench"
+        >
+          <div className="space-y-4 max-h-[80vh] overflow-y-auto pr-1 text-xs-tech font-mono">
+            <div className="p-3 bg-panel-raised border border-hairline rounded-sm">
+              <span className="text-text-pri font-bold block mb-1 font-sans">
+                Stage 1 Instance Segmentation + Stage 2 Surface Defect Classifier
+              </span>
+              <p className="text-text-sec text-[11px] leading-relaxed">
+                Reuses Part U instance segmentation boundaries to isolate individual objects, then runs surface-texture defect analysis
+                (torn cement bags, cracked tiles, dented cartons, bent iron rods). Defect classification enforces the mandatory
+                <strong> &ge; 95% accuracy gate</strong> with honest degradation for ambiguous anomalies.
+              </p>
+            </div>
+
+            {/* Test Input Preset Selection */}
+            <div>
+              <label className="text-text-sec block mb-1.5 font-bold">Select Inspection Test Scenario:</label>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDefectTestPreset('torn_cement');
+                    setDefectInspectionResult(null);
+                  }}
+                  className={`p-2.5 rounded-sm border text-left transition-colors ${
+                    defectTestPreset === 'torn_cement'
+                      ? 'border-status-crit bg-red-950/30 text-text-pri'
+                      : 'border-hairline bg-canvas text-text-sec hover:text-text-pri'
+                  }`}
+                >
+                  <span className="font-bold block text-status-crit">Torn Cement Bag</span>
+                  <span className="text-[10px] text-text-sec">Rupture tear & cement powder plume</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDefectTestPreset('cracked_tile');
+                    setDefectInspectionResult(null);
+                  }}
+                  className={`p-2.5 rounded-sm border text-left transition-colors ${
+                    defectTestPreset === 'cracked_tile'
+                      ? 'border-status-crit bg-red-950/30 text-text-pri'
+                      : 'border-hairline bg-canvas text-text-sec hover:text-text-pri'
+                  }`}
+                >
+                  <span className="font-bold block text-status-crit">Cracked Ceramic Tile</span>
+                  <span className="text-[10px] text-text-sec">Penetrating fracture fissure lines</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDefectTestPreset('intact_box');
+                    setDefectInspectionResult(null);
+                  }}
+                  className={`p-2.5 rounded-sm border text-left transition-colors ${
+                    defectTestPreset === 'intact_box'
+                      ? 'border-status-ok bg-teal-950/30 text-text-pri'
+                      : 'border-hairline bg-canvas text-text-sec hover:text-text-pri'
+                  }`}
+                >
+                  <span className="font-bold block text-status-ok">Intact Corrugated Box</span>
+                  <span className="text-[10px] text-text-sec">Clean surface, undamaged corners</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Run Inspection Action */}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-text-sec text-[11px]">
+                Threshold: <span className="text-amber font-bold">0.95</span> | Auto-alerts to dispatch lane
+              </span>
+              <button
+                type="button"
+                onClick={handleRunDefectInspection}
+                disabled={defectLoading}
+                className="px-4 py-2 bg-amber hover:bg-amber/90 text-black font-semibold rounded-sm transition-colors flex items-center gap-1.5"
+              >
+                {defectLoading ? 'Analyzing Surface Defects...' : 'Execute Two-Stage Inspection →'}
+              </button>
+            </div>
+
+            {/* Results Display */}
+            {defectInspectionResult && (
+              <div className="mt-4 space-y-3 pt-3 border-t border-hairline">
+                <div className="flex items-center justify-between p-2.5 bg-canvas border border-hairline rounded-sm">
+                  <div>
+                    <span className="text-text-sec block text-[10px]">Inspection Summary</span>
+                    <span className="font-bold text-text-pri">
+                      Examined: {defectInspectionResult.totalInstances} | Defective: {defectInspectionResult.defectiveInstances}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-text-sec block text-[10px]">Processing Latency</span>
+                    <span className="font-bold text-amber">{defectInspectionResult.latencyMs.toFixed(1)} ms</span>
+                  </div>
+                </div>
+
+                {defectInspectionResult.alertId && (
+                  <div className="p-2.5 bg-red-950/40 border border-status-crit/40 text-status-crit rounded-sm">
+                    <span className="font-bold block">Automated Dispatch Alert Triggered</span>
+                    <span className="text-[11px]">
+                      Alert Record ID: <span className="font-mono text-text-pri">{defectInspectionResult.alertId}</span> has been logged to the central dispatch queue.
+                    </span>
+                  </div>
+                )}
+
+
+
+                {/* Defect Item Cards */}
+                <div>
+                  <label className="text-text-sec block mb-1 text-[11px] font-bold">Inspected Items & Stage 2 Telemetry:</label>
+                  <div className="space-y-1.5">
+                    {defectInspectionResult.items.map((item, idx) => (
+                      <div
+                        key={idx}
+                        className={`p-2.5 rounded-sm border flex items-center justify-between ${
+                          item.isDefective
+                            ? 'border-status-crit/40 bg-red-950/20'
+                            : item.honestDegradation
+                            ? 'border-amber/40 bg-yellow-950/20'
+                            : 'border-status-ok/30 bg-teal-950/20'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-text-pri">{item.className}</span>
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                item.isDefective
+                                  ? 'bg-red-900/40 text-status-crit border border-status-crit/40'
+                                  : item.honestDegradation
+                                  ? 'bg-yellow-900/40 text-amber border border-amber/40'
+                                  : 'bg-teal-900/40 text-status-ok border border-status-ok/40'
+                              }`}
+                            >
+                              {item.defectType || "INTACT"}
+                            </span>
+                          </div>
+                          {item.honestDegradation && (
+                            <span className="text-[10px] text-amber block mt-0.5">
+                              Honest Degradation: {item.degradationReason || 'Borderline anomaly requires operator confirmation'}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-text-sec block text-[10px]">Confidence</span>
+                          <span
+                            className={`font-bold ${
+                              item.defectConfidence >= 0.95
+                                ? 'text-status-ok'
+                                : item.defectConfidence >= 0.6
+                                ? 'text-amber'
+                                : 'text-text-sec'
+                            }`}
+                          >
+                            {(item.defectConfidence * 100).toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </Modal>
       )}
     </div>

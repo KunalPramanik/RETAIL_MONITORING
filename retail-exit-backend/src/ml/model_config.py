@@ -48,6 +48,8 @@ class VisionModelConfig:
     single_item_classes: Set[int] = field(default_factory=set)
     vehicle_classes: Set[int] = field(default_factory=set)
     pairwise_precision_groups: List[List[str]] = field(default_factory=list)
+    class_metadata: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    class_specific_nms_iou: Dict[str, float] = field(default_factory=dict)
 
     @classmethod
     def load_from_file(cls, path: str = CONFIG_FILE_PATH) -> "VisionModelConfig":
@@ -73,6 +75,9 @@ class VisionModelConfig:
                 for k, v in thresh.items():
                     if hasattr(cfg, k):
                         setattr(cfg, k, float(v) if isinstance(v, (int, float)) else v)
+
+                cfg.class_specific_nms_iou = thresh.get("class_specific_nms_iou", {})
+                cfg.class_metadata = data.get("class_metadata", {})
 
                 # Pairwise groups
                 cfg.pairwise_precision_groups = data.get("pairwise_precision_groups", [])
@@ -159,6 +164,57 @@ class VisionModelConfig:
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
         logger.info("Saved dynamic class config to %s", path)
+
+    def get_class_metadata(self, key: Any) -> Dict[str, Any]:
+        """Looks up class metadata by class ID (int/str) or canonical label."""
+        str_key = str(key).strip().lower()
+        if str(key) in self.class_metadata:
+            return self.class_metadata[str(key)]
+
+        # Check by class labels mapping to class ID
+        for cid, name in self.class_labels.items():
+            name_lower = name.lower()
+            if (name_lower == str_key or str_key in [p.strip() for p in name_lower.split("/")]) and str(cid) in self.class_metadata:
+                return self.class_metadata[str(cid)]
+
+        # Check by class_metadata keys or word tokens
+        for k, meta in self.class_metadata.items():
+            k_lower = str(k).lower()
+            canon = str(meta.get("canonical_label", "")).lower()
+            if (
+                str_key == k_lower
+                or str_key in k_lower.split("_")
+                or str_key in [p.strip() for p in canon.split("/")]
+                or str_key in canon.split()
+            ):
+                return meta
+        # Default fallback
+        return {
+            "canonical_label": str(key),
+            "category_family": "EVERYDAY_ITEMS",
+            "countable": True,
+            "inventory_relevant": True,
+            "environment_only": False,
+            "identity_relevant": False,
+            "is_display_container": False,
+            "box_or_unit_tier": "SINGLE_UNIT",
+            "nms_iou_threshold": self.nms_iou_threshold,
+        }
+
+    def is_inventory_relevant(self, key: Any) -> bool:
+        meta = self.get_class_metadata(key)
+        return bool(meta.get("inventory_relevant", True))
+
+    def is_environment_only(self, key: Any) -> bool:
+        meta = self.get_class_metadata(key)
+        return bool(meta.get("environment_only", False))
+
+    def get_class_nms_iou(self, class_id: Any) -> float:
+        str_id = str(class_id)
+        if str_id in self.class_specific_nms_iou:
+            return float(self.class_specific_nms_iou[str_id])
+        meta = self.get_class_metadata(class_id)
+        return float(meta.get("nms_iou_threshold", self.nms_iou_threshold))
 
 
 # Global singleton instance

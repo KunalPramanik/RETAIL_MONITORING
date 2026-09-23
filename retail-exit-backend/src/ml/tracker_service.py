@@ -7,6 +7,7 @@ Zero database schema changes required.
 """
 
 from typing import Dict, List, Optional, Tuple, Any
+from dataclasses import dataclass, field
 import time
 import math
 import uuid
@@ -198,4 +199,140 @@ class CrossCameraTracker:
 
 # Global singleton
 cross_camera_tracker = CrossCameraTracker()
+
+
+@dataclass
+class SingleCameraTrack:
+    track_id: str
+    class_label: str
+    specific_label: str
+    bbox: List[int]
+    confidence: float
+    first_seen_ts: float
+    last_seen_ts: float
+    hits: int = 1
+    lost_frames: int = 0
+    is_confirmed: bool = False
+    attributes: Dict[str, Any] = field(default_factory=dict)
+
+
+class IntraCameraObjectTracker:
+    """Stable multi-object tracking per camera field of view across consecutive frames.
+
+    Provides:
+    - Stable track IDs for all detected instances (Person, Book, Laptop, Phone, Bottle, etc.)
+    - Occlusion resilience (tolerates missing detections up to max_lost_frames before expiring)
+    - Anti-flicker / duplicate count suppression
+    """
+
+    def __init__(self, iou_threshold: float = 0.25, max_lost_frames: int = 15, min_hits: int = 1):
+        self.iou_threshold = iou_threshold
+        self.max_lost_frames = max_lost_frames
+        self.min_hits = min_hits
+        self._camera_tracks: Dict[str, Dict[str, SingleCameraTrack]] = {}
+        self._next_id: int = 1
+
+    @staticmethod
+    def _calculate_iou(boxA: List[int], boxB: List[int]) -> float:
+        xA = max(boxA[0], boxB[0])
+        yA = max(boxA[1], boxB[1])
+        xB = min(boxA[0] + boxA[2], boxB[0] + boxB[2])
+        yB = min(boxA[1] + boxA[3], boxB[1] + boxB[3])
+        inter = max(0, xB - xA) * max(0, yB - yA)
+        denom = boxA[2] * boxA[3] + boxB[2] * boxB[3] - inter
+        return inter / float(denom) if denom > 0 else 0.0
+
+    def update_tracks(
+        self,
+        camera_id: str,
+        detections: List[Dict[str, Any]],
+        timestamp: Optional[float] = None,
+    ) -> List[Dict[str, Any]]:
+        """Updates and associates detected bounding boxes with stable track IDs."""
+        now = timestamp if timestamp is not None else time.time()
+        tracks = self._camera_tracks.setdefault(camera_id, {})
+
+        unmatched_dets = list(range(len(detections)))
+        matched_track_ids = set()
+
+        for det_idx in list(unmatched_dets):
+            det = detections[det_idx]
+            det_box = det.get("box", det.get("bbox", [0, 0, 0, 0]))
+            det_cls = det.get("type", det.get("class_label", ""))
+            det_spec = det.get("label", det.get("specific_label", det_cls))
+
+            best_tid = None
+            best_iou = self.iou_threshold
+
+            for tid, tr in tracks.items():
+                if tid in matched_track_ids:
+                    continue
+                # Match if class compatible or specific label compatible
+                if tr.class_label != det_cls and tr.specific_label != det_spec:
+                    continue
+
+                iou = self._calculate_iou(det_box, tr.bbox)
+                if iou > best_iou:
+                    best_iou = iou
+                    best_tid = tid
+
+            if best_tid is not None:
+                tr = tracks[best_tid]
+                tr.bbox = det_box
+                tr.confidence = float(det.get("confidence", tr.confidence))
+                tr.last_seen_ts = now
+                tr.hits += 1
+                tr.lost_frames = 0
+                tr.is_confirmed = tr.hits >= self.min_hits
+                matched_track_ids.add(best_tid)
+                unmatched_dets.remove(det_idx)
+                det["track_id"] = tr.track_id
+
+        # Spawn new tracks for remaining unmatched detections
+        for det_idx in unmatched_dets:
+            det = detections[det_idx]
+            new_tid = f"TRK-{self._next_id:04d}"
+            self._next_id += 1
+            det_box = det.get("box", det.get("bbox", [0, 0, 0, 0]))
+            det_cls = det.get("type", det.get("class_label", ""))
+            det_spec = det.get("label", det.get("specific_label", det_cls))
+            conf = float(det.get("confidence", 0.85))
+
+            new_tr = SingleCameraTrack(
+                track_id=new_tid,
+                class_label=det_cls,
+                specific_label=det_spec,
+                bbox=det_box,
+                confidence=conf,
+                first_seen_ts=now,
+                last_seen_ts=now,
+                hits=1,
+                lost_frames=0,
+                is_confirmed=True,
+            )
+            tracks[new_tid] = new_tr
+            matched_track_ids.add(new_tid)
+            det["track_id"] = new_tid
+
+        # Age unmatched tracks (occlusion resilience: retain until max_lost_frames)
+        expired_tids = []
+        for tid, tr in tracks.items():
+            if tid not in matched_track_ids:
+                tr.lost_frames += 1
+                if tr.lost_frames > self.max_lost_frames:
+                    expired_tids.append(tid)
+
+        for tid in expired_tids:
+            del tracks[tid]
+
+        return detections
+
+    def get_active_tracks(self, camera_id: str) -> Dict[str, SingleCameraTrack]:
+        """Returns the dictionary of active (including briefly lost) tracks for the camera."""
+        return self._camera_tracks.get(camera_id, {})
+
+
+
+# Global single-camera multi-object tracker singleton
+intra_camera_tracker = IntraCameraObjectTracker()
 

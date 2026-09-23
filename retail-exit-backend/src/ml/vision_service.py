@@ -27,14 +27,18 @@ logger = logging.getLogger("secops.ml.vision")
 @dataclass
 class DetectedBox:
     bbox: List[int]             # [x, y, w, h] in pixels
-    class_label: str            # 'case_full', 'case_open', 'single_unit', 'person'
+    class_label: str            # 'case_full', 'case_open', 'single_unit', 'person', 'doorway'
     product_id: Optional[str]
     sku_code: Optional[str]
     confidence: float
     pack_size: int = 1
-    track_id: Optional[int] = None
+    track_id: Optional[Any] = None
     exit_vector: Optional[Tuple[float, float]] = None
     specific_label: Optional[str] = None  # Specific object label, e.g. 'Bottle', 'Smartphone', 'Clock / Wall Item'
+    detection_state: str = "CONFIRMED"    # 'CONFIRMED' | 'CANDIDATE' (Section 19)
+    category_family: Optional[str] = None # e.g. 'COMPUTING', 'READING_OFFICE', 'EVERYDAY_ITEMS', 'FIXTURES'
+    is_inventory_relevant: bool = True   # False for structural/environmental objects (Section 11)
+    is_environment_only: bool = False    # True for doorways, wall pictures, clocks, bookshelves
 
 
 @dataclass
@@ -472,7 +476,9 @@ class VisionInferenceService:
                         else item_floor))
                     )
 
-                    indices = cv2.dnn.NMSBoxes(cls_boxes, cls_scores, target_floor, nms_iou)
+                    target_nms_iou = cfg.get_class_nms_iou(target_cid)
+
+                    indices = cv2.dnn.NMSBoxes(cls_boxes, cls_scores, target_floor, target_nms_iou)
                     if len(indices) > 0:
                         for s in np.asarray(indices).flatten():
                             keep_indices.append(cls_indices[int(s)])
@@ -512,6 +518,10 @@ class VisionInferenceService:
                         continue
 
                     specific_label = cfg.class_labels.get(cid, "Retail Item")
+                    meta = cfg.get_class_metadata(cid)
+                    is_inv = meta.get("inventory_relevant", True)
+                    is_env = meta.get("environment_only", False)
+                    cat_fam = meta.get("category_family", "EVERYDAY_ITEMS")
 
                     # Map COCO classes to retail exit & vehicle entrance classes
                     if cid == 0:
@@ -531,13 +541,15 @@ class VisionInferenceService:
                     elif cid in cfg.case_classes:
                         class_label = "case_full"
                         pack_size = default_pack
-                        total_cases += 1
-                        total_units += pack_size
+                        if is_inv:
+                            total_cases += 1
+                            total_units += pack_size
                     elif cid in vehicle_classes:
                         class_label = "vehicle"
                         pack_size = 1
-                        total_singles += 1
-                        total_units += 1
+                        if is_inv:
+                            total_singles += 1
+                            total_units += 1
 
                         # Deep Vehicle Intelligence: Exterior Paint Color + License Plate OCR (ALPR)
                         try:
@@ -553,8 +565,9 @@ class VisionInferenceService:
                     elif cid in cfg.single_item_classes:
                         class_label = "single_unit"
                         pack_size = 1
-                        total_singles += 1
-                        total_units += 1
+                        if is_inv:
+                            total_singles += 1
+                            total_units += 1
                     else:
                         continue
 
@@ -571,6 +584,10 @@ class VisionInferenceService:
                             track_id=track_id_seq,
                             exit_vector=(0.0, 15.0),
                             specific_label=specific_label,
+                            detection_state="CONFIRMED",
+                            category_family=cat_fam,
+                            is_inventory_relevant=is_inv,
+                            is_environment_only=is_env,
                         )
                     )
             else:
@@ -613,16 +630,23 @@ class VisionInferenceService:
 
                 track_id_seq += 1
                 conf_scores.append(so_conf)
+                so_meta = cfg.get_class_metadata(so_lbl)
+                so_is_inv = so_meta.get("inventory_relevant", False if so_lbl in ("doorway", "bookshelf", "wall_picture") else True)
+                so_is_env = so_meta.get("environment_only", True if so_lbl in ("doorway", "bookshelf", "wall_picture") else False)
+                so_cat_fam = so_meta.get("category_family", "FIXTURES" if so_is_env else "EVERYDAY_ITEMS")
+
                 if so_lbl == "doorway":
                     c_label = "doorway"
                 elif so_lbl == "bag":
                     c_label = "single_unit"
-                    total_singles += 1
-                    total_units += 1
+                    if so_is_inv:
+                        total_singles += 1
+                        total_units += 1
                 else:
                     c_label = "single_unit"
-                    total_singles += 1
-                    total_units += 1
+                    if so_is_inv:
+                        total_singles += 1
+                        total_units += 1
 
                 detections.append(
                     DetectedBox(
@@ -635,6 +659,10 @@ class VisionInferenceService:
                         track_id=track_id_seq,
                         exit_vector=(0.0, 0.0),
                         specific_label=so_spec,
+                        detection_state="CONFIRMED",
+                        category_family=so_cat_fam,
+                        is_inventory_relevant=so_is_inv,
+                        is_environment_only=so_is_env,
                     )
                 )
         except Exception as _scene_err:

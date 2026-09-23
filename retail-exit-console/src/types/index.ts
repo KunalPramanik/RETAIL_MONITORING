@@ -220,15 +220,35 @@ export type DetectionBoxType =
   | 'ZONE_OCCUPANCY'
   | 'OPEN_VOCAB'
   | 'DESKTOP_SCREEN'
-  | 'LAPTOP';
+  | 'LAPTOP'
+  | 'BOOKSHELF'
+  | 'BOOK'
+  | 'SMARTPHONE'
+  | 'WALL_PICTURE'
+  | 'CLOCK'
+  | 'BOTTLE'
+  | 'KEYBOARD'
+  | 'MOUSE'
+  | 'CASE';
 
 export interface DetectionBox {
   box: [number, number, number, number]; // [x, y, w, h]
-  type: DetectionBoxType;
+  type: DetectionBoxType | string;
   label: string;
   confidence: number;
-  color: 'green' | 'red' | 'amber' | 'static' | 'cyan' | 'fire' | 'suspicious' | 'ppe_ok' | 'ppe_violation' | 'defect';
+  color: 'green' | 'red' | 'amber' | 'static' | 'cyan' | 'fire' | 'suspicious' | 'ppe_ok' | 'ppe_violation' | 'defect' | string;
   entity?: string;
+  track_id?: string;
+  trackId?: string;
+  detection_state?: 'CANDIDATE' | 'CONFIRMED' | string;
+  identity_status?: 'CONFIRMED_MATCH' | 'NO_MATCH' | 'UNAUTHENTICATED' | string;
+  sub_label?: string;
+  subLabel?: string;
+  employee_id?: string;
+  employeeId?: string;
+  is_inventory_relevant?: boolean;
+  is_environment_only?: boolean;
+  polygon?: [number, number][];
   keypoints?: Record<string, [number, number]>;
   connections?: [string, string][];
 }

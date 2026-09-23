@@ -115,6 +115,8 @@ class UniversalTaxonomyService:
         "chair": (CAT_FIXTURES, "Chair"),
         "shelf": (CAT_FIXTURES, "Storage Shelf"),
         "shelves": (CAT_FIXTURES, "Storage Shelf"),
+        "bookshelf": (CAT_FIXTURES, "Storage Bookshelf"),
+        "bookcase": (CAT_FIXTURES, "Storage Bookshelf"),
         "door": (CAT_FIXTURES, "Door / Access Portal"),
         "doorway": (CAT_FIXTURES, "Door / Access Portal"),
         "clock": (CAT_FIXTURES, "Wall Clock"),

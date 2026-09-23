@@ -54,6 +54,8 @@ from src.ml.universal_taxonomy_service import UniversalTaxonomyService
 from src.engine.frame_analysis_report import FrameAnalysisReportGenerator
 from src.realtime.hub import ws_hub
 from src.ml.model_config import get_vision_config
+from src.ml.tracker_service import intra_camera_tracker
+from src.ml.static_image_service import quarantine_enclosed_visual_content
 
 
 logger = logging.getLogger("secops.camera_worker")
@@ -255,6 +257,14 @@ class CameraIngestionWorker:
             vis_res, obj_bytes = await asyncio.to_thread(
                 VisionInferenceService.analyze_frame_bytes, frame_bytes, catalog_products=catalog
             )
+
+            # Pre-extract display containers (wall pictures, screens, monitors, laptops, phones) for content-in-content quarantine
+            display_containers = []
+            for d in vis_res.detections:
+                label_lower = (d.specific_label or d.class_label or "").lower()
+                if any(k in label_lower for k in ("picture", "poster", "screen", "monitor", "display", "tv", "cell phone", "phone", "smartphone")):
+                    display_containers.append(d.bbox)
+
             face_res, final_bytes, face_boxes = await asyncio.to_thread(
                 FaceRecognitionService.detect_and_match_faces,
                 frame_bytes=obj_bytes or frame_bytes,
@@ -264,6 +274,7 @@ class CameraIngestionWorker:
                 units_detected=vis_res.vision_count,
                 raw_frame_bytes=frame_bytes,
                 camera_id=cam.camera_id,
+                container_boxes=display_containers,
             )
             annotated_bytes = final_bytes or obj_bytes or frame_bytes
 
@@ -286,7 +297,7 @@ class CameraIngestionWorker:
 
             all_person_boxes: List[List[int]] = []
 
-            # 1. Recognized authorized employees (Green)
+            # 1. Recognized authorized employees (Green - Confirmed Match)
             if face_res.decision == "MATCHED" and face_res.matched_employee_id:
                 if face_res.similarity >= conf_floor:
                     for fb in face_boxes:
@@ -303,6 +314,10 @@ class CameraIngestionWorker:
                             "confidence": round(float(face_res.similarity), 4),
                             "color": "green",
                             "entity": face_res.employee_name,
+                            "identity_status": "CONFIRMED_MATCH",
+                            "employee_id": face_res.matched_employee_id,
+                            "sub_label": f"Verified: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
+                            "detection_state": "CONFIRMED",
                         })
 
             # 2. Live unrecognized persons (Cyan / Neutral, NOT alarming Red!)
@@ -323,9 +338,12 @@ class CameraIngestionWorker:
                             "confidence": round(float(conf), 4),
                             "color": "cyan",
                             "entity": "Unknown Person",
+                            "identity_status": "NO_MATCH",
+                            "sub_label": "Match: No confirmed database match",
+                            "detection_state": "CONFIRMED",
                         })
 
-            # 3. Detected items, vehicles, cases, and people from YOLOX
+            # 3. Detected items, vehicles, cases, environmental fixtures, and people from YOLOX
             cfg = get_vision_config()
             for d in vis_res.detections:
                 is_person = d.class_label == "person"
@@ -333,6 +351,11 @@ class CameraIngestionWorker:
                 is_case = "case" in d.class_label.lower()
 
                 if is_person:
+                    # Content-in-content quarantine: suppress person detection if enclosed inside a display/picture container
+                    if display_containers:
+                        if quarantine_enclosed_visual_content([d.bbox], display_containers, containment_threshold=0.65):
+                            continue
+
                     # Only append verified vertical human bodies to body-level trackers (not face crops or horizontal slices)
                     if d.bbox[3] >= 1.25 * d.bbox[2] and d.bbox[3] >= 140:
                         all_person_boxes.append(d.bbox)
@@ -355,6 +378,9 @@ class CameraIngestionWorker:
                             "confidence": round(float(d.confidence), 4),
                             "color": "cyan",
                             "entity": "Unknown Person",
+                            "identity_status": "NO_MATCH",
+                            "sub_label": "Match: No confirmed database match",
+                            "detection_state": "CONFIRMED",
                         })
                     continue
 
@@ -367,10 +393,19 @@ class CameraIngestionWorker:
                     continue
 
                 item_label = d.specific_label or d.class_label
-                is_door = d.class_label == "doorway"
-                is_screen = any(k in item_label.lower() for k in ("screen", "monitor", "display"))
-                is_laptop = "laptop" in item_label.lower()
-                is_watch = "watch" in item_label.lower()
+                item_lower = item_label.lower()
+                is_door = d.class_label == "doorway" or "doorway" in item_lower
+                is_screen = any(k in item_lower for k in ("screen", "monitor", "display", "tv"))
+                is_laptop = "laptop" in item_lower
+                is_watch = "watch" in item_lower
+                is_bookshelf = any(k in item_lower for k in ("bookshelf", "book shelf", "shelving"))
+                is_book = "book" in item_lower and not is_bookshelf
+                is_phone = any(k in item_lower for k in ("phone", "smartphone", "cell phone"))
+                is_wall_picture = any(k in item_lower for k in ("picture", "poster", "wall art", "framed"))
+                is_clock = "clock" in item_lower
+                is_bottle = "bottle" in item_lower
+                is_keyboard = "keyboard" in item_lower
+                is_mouse = "mouse" in item_lower
 
                 if is_veh:
                     b_type = "VEHICLE"
@@ -392,6 +427,38 @@ class CameraIngestionWorker:
                     b_type = "LAPTOP"
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
                     b_color = "cyan"
+                elif is_bookshelf:
+                    b_type = "BOOKSHELF"
+                    b_label = f"Bookshelf ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_book:
+                    b_type = "BOOK"
+                    b_label = f"Book ({int(d.confidence * 100)}%)"
+                    b_color = "amber"
+                elif is_phone:
+                    b_type = "SMARTPHONE"
+                    b_label = f"Smartphone ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_wall_picture:
+                    b_type = "WALL_PICTURE"
+                    b_label = f"Wall Picture ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_clock:
+                    b_type = "CLOCK"
+                    b_label = f"Clock ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_bottle:
+                    b_type = "BOTTLE"
+                    b_label = f"Bottle ({int(d.confidence * 100)}%)"
+                    b_color = "amber"
+                elif is_keyboard:
+                    b_type = "KEYBOARD"
+                    b_label = f"Keyboard ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
+                elif is_mouse:
+                    b_type = "MOUSE"
+                    b_label = f"Mouse ({int(d.confidence * 100)}%)"
+                    b_color = "cyan"
                 else:
                     b_type = "ITEM"
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
@@ -404,6 +471,7 @@ class CameraIngestionWorker:
                     "confidence": round(float(d.confidence), 4),
                     "color": b_color,
                     "entity": item_label,
+                    "detection_state": "CONFIRMED",
                 })
 
             # 4. Real-Time Flame & Fire Hazard Detection
@@ -768,10 +836,16 @@ class CameraIngestionWorker:
                 )
                 active_tripwires = tripwires_res.scalars().all()
                 if overlay_boxes:
+                    # Update intra-camera tracks for stable ID persistence and occlusion resilience
+                    overlay_boxes = intra_camera_tracker.update_tracks(
+                        camera_id=cam.camera_id,
+                        detections=overlay_boxes,
+                        timestamp=now.timestamp(),
+                    )
                     cam_tracks = self._track_history.setdefault(cam.camera_id, {})
                     for b_idx, ob in enumerate(overlay_boxes):
                         if ob["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED", "VEHICLE"):
-                            track_id = f"tr_{b_idx}"
+                            track_id = ob.get("track_id", f"tr_{b_idx}")
                             bx, by, bw, bh = ob["box"]
                             norm_cx = (bx + bw / 2.0) / max(1.0, float(frame_w))
                             norm_cy = (by + bh / 2.0) / max(1.0, float(frame_h))

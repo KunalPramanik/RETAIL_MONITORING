@@ -254,3 +254,97 @@ class StaticImageClassifier:
             skin_ratio=skin_ratio,
         )
 
+    @staticmethod
+    def _extract_xyxy(box_item: Any, box_format: str = "xywh") -> Optional[Tuple[float, float, float, float]]:
+        """Normalizes various box representations to [x1, y1, x2, y2]."""
+        if box_item is None:
+            return None
+        raw = None
+        if isinstance(box_item, dict):
+            raw = box_item.get("box") or box_item.get("bbox")
+        elif hasattr(box_item, "box"):
+            raw = getattr(box_item, "box")
+        elif hasattr(box_item, "bbox"):
+            raw = getattr(box_item, "bbox")
+        elif isinstance(box_item, (list, tuple, np.ndarray)) and len(box_item) >= 4:
+            raw = box_item
+
+        if raw is None or len(raw) < 4:
+            return None
+
+        v0, v1, v2, v3 = float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3])
+        if box_format == "xyxy":
+            return (v0, v1, v2, v3)
+        # Default "xywh": v2 is width, v3 is height
+        return (v0, v1, v0 + v2, v1 + v3)
+
+    @classmethod
+    def is_box_enclosed(
+        cls,
+        candidate_box: Any,
+        container_box: Any,
+        containment_threshold: float = 0.65,
+        candidate_format: str = "xywh",
+        container_format: str = "xywh",
+    ) -> bool:
+        """Determines if candidate_box is geometrically enclosed inside container_box."""
+        c_xy = cls._extract_xyxy(candidate_box, candidate_format)
+        cnt_xy = cls._extract_xyxy(container_box, container_format)
+        if c_xy is None or cnt_xy is None:
+            return False
+
+        c_x1, c_y1, c_x2, c_y2 = c_xy
+        cnt_x1, cnt_y1, cnt_x2, cnt_y2 = cnt_xy
+
+        inter_x1 = max(c_x1, cnt_x1)
+        inter_y1 = max(c_y1, cnt_y1)
+        inter_x2 = min(c_x2, cnt_x2)
+        inter_y2 = min(c_y2, cnt_y2)
+
+        inter_w = max(0.0, inter_x2 - inter_x1)
+        inter_h = max(0.0, inter_y2 - inter_y1)
+        inter_area = inter_w * inter_h
+
+        cand_area = max(1.0, (c_x2 - c_x1) * (c_y2 - c_y1))
+        ratio = inter_area / cand_area
+        return ratio >= containment_threshold
+
+    @classmethod
+    def quarantine_enclosed_visual_content(
+        cls,
+        candidate_boxes: List[Any],
+        container_boxes: List[Any],
+        containment_threshold: float = 0.65,
+        candidate_format: str = "xywh",
+        container_format: str = "xywh",
+    ) -> List[int]:
+        """Identifies candidate boxes (faces/figures) that are geometrically enclosed
+        within display containers (WallPicture, Screen, Smartphone, etc.).
+
+        Returns:
+            List of integer indices in candidate_boxes that are quarantined.
+        """
+        if not candidate_boxes or not container_boxes:
+            return []
+
+        quarantined_indices = []
+        for idx, cand in enumerate(candidate_boxes):
+            for cont in container_boxes:
+                if cls.is_box_enclosed(
+                    candidate_box=cand,
+                    container_box=cont,
+                    containment_threshold=containment_threshold,
+                    candidate_format=candidate_format,
+                    container_format=container_format,
+                ):
+                    quarantined_indices.append(idx)
+                    break
+
+        return quarantined_indices
+
+
+# Expose module-level helper for convenient importing
+quarantine_enclosed_visual_content = StaticImageClassifier.quarantine_enclosed_visual_content
+is_box_enclosed = StaticImageClassifier.is_box_enclosed
+
+

@@ -225,6 +225,7 @@ class FaceRecognitionService:
         raw_frame_bytes: Optional[bytes] = None,
         camera_id: Optional[str] = None,
         filter_static: bool = True,
+        container_boxes: Optional[List[List[int]]] = None,
     ) -> Tuple[FaceMatchResult, Optional[bytes], List[List[int]]]:
         """Detects faces using InsightFace SCRFD and verifies liveness before ArcFace 512-d extraction."""
         nparr = np.frombuffer(frame_bytes, np.uint8)
@@ -305,42 +306,81 @@ class FaceRecognitionService:
                         break
 
                 if not too_close:
-                    # Multi-Factor Anti-Spoofing & Liveness Evaluation
-                    liveness = LivenessDetectionService.evaluate_face(
-                        img=infer_img,
-                        face=face,
-                        camera_id=camera_id,
-                    )
-                    best_liveness_score = max(best_liveness_score, liveness.liveness_score)
+                    face_xywh = [int(x1), int(y1), int(w_face), int(h_face)]
 
-                    if not liveness.is_live:
+                    # Check if face is enclosed within a display container (wall picture, monitor screen, smartphone)
+                    is_enclosed_in_container = False
+                    if container_boxes:
+                        from src.ml.static_image_service import quarantine_enclosed_visual_content
+                        enclosed = quarantine_enclosed_visual_content(
+                            [face_xywh],
+                            container_boxes,
+                            containment_threshold=0.65,
+                            candidate_format="xywh",
+                            container_format="xywh",
+                        )
+                        if enclosed:
+                            is_enclosed_in_container = True
+
+                    if is_enclosed_in_container:
                         any_static_detected = True
                         static_item = {
-                            "box": [int(x1), int(y1), int(w_face), int(h_face)],
-                            "classification": liveness.static_classification or "UNCLASSIFIED_STATIC",
-                            "confidence": liveness.static_confidence if liveness.static_confidence > 0 else det_score,
-                            "friendly_label": liveness.static_friendly_label or f"Static: Image ({int(det_score * 100)}%)",
-                            "liveness_score": liveness.liveness_score,
+                            "box": face_xywh,
+                            "classification": "PERSON_PHOTO",
+                            "confidence": float(det_score),
+                            "friendly_label": "Static: Display Content / Portrait",
+                            "liveness_score": 0.05,
                             "suppressed_alert": True,
                         }
                         static_detections.append(static_item)
-                        lbl = liveness.static_friendly_label or f"Static: Image ({int(det_score * 100)}%)"
+                        lbl = "Static: Display Content / Portrait"
                         color = (140, 140, 140)
+                        quarantined_liveness = LivenessResult(
+                            is_live=False,
+                            liveness_score=0.05,
+                            reasons=["Enclosed within detected display/picture container"],
+                            static_classification="PERSON_PHOTO",
+                            static_confidence=float(det_score),
+                            static_friendly_label=lbl,
+                        )
+                        kept_faces.append((face, lbl, color, quarantined_liveness))
                     else:
-                        # Genuine living human detected
-                        gender = getattr(face, "gender", 1)
-                        gender_str = "MAN" if gender == 1 else "WOMAN"
-                        conf_pct = int(det_score * 100)
-                        lbl = f"LIVE {gender_str} {conf_pct}%"
-                        color = (0, 255, 120) if gender == 1 else (255, 100, 255)
-                        live_person_boxes.append({
-                            "box": [int(x1), int(y1), int(w_face), int(h_face)],
-                            "gender": gender_str,
-                            "confidence": float(det_score),
-                            "label": lbl,
-                        })
+                        # Multi-Factor Anti-Spoofing & Liveness Evaluation
+                        liveness = LivenessDetectionService.evaluate_face(
+                            img=infer_img,
+                            face=face,
+                            camera_id=camera_id,
+                        )
+                        best_liveness_score = max(best_liveness_score, liveness.liveness_score)
 
-                    kept_faces.append((face, lbl, color, liveness))
+                        if not liveness.is_live:
+                            any_static_detected = True
+                            static_item = {
+                                "box": face_xywh,
+                                "classification": liveness.static_classification or "UNCLASSIFIED_STATIC",
+                                "confidence": liveness.static_confidence if liveness.static_confidence > 0 else det_score,
+                                "friendly_label": liveness.static_friendly_label or f"Static: Image ({int(det_score * 100)}%)",
+                                "liveness_score": liveness.liveness_score,
+                                "suppressed_alert": True,
+                            }
+                            static_detections.append(static_item)
+                            lbl = liveness.static_friendly_label or f"Static: Image ({int(det_score * 100)}%)"
+                            color = (140, 140, 140)
+                        else:
+                            # Genuine living human detected
+                            gender = getattr(face, "gender", 1)
+                            gender_str = "MAN" if gender == 1 else "WOMAN"
+                            conf_pct = int(det_score * 100)
+                            lbl = f"LIVE {gender_str} {conf_pct}%"
+                            color = (0, 255, 120) if gender == 1 else (255, 100, 255)
+                            live_person_boxes.append({
+                                "box": face_xywh,
+                                "gender": gender_str,
+                                "confidence": float(det_score),
+                                "label": lbl,
+                            })
+
+                        kept_faces.append((face, lbl, color, liveness))
 
             for (face, def_lbl, col, liveness) in kept_faces:
                 x1, y1, x2, y2 = face.bbox.astype(int).tolist()

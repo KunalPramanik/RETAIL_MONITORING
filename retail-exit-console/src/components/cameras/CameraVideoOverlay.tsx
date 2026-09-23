@@ -164,9 +164,16 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
     }
     displayLabel = displayLabel.trim();
 
-    const tagHeight = 22;
-    const approxCharWidth = 8.0;
-    const tagWidth = Math.max(68, Math.ceil(displayLabel.length * approxCharWidth + 18));
+    // Check for identity sub-label (Section 25 Person Identity Discipline)
+    const subLabel =
+      det.sub_label ||
+      det.subLabel ||
+      (det.type === 'PERSON_UNMATCHED' ? 'Match: No confirmed database match' : undefined);
+
+    const tagHeight = subLabel ? 36 : 22;
+    const approxCharWidth = 7.8;
+    const maxChars = Math.max(displayLabel.length, subLabel ? subLabel.length * 0.8 : 0);
+    const tagWidth = Math.max(68, Math.ceil(maxChars * approxCharWidth + 18));
 
     let candidate = { x: 0, y: 0, w: tagWidth, h: tagHeight };
 
@@ -221,6 +228,7 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
       tagWidth,
       tagHeight,
       displayLabel,
+      subLabel,
       tokens,
       isStatic,
       isDoorway,
@@ -228,7 +236,7 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
     };
   });
 
-  // Aggregated live per-class counts for multi-object counting overlay (Part P.1)
+  // Aggregated live per-class counts for multi-object counting overlay (Part P.1 & V6)
   const classCounts = currentBoxes.reduce<Record<string, number>>((acc, box) => {
     let label = (box.label || box.type)
       .replace(/^Item:\s*/i, '')
@@ -238,13 +246,36 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
     if (label.includes(' / ') && !label.startsWith('Known:')) {
       label = label.replace(/ \/ [^·]+/, '');
     }
-    if (box.type === 'PERSON_UNMATCHED') {
+    const typeUpper = (box.type || '').toUpperCase();
+    if (typeUpper === 'PERSON_UNMATCHED') {
       label = 'Unknown Person';
-    } else if (box.type === 'PERSON_MATCHED' || label.startsWith('Known:')) {
+    } else if (typeUpper === 'PERSON_MATCHED' || label.startsWith('Known:')) {
       label = 'Verified Person';
-    } else if (box.type === 'STATIC_IMAGE') {
+    } else if (typeUpper === 'STATIC_IMAGE') {
       label = 'Static Image';
-    } else if (box.type === 'DEFECT_DAMAGE' || box.color === 'defect' || label.toLowerCase().includes('defect')) {
+    } else if (typeUpper === 'BOOKSHELF' || label.toLowerCase().includes('bookshelf')) {
+      label = 'Bookshelf';
+    } else if (typeUpper === 'BOOK' || label.toLowerCase() === 'book') {
+      label = 'Books';
+    } else if (typeUpper === 'SMARTPHONE' || label.toLowerCase().includes('smartphone') || label.toLowerCase() === 'cell phone') {
+      label = 'Smartphones';
+    } else if (typeUpper === 'LAPTOP' || label.toLowerCase() === 'laptop') {
+      label = 'Laptops';
+    } else if (typeUpper === 'WALL_PICTURE' || label.toLowerCase().includes('wall picture') || label.toLowerCase() === 'picture') {
+      label = 'Wall Pictures';
+    } else if (typeUpper === 'CLOCK' || label.toLowerCase().includes('clock')) {
+      label = 'Clocks';
+    } else if (typeUpper === 'DOORWAY' || label.toLowerCase().includes('doorway')) {
+      label = 'Doorways';
+    } else if (typeUpper === 'BOTTLE' || label.toLowerCase().includes('bottle')) {
+      label = 'Bottles';
+    } else if (typeUpper === 'KEYBOARD' || label.toLowerCase().includes('keyboard')) {
+      label = 'Keyboards';
+    } else if (typeUpper === 'MOUSE' || label.toLowerCase().includes('mouse')) {
+      label = 'Mice';
+    } else if (typeUpper === 'CASE' || label.toLowerCase().startsWith('case:')) {
+      label = 'Cases';
+    } else if (typeUpper === 'DEFECT_DAMAGE' || box.color === 'defect' || label.toLowerCase().includes('defect')) {
       label = `Defect: ${label.replace(/^(defect|damage)[:\s-]*/i, '')}`;
     }
     acc[label] = (acc[label] || 0) + 1;
@@ -260,7 +291,7 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
         className="w-full h-full block"
       >
         {computedItems.map((item, idx) => {
-          const { bx, by, bw, bh, tagX, tagY, tagWidth, tagHeight, displayLabel, tokens, isStatic, isDoorway, det } = item;
+          const { bx, by, bw, bh, tagX, tagY, tagWidth, tagHeight, displayLabel, subLabel, tokens, isStatic, isDoorway, det } = item;
 
           return (
             <g key={`det-box-${idx}-${det.type}`}>
@@ -308,18 +339,48 @@ export const CameraVideoOverlay: React.FC<CameraVideoOverlayProps> = ({
               />
 
               {/* Label Tag Text with Monospace Readout */}
-              <text
-                x={tagX + 8}
-                y={tagY + tagHeight / 2 + 0.5}
-                dominantBaseline="middle"
-                fill={tokens.text}
-                fontSize={11}
-                fontFamily="'IBM Plex Mono', monospace"
-                fontWeight={600}
-                letterSpacing="0.2px"
-              >
-                {displayLabel}
-              </text>
+              {subLabel ? (
+                <>
+                  <text
+                    x={tagX + 8}
+                    y={tagY + 12}
+                    dominantBaseline="middle"
+                    fill={tokens.text}
+                    fontSize={10}
+                    fontFamily="'IBM Plex Mono', monospace"
+                    fontWeight={600}
+                    letterSpacing="0.2px"
+                  >
+                    {displayLabel}
+                  </text>
+                  <text
+                    x={tagX + 8}
+                    y={tagY + 25}
+                    dominantBaseline="middle"
+                    fill={tokens.text}
+                    fontSize={8.5}
+                    fontFamily="'IBM Plex Mono', monospace"
+                    fontWeight={500}
+                    opacity={0.85}
+                    letterSpacing="0.1px"
+                  >
+                    {subLabel}
+                  </text>
+                </>
+              ) : (
+                <text
+                  x={tagX + 8}
+                  y={tagY + tagHeight / 2 + 0.5}
+                  dominantBaseline="middle"
+                  fill={tokens.text}
+                  fontSize={11}
+                  fontFamily="'IBM Plex Mono', monospace"
+                  fontWeight={600}
+                  letterSpacing="0.2px"
+                >
+                  {displayLabel}
+                </text>
+              )}
 
               {/* Skeletal Pose Keypoints & Kinematic Lines */}
               {det.keypoints && det.connections && (

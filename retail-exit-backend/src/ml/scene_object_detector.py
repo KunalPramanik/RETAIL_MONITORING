@@ -482,6 +482,87 @@ class SceneObjectDetector:
         return consolidated
 
     @classmethod
+    def detect_bookshelves(
+        cls,
+        img: np.ndarray,
+        exclude_boxes: Optional[List[List[int]]] = None,
+        min_confidence: float = 0.70,
+    ) -> List[Dict[str, Any]]:
+        """Dynamically detects storage shelving units, book racks, and bookcases.
+
+        Geometric criteria:
+        - Multi-tier parallel horizontal shelf planks with regular vertical spacing.
+        - Outer bounding fixture spans width >= 100px and height >= 100px.
+        """
+        if img is None or img.size == 0:
+            return []
+
+        h_img, w_img = img.shape[:2]
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 30, 100)
+
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 40, minLineLength=60, maxLineGap=25)
+        if lines is None or len(lines) == 0:
+            return []
+
+        horiz_shelves = []
+        for line in lines:
+            x1, y1, x2, y2 = line[0]
+            dx = abs(x2 - x1)
+            dy = abs(y2 - y1)
+            if dy <= 8 and dx >= 70:
+                horiz_shelves.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
+
+        if len(horiz_shelves) < 2:
+            return []
+
+        # Group horizontal shelves by alignment
+        shelves_sorted = sorted(horiz_shelves, key=lambda s: s[1])
+        shelf_groups: List[List[Tuple[int, int, int, int]]] = []
+
+        for s in shelves_sorted:
+            matched_group = False
+            for group in shelf_groups:
+                g_x1 = min(item[0] for item in group)
+                g_x2 = max(item[2] for item in group)
+                overlap_x = max(0, min(s[2], g_x2) - max(s[0], g_x1))
+                if overlap_x >= 0.45 * (s[2] - s[0]):
+                    group.append(s)
+                    matched_group = True
+                    break
+            if not matched_group:
+                shelf_groups.append([s])
+
+        bookshelves = []
+        for group in shelf_groups:
+            if len(group) >= 2:
+                min_x = max(0, min(item[0] for item in group) - 10)
+                max_x = min(w_img - 1, max(item[2] for item in group) + 10)
+                min_y = max(0, min(item[1] for item in group) - 20)
+                max_y = min(h_img - 1, max(item[3] for item in group) + 30)
+
+                sh_w = max_x - min_x
+                sh_h = max_y - min_y
+
+                if sh_w >= 100 and sh_h >= 100:
+                    cand_box = [int(min_x), int(min_y), int(sh_w), int(sh_h)]
+                    if exclude_boxes and any(cls.calculate_iou(cand_box, eb) > 0.60 for eb in exclude_boxes):
+                        continue
+
+                    bookshelves.append({
+                        "bbox": cand_box,
+                        "class_label": "bookshelf",
+                        "specific_label": "Storage Shelf / Bookcase",
+                        "confidence": 0.91,
+                        "color": "cyan",
+                        "type": "FIXTURES",
+                    })
+                    break
+
+        return bookshelves[:1]
+
+    @classmethod
     def detect_scene_objects(
         cls,
         img: np.ndarray,
@@ -489,7 +570,7 @@ class SceneObjectDetector:
         wrist_keypoints: Optional[Dict[str, Any]] = None,
         person_boxes: Optional[List[List[int]]] = None,
     ) -> List[Dict[str, Any]]:
-        """Unified dynamic detector for doorways, desktop screens, wrist watches, hanging bags, and umbrellas."""
+        """Unified dynamic detector for doorways, desktop screens, wrist watches, hanging bags, umbrellas, and bookshelves."""
         all_excluded = list(exclude_boxes or [])
         doors = cls.detect_doorways(img, exclude_boxes=all_excluded)
         for d in doors:
@@ -505,4 +586,9 @@ class SceneObjectDetector:
             all_excluded.append(w["bbox"])
 
         gear = cls.detect_hanging_gear_and_bags(img, exclude_boxes=all_excluded)
-        return doors + screens + watches + gear
+        for g in gear:
+            all_excluded.append(g["bbox"])
+
+        shelves = cls.detect_bookshelves(img, exclude_boxes=all_excluded)
+        return doors + screens + watches + gear + shelves
+

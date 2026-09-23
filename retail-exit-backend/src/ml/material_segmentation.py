@@ -455,7 +455,7 @@ class MaterialSegmentationService:
         calibration_revision: str = "CAL-STD-2026",
         sensor_quality_score: float = 0.98,
     ) -> Dict[str, Any]:
-        """Calculates estimated material quantity from usable weight delta per Section 6.3.
+        """Calculates estimated material quantity from usable weight delta.
         Formula: estimated_quantity = usable_weight_delta / approved_nominal_unit_weight.
         Exposes complete arithmetic, tolerance bands, tare, and sensor quality.
         """
@@ -507,7 +507,7 @@ class MaterialSegmentationService:
         is_verified_partial: bool = False,
         partial_units: Optional[int] = None,
     ) -> Dict[str, Any]:
-        """Resolves package objects into exact unit quantities per Section 6.4.
+        """Resolves package objects into exact unit quantities.
         If package_type == SINGLE_UNIT: unit_quantity = 1
         If package_type == FULL_CASE: unit_quantity = approved_pack_definition.units_per_case
         If package_type == PARTIAL_CASE: verified partial quantity or REVIEW_REQUIRED.
@@ -541,7 +541,7 @@ class MaterialSegmentationService:
         }
 
 
-# Module-level aliases and functions for Section 6 compliance
+# Module-level convenience functions and aliases
 
 MaterialSegmentationEngine = MaterialSegmentationService
 
@@ -554,7 +554,7 @@ def estimate_quantity_from_weight(
     calibration_revision: str = "CAL-STD-2026",
     sensor_quality_score: float = 0.98,
 ) -> Dict[str, Any]:
-    """Calculates estimated material quantity from usable weight delta per Section 6.3.
+    """Calculates estimated material quantity from usable weight delta.
     Formula: usable_weight_delta / approved_nominal_unit_weight
     Exposes complete arithmetic, tare, tolerance, and confidence.
     """
@@ -620,7 +620,7 @@ def resolve_case_to_units(
     is_verified_partial: bool = False,
     partial_units: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Resolves package objects into exact unit quantities per Section 6.4."""
+    """Resolves package objects into exact unit quantities."""
     pkg = package_type.lower()
     if pkg in ("single_unit", "loose_unit", "piece", "loose"):
         return {
@@ -682,7 +682,7 @@ class DenseStackCountingEngine:
         min_confidence: float = 0.50,
         max_iou_threshold: float = 0.65,
     ) -> Dict[str, Any]:
-        """Calculates stack count or honestly degrades to uncertainty per Section 6.2."""
+        """Calculates stack count or honestly degrades to uncertainty."""
         if not boxes:
             return {
                 "count": 0,

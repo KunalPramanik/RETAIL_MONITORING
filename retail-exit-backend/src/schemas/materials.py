@@ -1,4 +1,4 @@
-"""Pydantic Schemas for Dynamic Material Catalog & Versioned Package Definitions per Section 5."""
+"""Pydantic Schemas for Dynamic Material Catalog & Versioned Package Definitions."""
 
 from typing import Optional, Dict, Any, List
 from datetime import datetime

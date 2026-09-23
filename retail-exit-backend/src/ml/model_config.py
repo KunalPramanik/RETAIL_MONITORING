@@ -18,7 +18,7 @@ CONFIG_FILE_PATH = os.path.join(os.path.dirname(__file__), "classes_config.json"
 
 @dataclass
 class VisionModelConfig:
-    # ── Confidence Floors & Gating (Section 0.5 Two-Tier Standards) ──
+    # ── Confidence Floors & Gating (Two-Tier Standards) ──
     confidence_floor: float = 0.50  # Hard floor: only detections >= 50% reach DB verdicts & live UI overlays
     confirmed_entity_standard: float = 0.90  # Tier 2: >= 90% threshold for confirmed identity, verified presence, high-severity alerts
     fire_confirmed_threshold: float = 0.90   # >= 90%: Confirmed fire hazard alarm dispatch

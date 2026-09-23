@@ -1,8 +1,8 @@
-"""Two-Stage Material Defect & Damage Detection Engine (Part W.3)
+"""Two-Stage Material Defect & Damage Detection Engine
 
-Stage 1: Reuses Part U's instance segmentation to isolate object masks and bounding boxes.
+Stage 1: Reuses instance segmentation to isolate object masks and bounding boxes.
 Stage 2: Classifies surface defects (torn bags, dented cartons, cracked tiles/bricks, bent rebar, broken seals).
-Enforces the 95% accuracy standard (Part N.10.5.1) with honest degradation and automated alert creation.
+Enforces the 95% accuracy confidence threshold with honest degradation and automated alert creation.
 Zero new database tables: results store in existing VisionDetection and Alert records.
 """
 
@@ -62,7 +62,7 @@ class BatchDefectInspectionResult:
 class MaterialDefectService:
     """Two-stage defect and damage detection service."""
 
-    CONFIDENCE_THRESHOLD_CONFIRMED = 0.95  # Strict 95% standard per Part N.10.5.1
+    CONFIDENCE_THRESHOLD_CONFIRMED = 0.95  # Strict 95% threshold for confirmed defect detection
     CONFIDENCE_THRESHOLD_BORDERLINE = 0.60  # Honest degradation window [0.60, 0.95)
 
     @classmethod

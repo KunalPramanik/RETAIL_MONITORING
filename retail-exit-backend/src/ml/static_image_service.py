@@ -157,7 +157,7 @@ class StaticImageClassifier:
             scores["POSTER_OR_SIGNAGE"] = 0.10
 
         # Disambiguate Best Classification
-        best_class = max(scores, key=scores.get)
+        best_class = max(scores, key=lambda k: scores[k])
         best_conf = scores[best_class]
 
         # Minimum confidence threshold for specific classification

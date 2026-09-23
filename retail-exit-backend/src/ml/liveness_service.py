@@ -21,18 +21,18 @@ from src.ml.model_config import get_vision_config
 @dataclass
 class LivenessResult:
     is_live: bool
-    liveness_score: float              # 0.0 (Definite Spoof) to 1.0 (Definite Live)
-    spoof_type: Optional[str]          # 'STATIC_PHOTO' | 'WALL_PORTRAIT' | 'SCREEN_SPOOF' | 'PRINT_ATTACK' | None
-    depth_score: float                 # 3D facial relief score
-    z_std: float                       # 3D landmark Z-depth standard deviation (mm)
-    z_span: float                      # 3D landmark Z-depth range (mm)
-    texture_score: float               # Natural skin gradient vs flat/halftone texture
-    chroma_score: float                # Subsurface skin chrominance consistency
-    motion_score: float                # Temporal micro-displacement across frames
-    blink_detected: bool               # Whether an active blink cycle was detected
-    ear: float                         # Current Eye Aspect Ratio
-    confidence: float                  # Model detection confidence
-    reason: str                        # Forensic diagnostic rationale
+    liveness_score: float = 0.0          # 0.0 (Definite Spoof) to 1.0 (Definite Live)
+    spoof_type: Optional[str] = None     # 'STATIC_PHOTO' | 'WALL_PORTRAIT' | 'SCREEN_SPOOF' | 'PRINT_ATTACK' | None
+    depth_score: float = 0.0             # 3D facial relief score
+    z_std: float = 0.0                   # 3D landmark Z-depth standard deviation (mm)
+    z_span: float = 0.0                  # 3D landmark Z-depth range (mm)
+    texture_score: float = 0.0           # Natural skin gradient vs flat/halftone texture
+    chroma_score: float = 0.0            # Subsurface skin chrominance consistency
+    motion_score: float = 0.0            # Temporal micro-displacement across frames
+    blink_detected: bool = False         # Whether an active blink cycle was detected
+    ear: float = 0.0                     # Current Eye Aspect Ratio
+    confidence: float = 0.0              # Model detection confidence
+    reason: str = ""                     # Forensic diagnostic rationale
     static_classification: Optional[str] = None
     static_confidence: float = 0.0
     static_friendly_label: Optional[str] = None

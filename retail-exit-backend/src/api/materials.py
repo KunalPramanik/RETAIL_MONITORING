@@ -1,7 +1,7 @@
 """Dynamic Material Catalog & Packaging Lifecycle REST API
 
 Governs physical material attributes, packaging definitions, and the 8-stage
-onboarding lifecycle per Section 5 of the Master Specification.
+onboarding lifecycle.
 Zero hardcoding: all operational items are persisted dynamically in the database.
 """
 
@@ -139,7 +139,7 @@ async def create_material(
     body: MaterialCreate,
     session: AsyncSession = Depends(get_db),
 ):
-    """Dynamically creates a new material class record per Section 5.1 & Rule 2.2."""
+    """Dynamically creates a new material class record."""
     import uuid
     sku = (body.skuCode or f"SKU-{uuid.uuid4().hex[:8]}").strip().upper()
     
@@ -323,7 +323,7 @@ async def transition_lifecycle(
     session: AsyncSession = Depends(get_db),
     _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
-    """Transitions a material through the 8-stage lifecycle per Section 5.3:
+    """Transitions a material through the 8-stage lifecycle:
     DRAFT -> DATA_COLLECTION -> ANNOTATION -> TRAINING -> EVALUATION -> SHADOW -> APPROVED -> ACTIVE.
     """
     target = body.targetStatus.strip().upper()
@@ -343,7 +343,7 @@ async def transition_lifecycle(
     if current == target:
         return _serialize_material(material)
 
-    # State machine transition rules per Section 5.3
+    # State machine transition rules
     allowed_transitions = {
         "DRAFT": {"DATA_COLLECTION"},
         "DATA_COLLECTION": {"ANNOTATION", "DRAFT"},
@@ -396,7 +396,7 @@ async def add_package_definition(
     session: AsyncSession = Depends(get_db),
     _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
-    """Adds a new versioned packaging or bundle specification per Section 5.2."""
+    """Adds a new versioned packaging or bundle specification."""
     stmt = select(Material).where(Material.material_id == material_id)
     res = await session.execute(stmt)
     material = res.scalar_one_or_none()
@@ -471,7 +471,7 @@ async def inspect_material_defects(
     body: DefectInspectionRequest,
     session: AsyncSession = Depends(get_db),
 ):
-    """Executes two-stage defect and damage detection on an image per Part W.3."""
+    """Executes two-stage defect and damage detection on an image."""
     import base64
     import cv2
     import numpy as np
@@ -512,7 +512,7 @@ async def inspect_material_defects(
             severity=severity,
             delta_units=result.defective_instances,
             status="OPEN",
-            resolution_note=f"Automated Part W Defect Detection: {result.defective_instances} damaged instances identified with >= {int(body.minConfidence * 100)}% confidence.",
+            resolution_note=f"Automated Defect Detection: {result.defective_instances} damaged instances identified with >= {int(body.minConfidence * 100)}% confidence.",
             created_at=now,
         )
         session.add(alert)

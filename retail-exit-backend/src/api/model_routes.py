@@ -1,10 +1,10 @@
 """Model Registry, Shadow Deployment, and Retraining API Endpoints
 
 Provides REST APIs for:
-1. Model Registry: listing, registration, Step 5 promotion gates, and safe rollback (Part E.6).
+1. Model Registry: listing, registration, promotion gates, and safe rollback.
 2. Shadow Deployment: candidate model routing and real-time comparison telemetry.
-3. Dynamic Class Configuration: zero-code class registration (Step 2).
-4. Continuous Active Learning: candidate review and accuracy drift monitoring (Step 6).
+3. Dynamic Class Configuration: dynamic class registration.
+4. Continuous Active Learning: candidate review and accuracy drift monitoring.
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query, Body
@@ -126,7 +126,7 @@ async def promote_model(
     req: PromoteModelRequest,
     _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
-    """Promotes a candidate model to production, enforcing Step 5 accuracy gates."""
+    """Promotes a candidate model to production, enforcing quality and accuracy gates."""
     registry = ModelRegistry.get_instance()
     success, message = registry.promote_to_production(req.model_version, bypass_gate=req.bypass_gate)
     if not success:
@@ -154,7 +154,7 @@ async def configure_shadow_mode(
     req: ShadowConfigRequest,
     _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
-    """Enables or disables candidate model shadow deployment (Part E.6)."""
+    """Enables or disables candidate model shadow deployment."""
     registry = ModelRegistry.get_instance()
     success, message = registry.set_shadow_mode(req.model_version, traffic_pct=req.traffic_pct)
     if not success:
@@ -310,7 +310,7 @@ async def evaluate_checkpoint(
     req: EvaluateCheckpointRequest,
     _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
-    """Evaluates an ONNX checkpoint file directly against Step 5 numeric promotion criteria."""
+    """Evaluates an ONNX checkpoint file directly against numeric promotion criteria."""
     if not os.path.exists(req.weights_path):
         raise HTTPException(status_code=404, detail=f"Checkpoint file not found: {req.weights_path}")
 

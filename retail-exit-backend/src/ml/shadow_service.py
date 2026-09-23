@@ -1,4 +1,4 @@
-"""Shadow Deployment Service (Part E.6 & Step 4.4 / Step 7.6)
+"""Shadow Deployment Service
 
 Runs candidate vision models in parallel shadow mode on a configurable percentage
 of live camera frames. Logs candidate detections side-by-side with production

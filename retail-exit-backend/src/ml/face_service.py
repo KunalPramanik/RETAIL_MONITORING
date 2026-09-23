@@ -338,7 +338,9 @@ class FaceRecognitionService:
                         quarantined_liveness = LivenessResult(
                             is_live=False,
                             liveness_score=0.05,
-                            reasons=["Enclosed within detected display/picture container"],
+                            spoof_type="STATIC_PHOTO",
+                            confidence=float(det_score),
+                            reason="Enclosed within detected display/picture container",
                             static_classification="PERSON_PHOTO",
                             static_confidence=float(det_score),
                             static_friendly_label=lbl,

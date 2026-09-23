@@ -1,4 +1,4 @@
-"""Dataset Management & Split Validation (Step 3)
+"""Dataset Management & Split Validation
 
 Handles standard YOLO / COCO dataset splits (70/15/15), annotation validation,
 empty scene test set segregation, and label consistency audits.

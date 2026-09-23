@@ -1,7 +1,7 @@
 """Model Registry & Checkpoint Lifecycle Management
 
 Manages versioned vision model checkpoints, promotion gates, safe rollbacks,
-and shadow-mode configuration per Part E.6 and Step 5 of the Retraining Program.
+and shadow-mode candidate deployment verification.
 Zero hardcoding: all version history, provenance, and evaluation metrics are
 persisted in registry metadata.
 """
@@ -20,7 +20,7 @@ CHECKPOINTS_DIR = os.path.join(REGISTRY_DIR, "checkpoints")
 REGISTRY_METADATA_FILE = os.path.join(REGISTRY_DIR, "registry.json")
 
 
-# ── Step 5 Numeric Promotion Thresholds ──
+# ── Numeric Promotion Thresholds ──
 GATE_MIN_MAP_50: float = 0.75
 GATE_MIN_CASE_RECALL: float = 0.90
 GATE_MAX_EMPTY_FP_RATE: float = 0.05
@@ -202,7 +202,7 @@ class ModelRegistry:
         return mv
 
     def check_promotion_gates(self, metrics: ModelMetrics) -> Tuple[bool, List[str]]:
-        """Evaluates whether candidate model satisfies Step 5 numeric promotion gates.
+        """Evaluates whether candidate model satisfies numeric promotion gates.
 
         Gates:
         1. mAP@0.5 >= 0.75
@@ -227,7 +227,7 @@ class ModelRegistry:
         return passes, failures
 
     def promote_to_production(self, model_version: str, bypass_gate: bool = False) -> Tuple[bool, str]:
-        """Promotes a candidate model to active production status if it satisfies Step 5 gates."""
+        """Promotes a candidate model to active production status if it satisfies promotion gates."""
         target = self.models.get(model_version)
         if not target:
             return False, f"Model version '{model_version}' not found in registry."
@@ -240,7 +240,7 @@ class ModelRegistry:
             if not passes:
                 fail_summary = " | ".join(failures)
                 logger.warning("Promotion rejected for %s: %s", model_version, fail_summary)
-                return False, f"Promotion rejected due to failing Step 5 accuracy gates: {fail_summary}"
+                return False, f"Promotion rejected due to failing accuracy gates: {fail_summary}"
 
         # Archive old production model
         old_prod = self.models.get(self.active_production_version)
@@ -280,7 +280,7 @@ class ModelRegistry:
         return True, f"Production rolled back to {model_version}."
 
     def set_shadow_mode(self, model_version: Optional[str], traffic_pct: float = 20.0) -> Tuple[bool, str]:
-        """Enables or disables shadow deployment for candidate verification (Part E.6)."""
+        """Enables or disables shadow deployment for candidate verification."""
         if not model_version:
             if self.active_shadow_version:
                 old_shadow = self.models.get(self.active_shadow_version)

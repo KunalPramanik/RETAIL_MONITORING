@@ -29,7 +29,7 @@ class VerdictResult:
 class VerdictEngine:
     """Evaluates consensus unit counts against declared invoice manifests.
     
-    Implements pure, deterministic rules function per Section 8.3 of Master Specification.
+    Implements pure, deterministic rules function for multi-modal exit and dispatch verdicts.
     """
 
     @classmethod
@@ -50,7 +50,7 @@ class VerdictEngine:
         unknown_material: bool = False,
         missing_channel: bool = False,
         low_ocr_confidence: bool = False,
-        # Master Prompt aliases:
+        # Backward-compatible parameter aliases:
         is_live_source_verified: Optional[bool] = None,
         has_occluded_stack: Optional[bool] = None,
         has_unknown_material: Optional[bool] = None,
@@ -68,7 +68,7 @@ class VerdictEngine:
         if ocr_confidence is not None and min_ocr_confidence is not None:
             low_ocr_confidence = (ocr_confidence < min_ocr_confidence)
 
-        # 1. Honest Uncertainty Gates per Section 2.3 & 8.3
+        # 1. Honest Uncertainty Verification Gates
         if not live_source_verified:
             return VerdictResult(
                 verdict="UNVERIFIED",

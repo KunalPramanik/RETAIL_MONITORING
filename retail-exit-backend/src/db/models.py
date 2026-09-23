@@ -1,6 +1,6 @@
 """Database ORM Models Module
 
-Implements the complete relational schema defined in Section 5 & Part C of the SEC-OPS Master Specification.
+Implements the complete relational schema for SEC-OPS surveillance, exit verification, and industrial monitoring.
 Designed for PostgreSQL production deployment while supporting SQLite for rapid local testing.
 """
 
@@ -110,7 +110,7 @@ class Product(Base):
 
 
 class Material(Base):
-    """Dynamic Material Catalog entity per Section 5.1 & 5.3 of Master Prompt.
+    """Dynamic Material Catalog entity.
     
     Supports dynamic onboarding, physical dimensions, nominal unit weights,
     tolerances, and 8-stage lifecycle without any hardcoded inventory classes.
@@ -166,7 +166,7 @@ class Material(Base):
 
 
 class PackageDefinition(Base):
-    """Versioned case, pack, or bundle packaging definition per Section 5.2.
+    """Versioned case, pack, or bundle packaging definition.
     
     Prevents mutating historical pack-size values and preserves arithmetic auditability.
     """
@@ -235,7 +235,7 @@ class Lane(Base):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 2. Camera Fleet Management Models (Part C)
+# 2. Camera Fleet Management Models
 # ─────────────────────────────────────────────────────────────────────────────
 
 class Camera(Base):

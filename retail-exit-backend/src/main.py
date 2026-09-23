@@ -37,7 +37,7 @@ _is_shutting_down = False
 
 
 async def reconcile_duplicate_cameras(session: AsyncSession) -> int:
-    """Startup reconciliation for any pre-existing duplicates (Part O.2).
+    """Startup reconciliation for any pre-existing duplicate camera endpoints.
     
     Detects existing active camera rows sharing identical normalized endpoints,
     retains the primary (earliest added_at), soft-deletes duplicates (removed_at = now()),
@@ -112,10 +112,10 @@ async def lifespan(app: FastAPI):
     logger.info("Initializing SEC-OPS backend services and database schema...")
     await init_db()
 
-    # Initialize baseline configuration (Store, ThresholdConfig) with 0 mock rows per Part I policy
+    # Initialize baseline configuration (Store, ThresholdConfig) with clean operational defaults
     async with AsyncSessionLocal() as session:
         await init_baseline_configuration(session)
-        # Part O.2: Reconcile duplicate cameras on startup
+        # Reconcile duplicate camera endpoints on startup
         await reconcile_duplicate_cameras(session)
     logger.info("Database schema initialized with clean baseline configuration.")
 

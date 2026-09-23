@@ -2,7 +2,7 @@
 
 Ensures standard store and threshold_config baseline exists without any seed
 or mock data for products, employees, cameras, lanes, or events.
-Strictly adheres to Part I Zero-Hardcode policy.
+Guarantees a completely dynamic operational data architecture.
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession

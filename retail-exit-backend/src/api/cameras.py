@@ -919,7 +919,7 @@ async def test_camera_connection(
 
     target_endpoint = stream_url or (f"rtsp://{ip}:554{rtsp}" if not rtsp.startswith(("http://", "https://", "rtsp://")) else f"{ip}{rtsp}")
 
-    # Staged diagnostic error message (Part O.2.1: specific, actionable, zero webcam testing shortcuts)
+    # Diagnostic error messaging: provides specific, actionable feedback for connection failures
     err_msg = diag_info.get("error_message")
     if not err_msg:
         if ip in ("0", "1", "2") or (stream_url and str(stream_url).strip() in ("0", "1", "2")):

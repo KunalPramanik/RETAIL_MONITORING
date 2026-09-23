@@ -1,4 +1,4 @@
-"""Continuous Improvement & Active Learning Loop (Step 6)
+"""Continuous Improvement & Active Learning Loop
 
 Captures sub-floor near-threshold detections (0.10 - 0.49) and operator-flagged
 frames into an active learning dataset queue. Provides curation, labeling,

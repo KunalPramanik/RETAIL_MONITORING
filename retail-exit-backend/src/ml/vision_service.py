@@ -35,9 +35,9 @@ class DetectedBox:
     track_id: Optional[Any] = None
     exit_vector: Optional[Tuple[float, float]] = None
     specific_label: Optional[str] = None  # Specific object label, e.g. 'Bottle', 'Smartphone', 'Clock / Wall Item'
-    detection_state: str = "CONFIRMED"    # 'CONFIRMED' | 'CANDIDATE' (Section 19)
+    detection_state: str = "CONFIRMED"    # 'CONFIRMED' | 'CANDIDATE'
     category_family: Optional[str] = None # e.g. 'COMPUTING', 'READING_OFFICE', 'EVERYDAY_ITEMS', 'FIXTURES'
-    is_inventory_relevant: bool = True   # False for structural/environmental objects (Section 11)
+    is_inventory_relevant: bool = True   # False for structural/environmental objects
     is_environment_only: bool = False    # True for doorways, wall pictures, clocks, bookshelves
 
 
@@ -362,6 +362,7 @@ class VisionInferenceService:
         total_units = 0
         track_id_seq = 300
         is_ir = False
+        cfg = get_vision_config()
 
         try:
             session = cls.get_session()
@@ -375,7 +376,6 @@ class VisionInferenceService:
             cls_probs = decoded[:, 5:]
             scores = obj_conf * cls_probs
 
-            cfg = get_vision_config()
             conf_floor = cfg.confidence_floor
             nms_iou = cfg.nms_iou_threshold
             person_floor = cfg.person_conf_threshold
@@ -488,7 +488,7 @@ class VisionInferenceService:
                     cid = int(cand_cls[idx])
                     conf = round(float(nms_scores[idx]), 3)
 
-                    # Gated threshold enforcement per class category (Part N.0 & N.1: hard confidence floor)
+                    # Gated threshold enforcement per class category: hard confidence floor
                     target_floor = (
                         person_floor if cid == 0
                         else (case_floor if cid in cfg.case_classes
@@ -591,7 +591,7 @@ class VisionInferenceService:
                         )
                     )
             else:
-                # Part N.6 — Zero-detection diagnostic: log max per-class scores so operators
+                # Zero-detection diagnostic: log max per-class scores so operators
                 # can see if the frame had near-threshold detections without silent suppression.
                 all_valid_cids = [0] + list(cfg.case_classes) + list(cfg.single_item_classes) + list(vehicle_classes)
                 diag_peaks = {}
@@ -730,14 +730,14 @@ class VisionInferenceService:
             cv2.LINE_AA,
         )
 
-        # Part E.6 Shadow deployment frame evaluation (strictly non-interfering)
+        # Shadow deployment frame evaluation (strictly non-interfering)
         try:
             from src.ml.shadow_service import shadow_service
             shadow_service.evaluate_shadow_frame(img, [asdict(d) for d in detections])
         except Exception as _sh_err:
             logger.debug("Shadow evaluation error: %s", _sh_err)
 
-        # Step 6 Active Learning: track confidence & capture sub-floor proposals
+        # Continuous Active Learning: track confidence & capture sub-floor proposals
         try:
             from src.ml.active_learning import active_learning_service
             for c in conf_scores:

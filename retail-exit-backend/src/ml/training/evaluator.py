@@ -1,4 +1,4 @@
-"""Model Accuracy Evaluator & Promotion Gate Validator (Step 5)
+"""Model Accuracy Evaluator & Promotion Gate Validator
 
 Calculates the exact, published-benchmark numeric targets required before
 any fine-tuned checkpoint can be promoted to production:
@@ -240,7 +240,7 @@ class AccuracyEvaluator:
         empty_scene_predictions: List[List[Dict[str, Any]]],
         avg_latency_ms: float = 16.5,
     ) -> ModelMetrics:
-        """Executes full evaluation and returns complete Step 5 ModelMetrics."""
+        """Executes full evaluation and returns complete ModelMetrics."""
         map_50 = cls.calculate_map50(ground_truths, predictions)
         recall = cls.calculate_case_unit_recall(ground_truths, predictions)
         empty_fp = cls.calculate_empty_scene_fp_rate(empty_scene_predictions)

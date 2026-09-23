@@ -1,10 +1,10 @@
-"""Automated Vision Model Fine-Tuning & Retraining Engine (Step 4 & 5)
+"""Automated Vision Model Fine-Tuning & Retraining Engine
 
 Orchestrates the complete model retraining and transfer learning lifecycle:
 1. Curates verified active learning samples and store catalog datasets.
 2. Executes fine-tuning iterations with learning rate decay and loss tracking.
 3. Produces versioned ONNX model checkpoints in src/ml/weights/checkpoints/.
-4. Enforces Step 5 numeric promotion gates (mAP@0.5 >= 0.75, recall >= 0.90, FP < 0.05).
+4. Enforces numeric promotion gates (mAP@0.5 >= 0.75, recall >= 0.90, FP < 0.05).
 5. Automatically registers candidate checkpoints in ModelRegistry for shadow or production deployment.
 """
 
@@ -106,7 +106,7 @@ class FineTuningService:
         auto_shadow: bool = True,
         shadow_traffic_pct: float = 25.0,
     ) -> TrainingProgress:
-        """Executes automated fine-tuning, generates a versioned checkpoint, and runs Step 5 evaluation."""
+        """Executes automated fine-tuning, generates a versioned checkpoint, and runs evaluation."""
         if self._current_job is not None and self._current_job.status in ("PREPARING", "TRAINING", "EVALUATING"):
             raise RuntimeError("Another fine-tuning job is already running.")
 
@@ -177,7 +177,7 @@ class FineTuningService:
             # 3. Checkpoint Serialization & Model Versioning
             self._current_job.status = "EVALUATING"
             self._current_job.progress_pct = 85.0
-            self._current_job.message = "Exporting fine-tuned weights and validating Step 5 promotion gates..."
+            self._current_job.message = "Exporting fine-tuned weights and validating promotion gates..."
 
             registry = ModelRegistry.get_instance()
             existing_versions = [int(v.split("-v")[-1].replace(".", "")[:2]) for v in registry.models.keys() if "-v" in v and v.split("-v")[-1].replace(".", "")[:2].isdigit()]
@@ -196,7 +196,7 @@ class FineTuningService:
                 with open(checkpoint_path, "wb") as f:
                     f.write(b"ONNX_CHECKPOINT_PLACEHOLDER")
 
-            # 4. Step 5 Numeric Accuracy Evaluation
+            # 4. Numeric Accuracy Evaluation
             # Synthesize realistic validation ground truths & predictions reflecting fine-tuning improvements
             gt_suite, pred_suite, empty_preds, pairs = self._synthesize_evaluation_suite()
 
@@ -263,7 +263,7 @@ class FineTuningService:
 
     @staticmethod
     def _synthesize_evaluation_suite() -> Tuple[List[Any], List[Any], List[Any], List[Any]]:
-        """Generates representative evaluation datasets to test against Step 5 criteria."""
+        """Generates representative evaluation datasets to test against promotion criteria."""
         gt_suite = [
             [{"bbox": [100, 100, 150, 120], "class_label": "case_full"},
              {"bbox": [300, 150, 80, 90], "class_label": "single_unit"}],

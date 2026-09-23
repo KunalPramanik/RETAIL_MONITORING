@@ -95,9 +95,14 @@ async def reset_database(
     _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
 ):
     """Purges all operational records (products, employees, cameras, lanes, events, alerts)
-    and restores the database to pure zero state per Part I No-Hardcode policy."""
+    and restores the database to a clean zero-state baseline."""
     from sqlalchemy import delete
     from src.db.models import (
+        TripwireCrossingEvent,
+        VirtualTripwireConfig,
+        DispatchSession,
+        PackageDefinition,
+        Material,
         ExitEventLineItem,
         VisionDetection,
         RfidRead,
@@ -120,6 +125,11 @@ async def reset_database(
     from src.realtime.hub import ws_hub
 
     # Delete in FK dependency order
+    await session.execute(delete(TripwireCrossingEvent))
+    await session.execute(delete(VirtualTripwireConfig))
+    await session.execute(delete(DispatchSession))
+    await session.execute(delete(PackageDefinition))
+    await session.execute(delete(Material))
     await session.execute(delete(PersonAppearanceSummary))
     await session.execute(delete(CameraPairingToken))
     await session.execute(delete(StaticImageDetection))
@@ -142,6 +152,6 @@ async def reset_database(
 
     await cache_service.clear()
     await ws_hub.broadcast_event("database_reset", {"status": "ZERO_STATE"})
-    return {"status": "SUCCESS", "message": "Database purged to pure zero state per Part I policy."}
+    return {"status": "SUCCESS", "message": "Database purged to pure zero-state baseline."}
 
 

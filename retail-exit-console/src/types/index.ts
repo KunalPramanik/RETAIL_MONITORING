@@ -229,6 +229,7 @@ export type DetectionBoxType =
   | 'BOTTLE'
   | 'KEYBOARD'
   | 'MOUSE'
+  | 'WRISTWATCH'
   | 'CASE';
 
 export interface DetectionBox {

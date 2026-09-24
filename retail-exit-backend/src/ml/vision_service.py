@@ -27,18 +27,22 @@ logger = logging.getLogger("secops.ml.vision")
 @dataclass
 class DetectedBox:
     bbox: List[int]             # [x, y, w, h] in pixels
-    class_label: str            # 'case_full', 'case_open', 'single_unit', 'person', 'doorway'
+    class_label: str            # 'case_full', 'case_open', 'single_unit', 'person', 'doorway', 'vehicle', 'wall_picture'
     product_id: Optional[str]
     sku_code: Optional[str]
     confidence: float
     pack_size: int = 1
     track_id: Optional[Any] = None
     exit_vector: Optional[Tuple[float, float]] = None
-    specific_label: Optional[str] = None  # Specific object label, e.g. 'Bottle', 'Smartphone', 'Clock / Wall Item'
-    detection_state: str = "CONFIRMED"    # 'CONFIRMED' | 'CANDIDATE'
-    category_family: Optional[str] = None # e.g. 'COMPUTING', 'READING_OFFICE', 'EVERYDAY_ITEMS', 'FIXTURES'
+    specific_label: Optional[str] = None  # Specific object label, e.g. 'Bottle', 'Smartphone', 'Clock / Wall Item', 'WristWatch', 'Wall Picture Frame'
+    detection_state: str = "CONFIRMED"    # 'CONFIRMED' | 'CANDIDATE' | rejection states
+    category_family: Optional[str] = None # e.g. 'COMPUTING', 'READING_OFFICE', 'EVERYDAY_ITEMS', 'FIXTURES', 'WEARABLES'
     is_inventory_relevant: bool = True   # False for structural/environmental objects
     is_environment_only: bool = False    # True for doorways, wall pictures, clocks, bookshelves
+    rejection_reason: Optional[str] = None
+    relation: Optional[str] = None       # e.g. 'worn_by', 'standalone', 'carried_by'
+    parent_track_id: Optional[Any] = None
+    object_role: Optional[str] = None    # 'physical_object', 'wearable', 'body_part', 'environment'
 
 
 @dataclass
@@ -434,6 +438,14 @@ class VisionInferenceService:
                         cand_cls_list.append(cid)
                         cand_sc_list.append(sc)
 
+            # Pre-scan for wall picture frames in scene for semantic discrimination
+            detected_wall_pics = []
+            try:
+                from src.ml.wall_picture_detector import WallPictureDetector
+                detected_wall_pics = WallPictureDetector.detect_wall_pictures(img)
+            except Exception as _wp_err:
+                logger.debug("WallPictureDetector error in vision_service: %s", _wp_err)
+
             if len(cand_indices) > 0:
                 cand_boxes = boxes_xyxy[cand_indices]
                 cand_scores = np.asarray(cand_sc_list, dtype=np.float32)
@@ -483,6 +495,8 @@ class VisionInferenceService:
                         for s in np.asarray(indices).flatten():
                             keep_indices.append(cls_indices[int(s)])
 
+                detected_persons_in_frame = [nms_boxes[k] for k in keep_indices if int(cand_cls[k]) == 0]
+
                 for idx in keep_indices:
                     bx, by, bw, bh = nms_boxes[idx]
                     cid = int(cand_cls[idx])
@@ -522,6 +536,42 @@ class VisionInferenceService:
                     is_inv = meta.get("inventory_relevant", True)
                     is_env = meta.get("environment_only", False)
                     cat_fam = meta.get("category_family", "EVERYDAY_ITEMS")
+                    wearable = meta.get("wearable", False)
+                    obj_role = meta.get("object_role", "physical_object")
+
+                    # ── V8 Semantic Validation & Anti-Confusion Discrimination ──
+                    # 1. Wall Picture vs Book Discrimination (Observed Problem A)
+                    if cid == 73 or "book" in specific_label.lower():
+                        from src.ml.semantic_validation import SemanticValidationEngine
+                        is_wall_pic, wp_reason, wp_telemetry = SemanticValidationEngine.discriminate_book_vs_wall_picture(
+                            frame=img,
+                            bbox=[bx, by, bw, bh],
+                            candidate_conf=conf,
+                            detected_wall_pictures=detected_wall_pics,
+                            person_boxes=detected_persons_in_frame,
+                        )
+                        if is_wall_pic:
+                            logger.info("Semantic Validator: Wall picture correctly discriminated from Book (%s)", wp_reason)
+                            specific_label = "Wall Picture Frame"
+                            class_label = "wall_picture"
+                            cat_fam = "FIXTURES"
+                            is_inv = False
+                            is_env = True
+                            pack_size = 1
+                            obj_role = "environment"
+
+                    # 2. Bare Body Part vs Product Discrimination (Observed Problem C)
+                    if is_inv and cid != 0 and img is not None:
+                        from src.ml.semantic_validation import SemanticValidationEngine
+                        crop = img[by : by + bh, bx : bx + bw]
+                        is_body, b_reason, skin_dens = SemanticValidationEngine.discriminate_bare_body_part(
+                            crop=crop,
+                            person_boxes=detected_persons_in_frame,
+                            candidate_box=[bx, by, bw, bh],
+                        )
+                        if is_body:
+                            logger.info("Semantic Validator: Suppressed bare body part confused as %s (skin=%.2f)", specific_label, skin_dens)
+                            continue
 
                     # Map COCO classes to retail exit & vehicle entrance classes
                     if cid == 0:
@@ -541,15 +591,9 @@ class VisionInferenceService:
                     elif cid in cfg.case_classes:
                         class_label = "case_full"
                         pack_size = default_pack
-                        if is_inv:
-                            total_cases += 1
-                            total_units += pack_size
                     elif cid in vehicle_classes:
                         class_label = "vehicle"
                         pack_size = 1
-                        if is_inv:
-                            total_singles += 1
-                            total_units += 1
 
                         # Deep Vehicle Intelligence: Exterior Paint Color + License Plate OCR (ALPR)
                         try:
@@ -563,13 +607,22 @@ class VisionInferenceService:
                             logger.debug("Vehicle color/plate analysis error: %s", _v_err)
                             specific_label = f"{specific_label} | PLATE: NOT_LEGIBLE"
                     elif cid in cfg.single_item_classes:
-                        class_label = "single_unit"
+                        class_label = "single_unit" if not is_env else "wall_picture"
                         pack_size = 1
-                        if is_inv:
-                            total_singles += 1
-                            total_units += 1
+                    elif is_env:
+                        class_label = "wall_picture"
+                        pack_size = 1
                     else:
                         continue
+
+                    # Exact per-instance counting: only confirmed inventory-relevant objects contribute to retail counts
+                    if is_inv:
+                        if class_label == "case_full":
+                            total_cases += 1
+                            total_units += pack_size
+                        elif class_label == "vehicle" or class_label == "single_unit":
+                            total_singles += 1
+                            total_units += 1
 
                     track_id_seq += 1
                     conf_scores.append(conf)
@@ -588,6 +641,7 @@ class VisionInferenceService:
                             category_family=cat_fam,
                             is_inventory_relevant=is_inv,
                             is_environment_only=is_env,
+                            object_role=obj_role,
                         )
                     )
             else:
@@ -683,7 +737,7 @@ class VisionInferenceService:
             elif d.class_label == "vehicle":
                 badge_text = f"{disp_label} {conf_pct}%"
                 color = (255, 190, 0)  # Bright Cyan / Blue in BGR
-            elif d.class_label == "doorway":
+            elif d.class_label in ("doorway", "wall_picture", "bookshelf") or d.is_environment_only:
                 badge_text = f"{disp_label} {conf_pct}%"
                 color = (255, 200, 0)  # Bright Cyan in BGR
             else:

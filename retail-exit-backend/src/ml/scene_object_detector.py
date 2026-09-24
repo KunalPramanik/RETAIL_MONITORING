@@ -255,94 +255,134 @@ class SceneObjectDetector:
         person_boxes: Optional[List[List[int]]] = None,
         min_confidence: float = 0.50,
     ) -> List[Dict[str, Any]]:
-        """Dynamically detects wrist watches and smartwatches on person limbs.
+        """Dynamically detects wrist watches and smartwatches on person limbs or resting standalone.
 
-        Evaluates wrist ROI around tracked wrist landmarks:
-        - Rejects anatomically impossible coordinates (neck, chest placket, shoulder)
-        - Compact circular / squarish dial contour (aspect ratio 0.80 - 1.25)
-        - Dial casing area (140 - 1800 px) with verified arm skin context
-        - Edge gradient density and contrast against skin/cuff
+        Supports two authentic physical contexts:
+        1. Worn on person limb: checks wrist keypoints or arm regions for circular/squarish dial with skin context.
+        2. Standalone on desk/table: checks candidate surfaces for watch dial & strap contours outside person boxes.
         """
-        if img is None or img.size == 0 or not wrist_keypoints:
+        if img is None or img.size == 0:
             return []
 
         h_img, w_img = img.shape[:2]
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         watches = []
 
-        for k_name, pt in wrist_keypoints.items():
-            if "wrist" not in k_name or not isinstance(pt, (tuple, list)) or len(pt) < 2:
-                continue
-            wx, wy = int(pt[0]), int(pt[1])
+        # ── 1. Worn wrist watches via keypoints ──
+        if wrist_keypoints:
+            for k_name, pt in wrist_keypoints.items():
+                if "wrist" not in k_name or not isinstance(pt, (tuple, list)) or len(pt) < 2:
+                    continue
+                wx, wy = int(pt[0]), int(pt[1])
 
-            # 1. Anatomical plausibility check:
-            # A wrist cannot be located in the central sternum/chest collar or upper shoulder
-            if person_boxes:
-                is_anatomically_invalid = False
-                for pb in person_boxes:
-                    px, py, pw, ph = pb
-                    mid_x = px + pw * 0.50
-                    # Upper central collar/chest placket
-                    if abs(wx - mid_x) < 0.25 * pw and wy < (py + 0.65 * ph):
-                        is_anatomically_invalid = True
-                        break
-                    # Shoulder / neck level
-                    if wy < (py + 0.35 * ph):
-                        is_anatomically_invalid = True
-                        break
-                if is_anatomically_invalid:
+                # Anatomical plausibility check
+                if person_boxes:
+                    is_anatomically_invalid = False
+                    for pb in person_boxes:
+                        px, py, pw, ph = pb
+                        mid_x = px + pw * 0.50
+                        if abs(wx - mid_x) < 0.25 * pw and wy < (py + 0.65 * ph):
+                            is_anatomically_invalid = True
+                            break
+                        if wy < (py + 0.35 * ph):
+                            is_anatomically_invalid = True
+                            break
+                    if is_anatomically_invalid:
+                        continue
+
+                r = 30
+                x1 = max(0, wx - r)
+                y1 = max(0, wy - r)
+                x2 = min(w_img, wx + r)
+                y2 = min(h_img, wy + r)
+                roi = gray[y1:y2, x1:x2]
+                if roi.size < 300:
                     continue
 
-            r = 30
-            x1 = max(0, wx - r)
-            y1 = max(0, wy - r)
-            x2 = min(w_img, wx + r)
-            y2 = min(h_img, wy + r)
-            roi = gray[y1:y2, x1:x2]
-            if roi.size < 300:
-                continue
-
-            # Must have skin tone context around dial (watch is worn on a wrist/arm)
-            color_roi = img[y1:y2, x1:x2]
-            hsv_roi = cv2.cvtColor(color_roi, cv2.COLOR_BGR2HSV)
-            skin_m = ((hsv_roi[:, :, 0] <= 25) & (hsv_roi[:, :, 1] >= 25) & (hsv_roi[:, :, 2] >= 40))
-            skin_density = np.mean(skin_m)
-            if skin_density < 0.08:
-                # No arm/wrist skin around the candidate point -> not an exposed wrist
-                continue
-
-            edges = cv2.Canny(roi, 35, 100)
-            contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-            wrist_candidates = []
-            for c in contours:
-                c_area = cv2.contourArea(c)
-                if c_area < 35:
+                # Must have skin tone context around dial (watch is worn on a wrist/arm)
+                color_roi = img[y1:y2, x1:x2]
+                hsv_roi = cv2.cvtColor(color_roi, cv2.COLOR_BGR2HSV)
+                skin_m = ((hsv_roi[:, :, 0] <= 25) & (hsv_roi[:, :, 1] >= 25) & (hsv_roi[:, :, 2] >= 40))
+                skin_density = float(np.mean(skin_m))
+                if skin_density < 0.08:
                     continue
-                perim = cv2.arcLength(c, True)
-                circ = (4 * np.pi * c_area) / float(max(1, perim * perim))
-                bx, by, bw, bh = cv2.boundingRect(c)
-                solidity = c_area / float(max(1, bw * bh))
-                aspect = bw / float(max(1, bh))
-                # Dial must be circular/squarish and solid (not hollow seam/wrinkle)
-                if 0.80 <= aspect <= 1.25 and solidity >= 0.40 and circ >= 0.30:
-                    edge_pixels = int(np.sum(edges[by:by+bh, bx:bx+bw] > 0))
-                    edge_density = edge_pixels / float(max(1, bw * bh))
-                    if edge_density >= 0.12:
-                        conf = min(0.92, max(0.60, 0.65 + edge_density * 1.5))
+
+                edges = cv2.Canny(roi, 35, 100)
+                contours, _ = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+                wrist_candidates = []
+                for c in contours:
+                    c_area = cv2.contourArea(c)
+                    if c_area < 35 or c_area > 2200:
+                        continue
+                    perim = cv2.arcLength(c, True)
+                    circ = (4 * np.pi * c_area) / float(max(1, perim * perim))
+                    bx, by, bw, bh = cv2.boundingRect(c)
+                    solidity = c_area / float(max(1, bw * bh))
+                    aspect = bw / float(max(1, bh))
+                    if 0.80 <= aspect <= 1.25 and solidity >= 0.40 and circ >= 0.30:
+                        edge_pixels = int(np.sum(edges[by:by+bh, bx:bx+bw] > 0))
+                        edge_density = edge_pixels / float(max(1, bw * bh))
+                        if edge_density >= 0.12:
+                            conf = min(0.94, max(0.60, 0.65 + edge_density * 1.5))
+                            if conf >= min_confidence:
+                                wrist_candidates.append({
+                                    "bbox": [x1 + bx, y1 + by, bw, bh],
+                                    "class_label": "single_unit",
+                                    "specific_label": "Wrist Watch",
+                                    "canonical_label": "WristWatch",
+                                    "confidence": round(conf, 2),
+                                    "color": "amber",
+                                    "type": "WRISTWATCH",
+                                    "relation": "worn_by",
+                                })
+                if wrist_candidates:
+                    wrist_candidates.sort(key=lambda x: x["confidence"], reverse=True)
+                    best = wrist_candidates[0]
+                    if not any(cls.calculate_iou(best["bbox"], w["bbox"]) > 0.30 for w in watches):
+                        watches.append(best)
+
+        # ── 2. Standalone wrist watches on desk / surfaces ──
+        # Search outside human silhouettes
+        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+        edges = cv2.Canny(blurred, 40, 120)
+        masked_edges = edges.copy()
+        if person_boxes:
+            for pb in person_boxes:
+                px, py, pw, ph = pb
+                masked_edges[max(0, py - 10) : min(h_img, py + ph + 10), max(0, px - 10) : min(w_img, px + pw + 10)] = 0
+
+        contours, _ = cv2.findContours(masked_edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            c_area = cv2.contourArea(cnt)
+            if c_area < 45 or c_area > 2000:
+                continue
+            bx, by, bw, bh = cv2.boundingRect(cnt)
+            if bw < 14 or bh < 14 or bw > 110 or bh > 110:
+                continue
+
+            aspect = bw / float(max(1, bh))
+            perim = cv2.arcLength(cnt, True)
+            circ = (4 * np.pi * c_area) / float(max(1, perim * perim))
+            solidity = c_area / float(max(1, bw * bh))
+
+            if 0.80 <= aspect <= 1.25 and (circ >= 0.30 or solidity >= 0.45):
+                dial_edges = float(np.mean(edges[by : by + bh, bx : bx + bw] > 0))
+                if dial_edges >= 0.12:
+                    wb = [bx, by, bw, bh]
+                    if not any(cls.calculate_iou(wb, w["bbox"]) > 0.35 for w in watches):
+                        conf = min(0.92, max(0.62, 0.66 + dial_edges * 1.4))
                         if conf >= min_confidence:
-                            wrist_candidates.append({
-                                "bbox": [x1 + bx, y1 + by, bw, bh],
+                            watches.append({
+                                "bbox": wb,
                                 "class_label": "single_unit",
                                 "specific_label": "Wrist Watch",
+                                "canonical_label": "WristWatch",
                                 "confidence": round(conf, 2),
                                 "color": "amber",
-                                "type": "ITEM",
+                                "type": "WRISTWATCH",
+                                "relation": "standalone",
                             })
-            if wrist_candidates:
-                wrist_candidates.sort(key=lambda x: x["confidence"], reverse=True)
-                best = wrist_candidates[0]
-                if not any(cls.calculate_iou(best["bbox"], w["bbox"]) > 0.30 for w in watches):
-                    watches.append(best)
+
         return watches
 
     @classmethod
@@ -590,5 +630,25 @@ class SceneObjectDetector:
             all_excluded.append(g["bbox"])
 
         shelves = cls.detect_bookshelves(img, exclude_boxes=all_excluded)
-        return doors + screens + watches + gear + shelves
+        for s in shelves:
+            all_excluded.append(s["bbox"])
+
+        wall_pics = []
+        try:
+            from src.ml.wall_picture_detector import WallPictureDetector
+            raw_pics = WallPictureDetector.detect_wall_pictures(img, exclude_boxes=all_excluded)
+            for wp in raw_pics:
+                b = wp["box"]
+                wall_pics.append({
+                    "bbox": b,
+                    "class_label": "wall_picture",
+                    "specific_label": "Wall Picture Frame",
+                    "confidence": round(float(wp.get("confidence", 0.88)), 2),
+                    "color": "cyan",
+                    "type": "WALL_PICTURE",
+                })
+        except Exception as _wp_err:
+            logger.debug("Wall picture scene detection error: %s", _wp_err)
+
+        return doors + screens + watches + gear + shelves + wall_pics
 

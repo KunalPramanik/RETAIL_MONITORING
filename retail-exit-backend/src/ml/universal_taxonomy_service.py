@@ -261,7 +261,19 @@ class UniversalTaxonomyService:
                 operational_status="Physical",
             )
 
-        # 5. Static Images / Wall Art
+        # 5. Wall Pictures & Architectural Fixtures
+        if b_type == "WALL_PICTURE" or "wall picture" in raw_label.lower():
+            return CategorizedEntity(
+                category=cls.CAT_FIXTURES,
+                canonical_label="Static Wall Decor (Poster / Art)",
+                raw_label=raw_label,
+                confidence=confidence,
+                bbox=bbox,
+                operational_status="Physical",
+                is_spoofed=False,
+            )
+
+        # 6. Static Images / Wall Art Spoofing
         if is_spoofed:
             return CategorizedEntity(
                 category=cls.CAT_FIXTURES,
@@ -274,7 +286,27 @@ class UniversalTaxonomyService:
                 spoof_format=spoof_fmt or "Poster",
             )
 
-        # 6. Keyword taxonomy matching for all other items
+        # 7. WristWatches (Wearable & Standalone)
+        if b_type == "WRISTWATCH" or "wristwatch" in raw_label.lower():
+            is_worn = box_data.get("relation") == "worn_by" or box_data.get("parent_track_id") is not None
+            if not is_worn and person_boxes:
+                bx, by, bw, bh = bbox
+                bcx, bcy = bx + bw / 2.0, by + bh / 2.0
+                for pb in person_boxes:
+                    if pb[0] <= bcx <= pb[0] + pb[2] and pb[1] <= bcy <= pb[1] + pb[3]:
+                        is_worn = True
+                        break
+            return CategorizedEntity(
+                category=cls.CAT_EVERYDAY_ITEMS,
+                canonical_label="Wristwatch",
+                raw_label=raw_label,
+                confidence=confidence,
+                bbox=bbox,
+                operational_status="In-Use" if is_worn else "Physical",
+                is_spoofed=False,
+            )
+
+        # 8. Keyword taxonomy matching for all other items
         low_label = raw_label.lower()
         matched_cat = cls.CAT_EVERYDAY_ITEMS
         matched_canonical = "Single Unit / Everyday Item"

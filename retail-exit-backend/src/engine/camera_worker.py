@@ -427,6 +427,10 @@ class CameraIngestionWorker:
                     b_type = "LAPTOP"
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
                     b_color = "cyan"
+                elif is_watch:
+                    b_type = "WRISTWATCH"
+                    b_label = f"WristWatch ({int(d.confidence * 100)}%)"
+                    b_color = "amber"
                 elif is_bookshelf:
                     b_type = "BOOKSHELF"
                     b_label = f"Bookshelf ({int(d.confidence * 100)}%)"
@@ -441,7 +445,7 @@ class CameraIngestionWorker:
                     b_color = "cyan"
                 elif is_wall_picture:
                     b_type = "WALL_PICTURE"
-                    b_label = f"Wall Picture ({int(d.confidence * 100)}%)"
+                    b_label = f"Wall Picture Frame ({int(d.confidence * 100)}%)"
                     b_color = "cyan"
                 elif is_clock:
                     b_type = "CLOCK"
@@ -464,6 +468,18 @@ class CameraIngestionWorker:
                     b_label = f"{item_label} ({int(d.confidence * 100)}%)"
                     b_color = "amber"
 
+                # Check if item (such as a wristwatch) is worn by or associated with a person
+                item_relation = getattr(d, "relation", None)
+                parent_tid = getattr(d, "parent_track_id", None)
+                if not item_relation and all_person_boxes:
+                    icx = d.bbox[0] + d.bbox[2] / 2.0
+                    icy = d.bbox[1] + d.bbox[3] / 2.0
+                    for p_idx, pb in enumerate(all_person_boxes):
+                        if (pb[0] - 25 <= icx <= pb[0] + pb[2] + 25) and (pb[1] <= icy <= pb[1] + pb[3] + 25):
+                            item_relation = "worn_by" if is_watch else "carried_by"
+                            parent_tid = f"person_{p_idx + 1}"
+                            break
+
                 overlay_boxes.append({
                     "box": d.bbox,
                     "type": b_type,
@@ -472,6 +488,11 @@ class CameraIngestionWorker:
                     "color": b_color,
                     "entity": item_label,
                     "detection_state": "CONFIRMED",
+                    "relation": item_relation or "standalone",
+                    "parent_track_id": parent_tid,
+                    "wearable": is_watch,
+                    "is_environment_only": d.is_environment_only,
+                    "is_inventory_relevant": d.is_inventory_relevant,
                 })
 
             # 4. Real-Time Flame & Fire Hazard Detection
@@ -569,14 +590,20 @@ class CameraIngestionWorker:
                             wrist_watches = SceneObjectDetector.detect_wrist_watches(dec, wrist_keypoints=pose_res.keypoints)
                             for ww in wrist_watches:
                                 wb = ww["bbox"]
-                                if not any(abs(wb[0] - ob["box"][0]) < 25 and abs(wb[1] - ob["box"][1]) < 25 for ob in overlay_boxes if ob["type"] == "ITEM"):
+                                if not any(abs(wb[0] - ob["box"][0]) < 25 and abs(wb[1] - ob["box"][1]) < 25 for ob in overlay_boxes if ob["type"] in ("ITEM", "WRISTWATCH")):
                                     overlay_boxes.append({
                                         "box": wb,
-                                        "type": "ITEM",
-                                        "label": f"{ww['specific_label']} ({int(ww['confidence'] * 100)}%)",
+                                        "type": "WRISTWATCH",
+                                        "label": f"WristWatch ({int(ww['confidence'] * 100)}%)",
                                         "confidence": round(float(ww["confidence"]), 4),
                                         "color": "amber",
-                                        "entity": ww["specific_label"],
+                                        "entity": "WristWatch",
+                                        "relation": "worn_by",
+                                        "parent_track_id": f"person_{p_box[0]}_{p_box[1]}",
+                                        "wearable": True,
+                                        "detection_state": "CONFIRMED",
+                                        "is_environment_only": False,
+                                        "is_inventory_relevant": True,
                                     })
 
                         # 5C. PPE Worker Safety Assessment (Only in Industrial / Safety mode)

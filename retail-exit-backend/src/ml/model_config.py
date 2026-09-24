@@ -100,13 +100,14 @@ class VisionModelConfig:
             51: "Carrot", 52: "Hot Dog", 53: "Pizza", 54: "Donut", 55: "Cake", 62: "Display / Screen",
             63: "Laptop", 64: "Computer Mouse", 65: "Remote Control", 66: "Keyboard", 67: "Smartphone",
             73: "Book / Document", 74: "Clock / Wall Item", 75: "Vase", 76: "Scissors", 77: "Teddy Bear",
-            78: "Hair Drier", 79: "Pen / Stationery", 80: "Charger / Power Adapter", 81: "Tote / Shopping Bag"
+            78: "Hair Drier", 79: "Pen / Stationery", 80: "Charger / Power Adapter", 81: "Tote / Shopping Bag",
+            84: "WristWatch", 1001: "Doorway / Exit Door", 1002: "Wall Picture Frame", 1003: "Storage Shelf / Bookcase"
         }
         self.case_classes = {28}
         self.vehicle_classes = {1, 2, 3, 5, 7}
         self.single_item_classes = {
             24, 25, 26, 27, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
-            62, 63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79, 80, 81
+            62, 63, 64, 65, 66, 67, 73, 74, 75, 76, 77, 78, 79, 80, 81, 84
         }
         self.pairwise_precision_groups = [
             ["Backpack / Bag", "Charger / Power Adapter"],
@@ -192,7 +193,11 @@ class VisionModelConfig:
         return {
             "canonical_label": str(key),
             "category_family": "EVERYDAY_ITEMS",
+            "object_role": "physical_object",
+            "wearable": False,
+            "body_part": False,
             "countable": True,
+            "counting_mode": "INSTANCE_COUNT",
             "inventory_relevant": True,
             "environment_only": False,
             "identity_relevant": False,
@@ -208,6 +213,22 @@ class VisionModelConfig:
     def is_environment_only(self, key: Any) -> bool:
         meta = self.get_class_metadata(key)
         return bool(meta.get("environment_only", False))
+
+    def is_wearable(self, key: Any) -> bool:
+        meta = self.get_class_metadata(key)
+        return bool(meta.get("wearable", False))
+
+    def is_body_part(self, key: Any) -> bool:
+        meta = self.get_class_metadata(key)
+        return bool(meta.get("body_part", False))
+
+    def get_counting_mode(self, key: Any) -> str:
+        meta = self.get_class_metadata(key)
+        return str(meta.get("counting_mode", "INSTANCE_COUNT"))
+
+    def get_object_role(self, key: Any) -> str:
+        meta = self.get_class_metadata(key)
+        return str(meta.get("object_role", "physical_object"))
 
     def get_class_nms_iou(self, class_id: Any) -> float:
         str_id = str(class_id)

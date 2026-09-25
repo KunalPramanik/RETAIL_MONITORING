@@ -48,7 +48,8 @@
     "84": "WristWatch",
     "1001": "Doorway / Exit Door",
     "1002": "Wall Picture Frame",
-    "1003": "Storage Shelf / Bookcase"
+    "1003": "Storage Shelf / Bookcase",
+    "1004": "Corrugated Tin Sheet / CGI Bundle"
   },
   "categories": {
     "person_classes": [
@@ -811,6 +812,23 @@
       "identity_relevant": false,
       "is_display_container": false,
       "box_or_unit_tier": "ENVIRONMENT",
+      "nms_iou_threshold": 0.35
+    },
+    "corrugated_tin_sheet": {
+      "class_id": 1004,
+      "canonical_label": "Corrugated Tin Sheet / CGI Bundle",
+      "category_family": "MATERIALS",
+      "object_role": "inventory_item",
+      "wearable": false,
+      "body_part": false,
+      "countable": true,
+      "counting_mode": "EDGE_SPLITTING_CONVOLUTION",
+      "inventory_relevant": true,
+      "environment_only": false,
+      "identity_relevant": false,
+      "is_display_container": false,
+      "box_or_unit_tier": "BULK_MATERIAL",
+      "tare_weight_factor": 12.5,
       "nms_iou_threshold": 0.35
     }
   }

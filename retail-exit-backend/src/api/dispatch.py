@@ -181,3 +181,57 @@ async def reconcile_manifest_preview(body: ManifestReconcileRequest):
         "totalVariance": variance,
         "breakdown": breakdown,
     }
+
+
+class EdgeManifestScanRequest(BaseModel):
+    rawOcrText: Optional[str] = Field(None, description="Direct text from handheld or edge OCR")
+    imageBase64: Optional[str] = Field(None, description="Base64 encoded frame from desk scanner")
+    dockLaneId: Optional[str] = Field(None, description="Lane ID to auto-bind dispatch session")
+    autoStartSession: bool = Field(False, description="Whether to start a dispatch session immediately")
+
+
+@router.post("/manifest/edge-scan")
+async def edge_manifest_scan(
+    body: EdgeManifestScanRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """Ingests physical paper manifests or raw barcode strings from dock edge scanners."""
+    from src.engine.manifest_ingestion_daemon import DeskManifestScanner
+    import base64
+    import cv2
+    import numpy as np
+
+    frame = None
+    if body.imageBase64:
+        try:
+            raw_bytes = base64.b64decode(body.imageBase64.split(",")[-1])
+            nparr = np.frombuffer(raw_bytes, np.uint8)
+            frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        except Exception:
+            pass
+
+    if frame is None:
+        frame = np.full((1080, 1920, 3), 240, dtype=np.uint8)
+
+    manifest = DeskManifestScanner.process_desk_frame(frame, ocr_text_override=body.rawOcrText)
+
+    res_data = {
+        "bolNumber": manifest.bol_number,
+        "carrierName": manifest.carrier_name,
+        "lineItems": manifest.line_items,
+        "confidence": manifest.confidence,
+        "isDeskewed": manifest.is_deskewed,
+        "sessionId": None,
+    }
+
+    if body.autoStartSession and body.dockLaneId and manifest.line_items:
+        new_sess = await DispatchEngine.start_session(
+            session=session,
+            dock_lane_id=body.dockLaneId,
+            manifest_id=manifest.bol_number,
+            carrier_employee_id=manifest.carrier_name,
+            manifest_expected=manifest.line_items,
+        )
+        res_data["sessionId"] = new_sess.session_id
+
+    return res_data

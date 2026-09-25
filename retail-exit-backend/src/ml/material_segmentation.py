@@ -753,3 +753,108 @@ class DenseStackCountingEngine:
         }
 
 
+def count_corrugated_sheets(
+    image_roi: np.ndarray,
+    depth_roi: Optional[np.ndarray] = None,
+    min_peak_distance: Optional[int] = None,
+    glare_clip_limit: float = 3.0,
+) -> Tuple[int, np.ndarray, float]:
+    """Counts corrugated galvanized iron (CGI) / tin sheets using CLAHE glare mitigation
+    and directional Sobel horizontal kernel convolution with 1D vertical profile peak separation.
+
+    Args:
+        image_roi: BGR or Grayscale image crop containing the stacked sheet bundle.
+        depth_roi: Optional depth map (meters) aligned with image_roi.
+        min_peak_distance: Minimum expected vertical distance in pixels between sheets.
+        glare_clip_limit: Contrast clipping limit for CLAHE glare mitigation.
+
+    Returns:
+        Tuple of (detected_count, mask_overlay, confidence)
+    """
+    if image_roi is None or image_roi.size == 0:
+        return (0, np.zeros((1, 1, 3), dtype=np.uint8), 0.0)
+
+    h, w = image_roi.shape[:2]
+    if h < 5 or w < 5:
+        return (0, np.zeros((h, w, 3), dtype=np.uint8), 0.0)
+
+    # 1. Specular Glare Mitigation via Dynamic CLAHE
+    if image_roi.ndim == 3:
+        lab = cv2.cvtColor(image_roi, cv2.COLOR_BGR2LAB)
+        l_chan, a_chan, b_chan = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=glare_clip_limit, tileGridSize=(8, 8))
+        cl = clahe.apply(l_chan)
+        # Suppress over-saturated metallic glare highlights (>250)
+        cl = np.where(cl > 250, 240, cl)
+        merged = cv2.merge((cl, a_chan, b_chan))
+        enhanced_bgr = cv2.cvtColor(merged, cv2.COLOR_LAB2BGR)
+        gray = cv2.cvtColor(enhanced_bgr, cv2.COLOR_BGR2GRAY)
+    else:
+        clahe = cv2.createCLAHE(clipLimit=glare_clip_limit, tileGridSize=(8, 8))
+        gray = clahe.apply(image_roi)
+        gray = np.where(gray > 250, 240, gray)
+
+    # Bilateral smoothing to preserve sharp sheet edges while removing micro zinc spangle grain
+    filtered = cv2.bilateralFilter(gray, d=5, sigmaColor=50, sigmaSpace=50)
+
+    # 2. Directional Sobel Horizontal Kernel (Ky) Convolution
+    # Computes vertical gradient intensity across sheet horizontal boundary interfaces
+    grad_y = cv2.Sobel(filtered, cv2.CV_64F, 0, 1, ksize=3)
+    abs_grad_y = np.abs(grad_y)
+
+    # 3. 1D Vertical Intensity Projection Analysis
+    # Profile represents cumulative edge energy across each horizontal line y
+    profile_y = np.sum(abs_grad_y, axis=1)
+
+    # Smooth 1D profile with small Gaussian-like box filter
+    box_k = max(3, int(h * 0.01) * 2 + 1)
+    kernel_1d = np.ones(box_k) / box_k
+    smoothed_profile = np.convolve(profile_y, kernel_1d, mode="same")
+
+    # 4. Sheet Layer Peak Extraction
+    from scipy.signal import find_peaks
+
+    delta_min = min_peak_distance if min_peak_distance is not None else max(4, int(h * 0.015))
+    profile_std = float(np.std(smoothed_profile))
+    prominence_val = max(1.0, profile_std * 0.35)
+
+    peaks, _ = find_peaks(smoothed_profile, distance=delta_min, prominence=prominence_val)
+    detected_count = len(peaks)
+
+    # Fallback if profile is smooth or under low illumination: use adaptive thresholding edge lines
+    if detected_count == 0:
+        edges = cv2.Canny(filtered, 50, 150)
+        edge_profile = np.sum(edges, axis=1)
+        peaks, _ = find_peaks(edge_profile, distance=delta_min, prominence=max(1.0, float(np.std(edge_profile)) * 0.4))
+        detected_count = len(peaks)
+
+    # 5. Generate Visual Segmentation Mask Overlay
+    mask_overlay = image_roi.copy() if image_roi.ndim == 3 else cv2.cvtColor(image_roi, cv2.COLOR_GRAY2BGR)
+    for idx, py in enumerate(peaks):
+        color = (0, 255, 255) if idx % 2 == 0 else (0, 215, 120)
+        cv2.line(mask_overlay, (0, int(py)), (w - 1, int(py)), color, 1)
+
+    # 6. Depth Sensor Confirmation & Confidence Estimation
+    confidence = 0.85
+    if detected_count > 0:
+        if len(peaks) > 2:
+            intervals = np.diff(peaks)
+            mean_int = float(np.mean(intervals))
+            std_int = float(np.std(intervals))
+            # Periodic regularity metric: low variance in sheet thickness increases confidence
+            cv_periodicity = std_int / max(1.0, mean_int)
+            confidence = max(0.70, min(0.98, 1.0 - cv_periodicity * 0.4))
+        else:
+            confidence = 0.82
+
+    # Check depth profile if supplied
+    if depth_roi is not None and depth_roi.size > 0:
+        valid_depth = depth_roi[depth_roi > 0.05]
+        if valid_depth.size > 10:
+            depth_span = float(np.max(valid_depth) - np.min(valid_depth))
+            if depth_span > 0.02:  # Measurable physical stack thickness
+                confidence = min(0.99, confidence + 0.05)
+
+    return (detected_count, mask_overlay, round(float(confidence), 3))
+
+

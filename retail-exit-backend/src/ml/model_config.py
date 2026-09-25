@@ -32,6 +32,7 @@ class VisionModelConfig:
 
     # ── NMS & Clustered Item Tuning ──
     nms_iou_threshold: float = 0.35
+    dense_shelf_nms_iou_threshold: float = 0.45
 
     # ── Liveness & Face Gating ──
     face_candidate_min_score: float = 0.45
@@ -154,6 +155,7 @@ class VisionModelConfig:
                 "vehicle_conf_threshold": self.vehicle_conf_threshold,
                 "item_conf_threshold": self.item_conf_threshold,
                 "nms_iou_threshold": self.nms_iou_threshold,
+                "dense_shelf_nms_iou_threshold": self.dense_shelf_nms_iou_threshold,
                 "face_candidate_min_score": self.face_candidate_min_score,
                 "min_real_z_std": self.min_real_z_std,
                 "liveness_pass_threshold": self.liveness_pass_threshold,
@@ -235,6 +237,8 @@ class VisionModelConfig:
         if str_id in self.class_specific_nms_iou:
             return float(self.class_specific_nms_iou[str_id])
         meta = self.get_class_metadata(class_id)
+        if str_id == "73" or meta.get("canonical_label") in ("Book / Document", "Book"):
+            return float(getattr(self, "dense_shelf_nms_iou_threshold", 0.45))
         return float(meta.get("nms_iou_threshold", self.nms_iou_threshold))
 
 

@@ -118,6 +118,7 @@
     "vehicle_conf_threshold": 0.25,
     "item_conf_threshold": 0.35,
     "nms_iou_threshold": 0.35,
+    "dense_shelf_nms_iou_threshold": 0.45,
     "face_candidate_min_score": 0.45,
     "min_real_z_std": 15.0,
     "liveness_pass_threshold": 0.6,

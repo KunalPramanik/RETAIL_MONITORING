@@ -163,6 +163,8 @@ class Material(Base):
     )
 
     package_definitions = relationship("PackageDefinition", back_populates="material", cascade="all, delete-orphan")
+    movement_ledgers = relationship("MaterialMovementLedger", back_populates="material", cascade="all, delete-orphan")
+    inventory_balances = relationship("MaterialInventoryBalance", back_populates="material", cascade="all, delete-orphan")
 
 
 class PackageDefinition(Base):
@@ -210,6 +212,7 @@ class Employee(Base):
     shift = relationship("Shift", back_populates="employees")
     exit_events = relationship("ExitEvent", back_populates="employee")
     face_matches = relationship("FaceMatchAttempt", back_populates="employee")
+    movement_ledgers = relationship("MaterialMovementLedger", back_populates="employee")
 
 
 class Lane(Base):
@@ -706,5 +709,132 @@ class TripwireCrossingEvent(Base):
 
     tripwire = relationship("VirtualTripwireConfig", back_populates="crossing_events")
     employee = relationship("Employee")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Real-Time Material Flow, Dynamic Inventory Ledger & Defect Tracking Models
+# ─────────────────────────────────────────────────────────────────────────────
+
+class MaterialMovementLedger(Base):
+    """Immutable transaction ledger recording confirmed physical material movement.
+    
+    Tracks arrivals (IN), dispatches (OUT), internal transfers, adjustments, and returns,
+    capturing spatial context (camera, zone, tripwire, track_id), carrier/person attribution,
+    packaging tier conversion, defect condition, and discrepancy tags.
+    """
+    __tablename__ = "material_movement_ledger"
+
+    ledger_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    transaction_type: Any = Column(String(32), nullable=False)  # IN, OUT, ADJUSTMENT, TRANSFER_IN, TRANSFER_OUT, RETURN
+    material_id: Any = Column(String(36), ForeignKey("material.material_id", ondelete="CASCADE"), nullable=False, index=True)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=True, index=True)
+    zone_id: Any = Column(String(64), nullable=True)
+    tripwire_id: Any = Column(String(36), ForeignKey("virtual_tripwire_config.tripwire_id"), nullable=True)
+    track_id: Any = Column(String(64), nullable=True, index=True)
+    direction: Any = Column(String(16), nullable=False, default="UNKNOWN")  # ENTRY, EXIT, TRAVERSAL, UNKNOWN
+    person_id: Any = Column(String(36), ForeignKey("employee.employee_id"), nullable=True, index=True)
+    person_name: Any = Column(String(255), nullable=False, default="UNKNOWN_PERSON")
+    person_identity_status: Any = Column(String(32), nullable=False, default="UNKNOWN_PERSON")  # VERIFIED_KNOWN, UNKNOWN_PERSON
+    carrier_relation: Any = Column(String(32), nullable=False, default="standalone")  # carrying, transporting, near, loaded_to_vehicle, standalone
+    packaging_type: Any = Column(String(64), nullable=False, default="loose_unit")  # case, box, pallet, bag, bundle, loose_unit
+    package_quantity: Any = Column(Integer, nullable=False, default=0)
+    units_per_package: Any = Column(Integer, nullable=False, default=1)
+    unit_quantity: Any = Column(Integer, nullable=False, default=0)  # Total base inventory units
+    defect_status: Any = Column(String(32), nullable=False, default="NORMAL")  # NORMAL, DAMAGED, DEFECTIVE, UNKNOWN_CONDITION
+    defect_severity: Any = Column(String(32), nullable=False, default="NONE")  # NONE, LOW, MEDIUM, HIGH, CRITICAL
+    confidence: Any = Column(Numeric(5, 4), nullable=False, default=0.9500)
+    discrepancy_units: Any = Column(Integer, nullable=False, default=0)
+    discrepancy_reason: Any = Column(String(255), nullable=True)
+    source_frame_path: Any = Column(Text, nullable=True)
+    timestamp: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "transaction_type IN ('IN', 'OUT', 'ADJUSTMENT', 'TRANSFER_IN', 'TRANSFER_OUT', 'RETURN')",
+            name="chk_ledger_tx_type",
+        ),
+        CheckConstraint(
+            "direction IN ('ENTRY', 'EXIT', 'TRAVERSAL', 'UNKNOWN', 'IN', 'OUT')",
+            name="chk_ledger_direction",
+        ),
+        CheckConstraint(
+            "person_identity_status IN ('VERIFIED_KNOWN', 'UNKNOWN_PERSON', 'UNAVAILABLE')",
+            name="chk_ledger_person_status",
+        ),
+        CheckConstraint(
+            "defect_status IN ('NORMAL', 'DAMAGED', 'DEFECTIVE', 'UNKNOWN_CONDITION')",
+            name="chk_ledger_defect_status",
+        ),
+        Index("idx_ledger_mat_ts", "material_id", "timestamp"),
+        Index("idx_ledger_cam_ts", "camera_id", "timestamp"),
+    )
+
+    material = relationship("Material", back_populates="movement_ledgers")
+    camera = relationship("Camera")
+    employee = relationship("Employee", back_populates="movement_ledgers")
+    tripwire = relationship("VirtualTripwireConfig")
+    defect_events = relationship("MaterialDefectEvent", back_populates="ledger_entry")
+
+
+class MaterialInventoryBalance(Base):
+    """Real-time calculated on-hand stock and ledger balance per material and storage location.
+    
+    Enforces the atomic accounting identity:
+    Opening Stock + Confirmed IN - Confirmed OUT + Adjustments == Current Stock
+    """
+    __tablename__ = "material_inventory_balance"
+
+    balance_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    material_id: Any = Column(String(36), ForeignKey("material.material_id", ondelete="CASCADE"), nullable=False, index=True)
+    location_id: Any = Column(String(64), nullable=False, default="MAIN_WAREHOUSE", index=True)
+    opening_stock: Any = Column(Integer, nullable=False, default=0)
+    incoming_confirmed: Any = Column(Integer, nullable=False, default=0)
+    outgoing_confirmed: Any = Column(Integer, nullable=False, default=0)
+    defective_stock: Any = Column(Integer, nullable=False, default=0)
+    adjusted_stock: Any = Column(Integer, nullable=False, default=0)
+    current_stock: Any = Column(Integer, nullable=False, default=0)
+    last_reconciled_at: Any = Column(DateTime(timezone=True), nullable=True)
+    last_transaction_id: Any = Column(String(36), nullable=True)
+    updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
+
+    __table_args__ = (
+        Index("idx_balance_mat_loc", "material_id", "location_id", unique=True),
+    )
+
+    material = relationship("Material", back_populates="inventory_balances")
+
+
+class MaterialDefectEvent(Base):
+    """Evidence record for detected physical packaging or material damage."""
+    __tablename__ = "material_defect_event"
+
+    defect_event_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    ledger_id: Any = Column(String(36), ForeignKey("material_movement_ledger.ledger_id", ondelete="SET NULL"), nullable=True)
+    material_id: Any = Column(String(36), ForeignKey("material.material_id", ondelete="CASCADE"), nullable=False, index=True)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=True)
+    defect_class: Any = Column(String(64), nullable=False)  # TORN_BAG, DENTED_CONTAINER, CRACKED_TILE, BENT_ROD, BROKEN_SEAL
+    severity: Any = Column(String(32), nullable=False, default="MEDIUM")  # LOW, MEDIUM, HIGH, CRITICAL
+    confidence: Any = Column(Numeric(5, 4), nullable=False, default=0.9500)
+    affected_units: Any = Column(Integer, nullable=False, default=1)
+    snapshot_url: Any = Column(Text, nullable=True)
+    status: Any = Column(String(32), nullable=False, default="QUARANTINED")  # QUARANTINED, ACCEPTED_WITH_CONCESSION, REJECTED, SCRAPPED
+    details: Any = Column(JSONType, nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "severity IN ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL')",
+            name="chk_defect_evt_severity",
+        ),
+        CheckConstraint(
+            "status IN ('QUARANTINED', 'ACCEPTED_WITH_CONCESSION', 'REJECTED', 'SCRAPPED')",
+            name="chk_defect_evt_status",
+        ),
+    )
+
+    material = relationship("Material")
+    camera = relationship("Camera")
+    ledger_entry = relationship("MaterialMovementLedger", back_populates="defect_events")
 
 

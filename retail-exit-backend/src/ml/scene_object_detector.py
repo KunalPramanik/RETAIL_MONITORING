@@ -253,6 +253,7 @@ class SceneObjectDetector:
         img: np.ndarray,
         wrist_keypoints: Optional[Dict[str, Any]] = None,
         person_boxes: Optional[List[List[int]]] = None,
+        exclude_boxes: Optional[List[List[int]]] = None,
         min_confidence: float = 0.50,
     ) -> List[Dict[str, Any]]:
         """Dynamically detects wrist watches and smartwatches on person limbs or resting standalone.
@@ -266,25 +267,27 @@ class SceneObjectDetector:
 
         h_img, w_img = img.shape[:2]
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        watches = []
+        watches: List[Dict[str, Any]] = []
 
-        # ── 1. Worn wrist watches via keypoints ──
+        # ── 1. Worn wrist watches via keypoints (Limb extremities only) ──
         if wrist_keypoints:
             for k_name, pt in wrist_keypoints.items():
                 if "wrist" not in k_name or not isinstance(pt, (tuple, list)) or len(pt) < 2:
                     continue
                 wx, wy = int(pt[0]), int(pt[1])
 
-                # Anatomical plausibility check
+                # Anatomical plausibility check: wrist must be on limb extremities, not neck/chest/head
                 if person_boxes:
                     is_anatomically_invalid = False
                     for pb in person_boxes:
                         px, py, pw, ph = pb
-                        mid_x = px + pw * 0.50
-                        if abs(wx - mid_x) < 0.25 * pw and wy < (py + 0.65 * ph):
+                        # Cannot be in neck, collar, or head area (upper 38% of body)
+                        if wy < (py + 0.38 * ph):
                             is_anatomically_invalid = True
                             break
-                        if wy < (py + 0.35 * ph):
+                        # Cannot be inside central sternum/chest core
+                        mid_x = px + pw * 0.50
+                        if abs(wx - mid_x) < 0.20 * pw and wy < (py + 0.65 * ph):
                             is_anatomically_invalid = True
                             break
                     if is_anatomically_invalid:
@@ -299,12 +302,12 @@ class SceneObjectDetector:
                 if roi.size < 300:
                     continue
 
-                # Must have skin tone context around dial (watch is worn on a wrist/arm)
+                # Must have authentic skin tone context around dial (watch is worn on a wrist/arm)
                 color_roi = img[y1:y2, x1:x2]
                 hsv_roi = cv2.cvtColor(color_roi, cv2.COLOR_BGR2HSV)
                 skin_m = ((hsv_roi[:, :, 0] <= 25) & (hsv_roi[:, :, 1] >= 25) & (hsv_roi[:, :, 2] >= 40))
                 skin_density = float(np.mean(skin_m))
-                if skin_density < 0.08:
+                if skin_density < 0.10:
                     continue
 
                 edges = cv2.Canny(roi, 35, 100)
@@ -323,10 +326,13 @@ class SceneObjectDetector:
                         edge_pixels = int(np.sum(edges[by:by+bh, bx:bx+bw] > 0))
                         edge_density = edge_pixels / float(max(1, bw * bh))
                         if edge_density >= 0.12:
+                            cand_box = [x1 + bx, y1 + by, bw, bh]
+                            if exclude_boxes and any(cls.calculate_iou(cand_box, eb) > 0.20 for eb in exclude_boxes):
+                                continue
                             conf = min(0.94, max(0.60, 0.65 + edge_density * 1.5))
                             if conf >= min_confidence:
                                 wrist_candidates.append({
-                                    "bbox": [x1 + bx, y1 + by, bw, bh],
+                                    "bbox": cand_box,
                                     "class_label": "single_unit",
                                     "specific_label": "Wrist Watch",
                                     "canonical_label": "WristWatch",
@@ -341,8 +347,11 @@ class SceneObjectDetector:
                     if not any(cls.calculate_iou(best["bbox"], w["bbox"]) > 0.30 for w in watches):
                         watches.append(best)
 
+            # When evaluating worn watches from pose keypoints, do NOT fall through to standalone search
+            return watches
+
         # ── 2. Standalone wrist watches on desk / surfaces ──
-        # Search outside human silhouettes
+        # Search outside human silhouettes and excluded containers/bottles
         blurred = cv2.GaussianBlur(gray, (3, 3), 0)
         edges = cv2.Canny(blurred, 40, 120)
         masked_edges = edges.copy()
@@ -350,14 +359,23 @@ class SceneObjectDetector:
             for pb in person_boxes:
                 px, py, pw, ph = pb
                 masked_edges[max(0, py - 10) : min(h_img, py + ph + 10), max(0, px - 10) : min(w_img, px + pw + 10)] = 0
+        if exclude_boxes:
+            for eb in exclude_boxes:
+                ex, ey, ew, eh = eb
+                masked_edges[max(0, ey - 5) : min(h_img, ey + eh + 5), max(0, ex - 5) : min(w_img, ex + ew + 5)] = 0
 
         contours, _ = cv2.findContours(masked_edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             c_area = cv2.contourArea(cnt)
-            if c_area < 45 or c_area > 2000:
+            # Area constraint for standalone watch dial on desk surface
+            if c_area < 60 or c_area > 2200:
                 continue
             bx, by, bw, bh = cv2.boundingRect(cnt)
-            if bw < 14 or bh < 14 or bw > 110 or bh > 110:
+            if bw < 18 or bh < 18 or bw > 110 or bh > 110:
+                continue
+
+            # Standalone items on desk/counter surface: must be in lower scene plane, not upper wall plane
+            if by < 0.40 * h_img:
                 continue
 
             aspect = bw / float(max(1, bh))
@@ -365,10 +383,38 @@ class SceneObjectDetector:
             circ = (4 * np.pi * c_area) / float(max(1, perim * perim))
             solidity = c_area / float(max(1, bw * bh))
 
-            if 0.80 <= aspect <= 1.25 and (circ >= 0.30 or solidity >= 0.45):
+            if 0.80 <= aspect <= 1.25 and circ >= 0.55 and solidity >= 0.70:
                 dial_edges = float(np.mean(edges[by : by + bh, bx : bx + bw] > 0))
                 if dial_edges >= 0.12:
                     wb = [bx, by, bw, bh]
+
+                    # Check for authentic watch strap / band continuity
+                    # A standalone watch on a desk has strap/band extensions above/below or left/right.
+                    # An isolated speck, bottle cap, or button has no strap extensions.
+                    strap_found = False
+                    margin_y = int(bh * 0.45)
+                    margin_x = int(bw * 0.45)
+                    # Vertical strap (above and below dial)
+                    top_strap = edges[max(0, by - margin_y) : by, bx : bx + bw]
+                    bot_strap = edges[by + bh : min(h_img, by + bh + margin_y), bx : bx + bw]
+                    if top_strap.size > 0 and bot_strap.size > 0:
+                        if np.mean(top_strap > 0) >= 0.08 and np.mean(bot_strap > 0) >= 0.08:
+                            strap_found = True
+
+                    # Horizontal strap (left and right of dial)
+                    if not strap_found:
+                        lft_strap = edges[by : by + bh, max(0, bx - margin_x) : bx]
+                        rgt_strap = edges[by : by + bh, bx + bw : min(w_img, bx + bw + margin_x)]
+                        if lft_strap.size > 0 and rgt_strap.size > 0:
+                            if np.mean(lft_strap > 0) >= 0.08 and np.mean(rgt_strap > 0) >= 0.08:
+                                strap_found = True
+
+                    if not strap_found:
+                        continue
+
+                    if exclude_boxes and any(cls.calculate_iou(wb, eb) > 0.15 for eb in exclude_boxes):
+                        continue
+
                     if not any(cls.calculate_iou(wb, w["bbox"]) > 0.35 for w in watches):
                         conf = min(0.92, max(0.62, 0.66 + dial_edges * 1.4))
                         if conf >= min_confidence:
@@ -532,7 +578,7 @@ class SceneObjectDetector:
 
         Geometric criteria:
         - Multi-tier parallel horizontal shelf planks with regular vertical spacing.
-        - Outer bounding fixture spans width >= 100px and height >= 100px.
+        - Structural stanchions/side posts and bounding box within architectural scale limits.
         """
         if img is None or img.size == 0:
             return []
@@ -542,7 +588,7 @@ class SceneObjectDetector:
         blurred = cv2.GaussianBlur(gray, (5, 5), 0)
         edges = cv2.Canny(blurred, 30, 100)
 
-        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 40, minLineLength=60, maxLineGap=25)
+        lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 40, minLineLength=70, maxLineGap=20)
         if lines is None or len(lines) == 0:
             return []
 
@@ -551,13 +597,13 @@ class SceneObjectDetector:
             x1, y1, x2, y2 = line[0]
             dx = abs(x2 - x1)
             dy = abs(y2 - y1)
-            if dy <= 8 and dx >= 70:
+            if dy <= 6 and dx >= 80:
                 horiz_shelves.append((min(x1, x2), min(y1, y2), max(x1, x2), max(y1, y2)))
 
         if len(horiz_shelves) < 2:
             return []
 
-        # Group horizontal shelves by alignment
+        # Group horizontal shelves by alignment and vertical tier consistency
         shelves_sorted = sorted(horiz_shelves, key=lambda s: s[1])
         shelf_groups: List[List[Tuple[int, int, int, int]]] = []
 
@@ -567,10 +613,14 @@ class SceneObjectDetector:
                 g_x1 = min(item[0] for item in group)
                 g_x2 = max(item[2] for item in group)
                 overlap_x = max(0, min(s[2], g_x2) - max(s[0], g_x1))
-                if overlap_x >= 0.45 * (s[2] - s[0]):
-                    group.append(s)
-                    matched_group = True
-                    break
+                if overlap_x >= 0.55 * (s[2] - s[0]):
+                    # Check vertical spacing from the nearest tier in the group:
+                    # distinct tiers must be separated by at least 35px and at most 220px
+                    min_dy = min(abs(s[1] - item[1]) for item in group)
+                    if 35 <= min_dy <= 220:
+                        group.append(s)
+                        matched_group = True
+                        break
             if not matched_group:
                 shelf_groups.append([s])
 
@@ -579,26 +629,39 @@ class SceneObjectDetector:
             if len(group) >= 2:
                 min_x = max(0, min(item[0] for item in group) - 10)
                 max_x = min(w_img - 1, max(item[2] for item in group) + 10)
-                min_y = max(0, min(item[1] for item in group) - 20)
-                max_y = min(h_img - 1, max(item[3] for item in group) + 30)
+                min_y = max(0, min(item[1] for item in group) - 15)
+                max_y = min(h_img - 1, max(item[3] for item in group) + 20)
 
                 sh_w = max_x - min_x
                 sh_h = max_y - min_y
 
-                if sh_w >= 100 and sh_h >= 100:
-                    cand_box = [int(min_x), int(min_y), int(sh_w), int(sh_h)]
-                    if exclude_boxes and any(cls.calculate_iou(cand_box, eb) > 0.60 for eb in exclude_boxes):
+                # Architectural scale check:
+                # Shelving unit cannot cover > 92% of frame width/height or > 82% of frame area (rejects whole-room wall spans)
+                if sh_w < 100 or sh_h < 100 or sh_w > 0.92 * w_img or sh_h > 0.92 * h_img or (sh_w * sh_h) > 0.82 * (w_img * h_img):
+                    continue
+
+                # Verify vertical stanchions/side posts on left or right boundary
+                crop_edges = edges[int(min_y):int(max_y), int(min_x):int(max_x)]
+                if crop_edges.size > 0:
+                    v_border = max(5, int(sh_w * 0.15))
+                    left_v = np.sum(crop_edges[:, :v_border] > 0) / float(max(1, sh_h))
+                    right_v = np.sum(crop_edges[:, -v_border:] > 0) / float(max(1, sh_h))
+                    if left_v < 0.12 and right_v < 0.12:
                         continue
 
-                    bookshelves.append({
-                        "bbox": cand_box,
-                        "class_label": "bookshelf",
-                        "specific_label": "Storage Shelf / Bookcase",
-                        "confidence": 0.91,
-                        "color": "cyan",
-                        "type": "FIXTURES",
-                    })
-                    break
+                cand_box = [int(min_x), int(min_y), int(sh_w), int(sh_h)]
+                if exclude_boxes and any(cls.calculate_iou(cand_box, eb) > 0.40 for eb in exclude_boxes):
+                    continue
+
+                bookshelves.append({
+                    "bbox": cand_box,
+                    "class_label": "bookshelf",
+                    "specific_label": "Storage Shelf / Bookcase",
+                    "confidence": 0.91,
+                    "color": "cyan",
+                    "type": "FIXTURES",
+                })
+                break
 
         return bookshelves[:1]
 
@@ -612,6 +675,11 @@ class SceneObjectDetector:
     ) -> List[Dict[str, Any]]:
         """Unified dynamic detector for doorways, desktop screens, wrist watches, hanging bags, umbrellas, and bookshelves."""
         all_excluded = list(exclude_boxes or [])
+        if person_boxes:
+            for pb in person_boxes:
+                if pb not in all_excluded:
+                    all_excluded.append(pb)
+
         doors = cls.detect_doorways(img, exclude_boxes=all_excluded)
         for d in doors:
             all_excluded.append(d["bbox"])
@@ -620,8 +688,8 @@ class SceneObjectDetector:
         for s in screens:
             all_excluded.append(s["bbox"])
 
-        p_boxes = person_boxes if person_boxes is not None else all_excluded
-        watches = cls.detect_wrist_watches(img, wrist_keypoints=wrist_keypoints, person_boxes=p_boxes)
+        p_boxes = person_boxes if person_boxes is not None else [eb for eb in all_excluded if len(eb) == 4]
+        watches = cls.detect_wrist_watches(img, wrist_keypoints=wrist_keypoints, person_boxes=p_boxes, exclude_boxes=all_excluded)
         for w in watches:
             all_excluded.append(w["bbox"])
 

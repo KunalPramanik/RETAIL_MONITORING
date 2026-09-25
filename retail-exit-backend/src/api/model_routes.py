@@ -11,15 +11,20 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Body
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
+from datetime import datetime, timezone
 import os
 import asyncio
+import logging
 
 from src.ml.model_registry import ModelRegistry, ModelMetrics
 from src.ml.shadow_service import shadow_service
 from src.ml.active_learning import active_learning_service, CANDIDATES_DIR
 from src.ml.training.trainer import fine_tuning_service
+from src.ml.training.evaluator import AccuracyEvaluator
 from src.ml.model_config import get_vision_config, reload_vision_config
 from src.api.deps_auth import require_roles
+
+logger = logging.getLogger("secops.api.models")
 
 router = APIRouter(prefix="/ml", tags=["ML Model Lifecycle & Retraining"])
 
@@ -85,6 +90,18 @@ class StartTrainingRequest(BaseModel):
 
 class EvaluateCheckpointRequest(BaseModel):
     weights_path: str
+
+
+class HardNegativeRequest(BaseModel):
+    camera_id: str = "EXIT-GATE"
+    scene_description: str = "Empty background / fixture reference"
+    image_base64: Optional[str] = None
+
+
+class ExportDatasetRequest(BaseModel):
+    train_ratio: float = 0.70
+    val_ratio: float = 0.15
+    output_dir: Optional[str] = None
 
 
 # ── Model Registry Endpoints ──
@@ -194,6 +211,7 @@ async def get_classes_config(_role: str = Depends(require_roles(["ADMIN", "SUPER
             "vehicle_conf_threshold": cfg.vehicle_conf_threshold,
             "item_conf_threshold": cfg.item_conf_threshold,
             "nms_iou_threshold": cfg.nms_iou_threshold,
+            "dense_shelf_nms_iou_threshold": cfg.dense_shelf_nms_iou_threshold,
         },
         "pairwise_precision_groups": cfg.pairwise_precision_groups,
     }
@@ -249,6 +267,68 @@ async def curate_candidate(
     if not success:
         raise HTTPException(status_code=400, detail=msg)
     return {"success": True, "message": msg}
+
+
+@router.post("/active-learning/hard-negative")
+async def ingest_hard_negative_sample(
+    req: HardNegativeRequest,
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+):
+    """Directly ingests an empty scene / background frame as a certified Hard Negative sample.
+
+    Hard negatives suppress false positives on background walls, posters, shadows, and shelves.
+    """
+    import base64
+    frame_bytes = None
+    if req.image_base64:
+        try:
+            b64_str = req.image_base64
+            if "," in b64_str:
+                b64_str = b64_str.split(",", 1)[1]
+            frame_bytes = base64.b64decode(b64_str)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid base64 image data")
+    else:
+        try:
+            from src.engine.stream_manager import get_latest_frame_bytes
+            frame_bytes = get_latest_frame_bytes(req.camera_id)
+        except Exception as _st_err:
+            logger.debug("Stream frame extraction error: %s", _st_err)
+
+    if not frame_bytes:
+        raise HTTPException(status_code=400, detail=f"No image provided and camera '{req.camera_id}' has no live frame available.")
+
+    cand_id = active_learning_service.ingest_hard_negative(
+        frame_bytes=frame_bytes,
+        camera_id=req.camera_id,
+        scene_description=req.scene_description,
+    )
+    if not cand_id:
+        raise HTTPException(status_code=500, detail="Failed to ingest hard negative frame.")
+
+    return {
+        "success": True,
+        "candidate_id": cand_id,
+        "camera_id": req.camera_id,
+        "is_hard_negative": True,
+        "message": f"Successfully registered hard negative sample '{cand_id}' (zero false-detection signal).",
+    }
+
+
+@router.post("/active-learning/export")
+async def export_training_dataset(
+    req: ExportDatasetRequest,
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+):
+    """Exports all curated samples and hard negatives into standardized YOLO dataset structure."""
+    result = active_learning_service.export_to_yolo_dataset(
+        output_dir=req.output_dir,
+        train_ratio=req.train_ratio,
+        val_ratio=req.val_ratio,
+    )
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=result.get("message", "Export failed."))
+    return result
 
 
 @router.get("/drift")

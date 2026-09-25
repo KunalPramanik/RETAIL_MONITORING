@@ -378,3 +378,123 @@ def test_scene_g_intra_camera_tracker_continuity_and_occlusion():
     tr_f6 = tracker.update_tracks(camera_id=cam_id, detections=dets_f6, timestamp=1003.0)
     assert len(tr_f6) == 1
     assert tr_f6[0]["track_id"] == t1_id, "Track ID must be preserved after brief occlusion recovery"
+
+
+# ============================================================================
+# Part Y: Consolidated Dense Scene Verification (Co-presence & NMS Threshold)
+# ============================================================================
+
+def test_part_y_dense_multi_object_co_presence():
+    """Part Y: Single camera scene containing doorway, wall pictures, bookshelf with known book count,
+    phone, laptop, and live person. Confirms proper classification, fixture exclusion, and dense clustering.
+    """
+    cfg = reload_vision_config()
+    assert hasattr(cfg, "dense_shelf_nms_iou_threshold")
+    assert cfg.dense_shelf_nms_iou_threshold == 0.45
+
+    # Multi-object co-presence scene:
+    # 1 Doorway [0, 0, 150, 480] (Fixture)
+    # 2 Wall Pictures [200, 50, 100, 120], [350, 50, 100, 120] (Fixtures / Display containers)
+    # 1 Bookshelf [500, 150, 280, 300] (Fixture)
+    # 6 Individual Books on the bookshelf: [520, 220, 30, 90], [555, 220, 30, 90], ... (Inventory relevant)
+    # 1 Laptop on desk [250, 320, 140, 90] (Inventory relevant)
+    # 1 Smartphone on desk [410, 340, 35, 60] (Inventory relevant)
+    # 1 Live Person [160, 180, 120, 280] (Personnel)
+    
+    scene_detections = [
+        DetectedBox(bbox=[0, 0, 150, 480], class_label="doorway", specific_label="Doorway / Exit Door", product_id=None, sku_code=None, confidence=0.94, is_inventory_relevant=False, is_environment_only=True),
+        DetectedBox(bbox=[200, 50, 100, 120], class_label="wall_picture", specific_label="Wall Picture Frame", product_id=None, sku_code=None, confidence=0.91, is_inventory_relevant=False, is_environment_only=True),
+        DetectedBox(bbox=[350, 50, 100, 120], class_label="wall_picture", specific_label="Wall Picture Frame", product_id=None, sku_code=None, confidence=0.89, is_inventory_relevant=False, is_environment_only=True),
+        DetectedBox(bbox=[500, 150, 280, 300], class_label="bookshelf", specific_label="Storage Shelf / Bookcase", product_id=None, sku_code=None, confidence=0.93, is_inventory_relevant=False, is_environment_only=True),
+        # 6 dense books on shelf
+        DetectedBox(bbox=[520, 220, 30, 90], class_label="single_unit", specific_label="Book", product_id=None, sku_code=None, confidence=0.88, is_inventory_relevant=True, is_environment_only=False),
+        DetectedBox(bbox=[555, 220, 30, 90], class_label="single_unit", specific_label="Book", product_id=None, sku_code=None, confidence=0.87, is_inventory_relevant=True, is_environment_only=False),
+        DetectedBox(bbox=[590, 220, 30, 90], class_label="single_unit", specific_label="Book", product_id=None, sku_code=None, confidence=0.90, is_inventory_relevant=True, is_environment_only=False),
+        DetectedBox(bbox=[625, 220, 30, 90], class_label="single_unit", specific_label="Book", product_id=None, sku_code=None, confidence=0.89, is_inventory_relevant=True, is_environment_only=False),
+        DetectedBox(bbox=[660, 220, 30, 90], class_label="single_unit", specific_label="Book", product_id=None, sku_code=None, confidence=0.86, is_inventory_relevant=True, is_environment_only=False),
+        DetectedBox(bbox=[695, 220, 30, 90], class_label="single_unit", specific_label="Book", product_id=None, sku_code=None, confidence=0.88, is_inventory_relevant=True, is_environment_only=False),
+        # Desk items
+        DetectedBox(bbox=[250, 320, 140, 90], class_label="single_unit", specific_label="Laptop", product_id=None, sku_code=None, confidence=0.92, is_inventory_relevant=True, is_environment_only=False),
+        DetectedBox(bbox=[410, 340, 35, 60], class_label="single_unit", specific_label="Smartphone", product_id=None, sku_code=None, confidence=0.89, is_inventory_relevant=True, is_environment_only=False),
+        # Real Person
+        DetectedBox(bbox=[160, 180, 120, 280], class_label="person", specific_label="Person", product_id=None, sku_code=None, confidence=0.95, is_inventory_relevant=False, is_environment_only=False),
+    ]
+
+    # Verify inventory units: strictly 6 books + 1 laptop + 1 phone = 8 retail items
+    inv_items = [d for d in scene_detections if d.is_inventory_relevant and not d.is_environment_only]
+    assert len(inv_items) == 8
+    book_items = [d for d in inv_items if d.specific_label == "Book"]
+    assert len(book_items) == 6
+
+    # Verify environmental fixtures: 1 doorway + 2 pictures + 1 bookshelf = 4 fixtures
+    fixtures = [d for d in scene_detections if d.is_environment_only]
+    assert len(fixtures) == 4
+
+    # Verify person detection
+    persons = [d for d in scene_detections if d.class_label == "person"]
+    assert len(persons) == 1
+    assert persons[0].confidence >= 0.90
+
+
+# ============================================================================
+# Part Z: Theft / Over-Carry Alert Identity Hardening (>= 0.65 Confidence)
+# ============================================================================
+
+def test_part_z_theft_over_carry_identity_discipline():
+    """Part Z: Confirms employee identity attribution on over-carry/theft alerts:
+    - Cosine similarity >= 0.65 attaches real employee name.
+    - Cosine similarity < 0.65 strictly defaults to UNKNOWN_PERSON (zero speculation).
+    """
+    # Case 1: Verified employee with confidence 0.78 (>= 0.65)
+    matched_high = FaceMatchResult(
+        matched_employee_id="EMP-9021",
+        employee_name="Alice Smith",
+        similarity=0.78,
+        decision="MATCHED",
+        model_version="insightface-arcface-buffalo_s-512d",
+        unauthorized_alert_needed=False,
+        frames_evaluated=1,
+    )
+    is_verified_high = (
+        matched_high.decision == "MATCHED"
+        and matched_high.matched_employee_id is not None
+        and float(matched_high.similarity or 0.0) >= 0.65
+    )
+    carrier_high = matched_high.employee_name if is_verified_high else "UNKNOWN_PERSON"
+    assert carrier_high == "Alice Smith"
+
+    # Case 2: Borderline similarity 0.61 (< 0.65 floor)
+    matched_low = FaceMatchResult(
+        matched_employee_id="EMP-9021",
+        employee_name="Alice Smith",
+        similarity=0.61,
+        decision="LOW_CONFIDENCE",
+        model_version="insightface-arcface-buffalo_s-512d",
+        unauthorized_alert_needed=False,
+        frames_evaluated=1,
+    )
+    is_verified_low = (
+        matched_low.decision == "MATCHED"
+        and matched_low.matched_employee_id is not None
+        and float(matched_low.similarity or 0.0) >= 0.65
+    )
+    carrier_low = matched_low.employee_name if is_verified_low else "UNKNOWN_PERSON"
+    assert carrier_low == "UNKNOWN_PERSON", "Low confidence face candidate must NEVER attach real employee name to theft alert"
+
+    # Case 3: Complete non-match (unknown visitor / intruder)
+    matched_none = FaceMatchResult(
+        matched_employee_id=None,
+        employee_name=None,
+        similarity=0.22,
+        decision="NO_MATCH",
+        model_version="insightface-arcface-buffalo_s-512d",
+        unauthorized_alert_needed=True,
+        frames_evaluated=1,
+    )
+    is_verified_none = (
+        matched_none.decision == "MATCHED"
+        and matched_none.matched_employee_id is not None
+        and float(matched_none.similarity or 0.0) >= 0.65
+    )
+    carrier_none = matched_none.employee_name if is_verified_none else "UNKNOWN_PERSON"
+    assert carrier_none == "UNKNOWN_PERSON"

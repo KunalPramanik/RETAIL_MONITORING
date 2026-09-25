@@ -45,8 +45,38 @@ class TripwireEngine:
     # Rolling history of recent crossings: tripwire_id -> deque of (timestamp, track_id, entity_type)
     _recent_crossings: Dict[str, deque] = {}
 
+    # Anti-duplicate crossing locks: (tripwire_id, track_id) -> {"direction": direction, "ts": timestamp}
+    _crossing_locks: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    LOCK_COOLDOWN_SEC: float = 3.5
+
     # Anti-tailgating temporal threshold (1.2 seconds between unauthorized successive entries)
     TAILGATING_WINDOW_SEC: float = 1.2
+
+    @classmethod
+    def should_allow_crossing(cls, tripwire_id: str, track_id: str, direction: str) -> bool:
+        """Evaluates whether this crossing is a genuine new crossing or a duplicate lock.
+        
+        Returns True if crossing should be committed, False if suppressed as a duplicate.
+        """
+        import time as _time
+        now_ts = _time.time()
+        key = (str(tripwire_id), str(track_id))
+        prev_lock = cls._crossing_locks.get(key)
+        if prev_lock:
+            prev_dir = prev_lock.get("direction")
+            prev_ts = prev_lock.get("ts", 0.0)
+            # If same direction and within cooldown window, suppress duplicate event
+            if prev_dir == direction and (now_ts - prev_ts) < cls.LOCK_COOLDOWN_SEC:
+                return False
+        # Set / update lock
+        cls._crossing_locks[key] = {"direction": direction, "ts": now_ts}
+        return True
+
+    @classmethod
+    def unlock_crossing(cls, tripwire_id: str, track_id: str):
+        """Manually unlocks a crossing state (e.g. on direction change or track departure)."""
+        key = (str(tripwire_id), str(track_id))
+        cls._crossing_locks.pop(key, None)
 
     @classmethod
     def check_trajectory_crossing(
@@ -160,20 +190,27 @@ class TripwireEngine:
         is_concealed: bool = False,
         concealment_details: Optional[Dict[str, Any]] = None,
         snapshot_url: Optional[str] = None,
+        carried_materials: Optional[List[Dict[str, Any]]] = None,
+        zone_id: Optional[str] = None,
     ) -> Tuple[TripwireCrossingEvent, Optional[Alert]]:
-        """Persists a verified tripwire line crossing event and detects anti-tailgating violations."""
+        """Persists a verified tripwire line crossing event, detects anti-tailgating violations,
+        and atomically links carried material inventory movements.
+        """
         now = get_utc_now()
         now_ts = now.timestamp()
 
-        # Biometric status
+        # Biometric status (Identity confidence floor: >= 0.65 and decision == MATCHED)
         biometric_status = "UNAVAILABLE"
         emp_id = None
         if matched_employee:
-            if matched_employee.get("decision") == "MATCHED":
+            decision = matched_employee.get("decision")
+            sim = float(matched_employee.get("similarity", 0.75)) if decision == "MATCHED" else float(matched_employee.get("similarity", 0.0))
+            if decision == "MATCHED" and sim >= 0.65:
                 biometric_status = "VERIFIED_KNOWN"
                 emp_id = matched_employee.get("employee_id")
-            elif matched_employee.get("decision") in ("NO_MATCH", "LOW_CONFIDENCE"):
+            elif decision in ("NO_MATCH", "LOW_CONFIDENCE") or sim < 0.65:
                 biometric_status = "UNKNOWN_INTRUDER"
+                emp_id = None
 
         # Check for multi-person tailgating
         if tripwire_id not in cls._recent_crossings:
@@ -236,6 +273,52 @@ class TripwireEngine:
             )
             session.add(alert)
 
+        # Automatic atomic recording of carried materials into the MaterialMovementLedger
+        carried_ledger_entries = []
+        if carried_materials:
+            from src.engine.inventory_ledger_engine import InventoryLedgerEngine
+            tx_type = "IN" if direction == "ENTRY" else "OUT"
+            p_name = "UNKNOWN_PERSON"
+            p_status = "UNKNOWN_PERSON"
+            if emp_id and biometric_status == "VERIFIED_KNOWN":
+                p_name = (matched_employee.get("employee_name") if matched_employee is not None else None) or emp_id or "VERIFIED_KNOWN"
+                p_status = "VERIFIED_KNOWN"
+            else:
+                p_name = "UNKNOWN_PERSON"
+                p_status = "UNKNOWN_PERSON"
+                emp_id = None
+
+            for mat in carried_materials:
+                mat_id = mat.get("material_id") or mat.get("name") or mat.get("class_name") or mat.get("sku_code")
+                qty = mat.get("quantity") or mat.get("units") or mat.get("unit_quantity") or 1
+                pkg_qty = mat.get("package_quantity") or 0
+                def_status = mat.get("defect_status") or "NORMAL"
+                def_sev = mat.get("defect_severity") or "NONE"
+                try:
+                    ledger_rec, _, _ = await InventoryLedgerEngine.record_confirmed_movement(
+                        session=session,
+                        material_id=str(mat_id),
+                        transaction_type=tx_type,
+                        unit_quantity=qty,
+                        package_quantity=pkg_qty,
+                        camera_id=camera_id,
+                        zone_id=zone_id,
+                        tripwire_id=tripwire_id,
+                        track_id=str(track_id),
+                        direction=direction,
+                        person_id=emp_id,
+                        person_name=p_name,
+                        person_identity_status=p_status,
+                        carrier_relation=mat.get("carrier_relation", "carrying"),
+                        defect_status=def_status,
+                        defect_severity=def_sev,
+                        commit=False,
+                    )
+                    carried_ledger_entries.append(ledger_rec)
+                except Exception as _m_err:
+                    logger.debug("Automatic carried material ledger recording error: %s", _m_err)
+
+        setattr(crossing, "ledger_entries", carried_ledger_entries)
 
         await session.commit()
         await session.refresh(crossing)

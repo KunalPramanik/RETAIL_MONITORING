@@ -389,8 +389,15 @@ class CameraIngestionWorker:
                     else (getattr(cfg, "vehicle_conf_threshold", 0.25) if is_veh
                     else cfg.item_conf_threshold)
                 )
-                if d.confidence < target_floor:
+                # Live confirmation floor: single retail items require >= 0.50 to prevent 38-39% noisy proposals
+                live_item_floor = 0.50 if (not is_veh and not is_case and d.class_label == "single_unit" and d.is_inventory_relevant) else target_floor
+                if d.confidence < live_item_floor:
                     continue
+
+                # Content-in-content quarantine: suppress single retail items enclosed within display/picture containers
+                if display_containers and not is_veh and not is_case and d.class_label == "single_unit":
+                    if quarantine_enclosed_visual_content([d.bbox], display_containers, containment_threshold=0.60):
+                        continue
 
                 item_label = d.specific_label or d.class_label
                 item_lower = item_label.lower()
@@ -398,14 +405,52 @@ class CameraIngestionWorker:
                 is_screen = any(k in item_lower for k in ("screen", "monitor", "display", "tv"))
                 is_laptop = "laptop" in item_lower
                 is_watch = "watch" in item_lower
-                is_bookshelf = any(k in item_lower for k in ("bookshelf", "book shelf", "shelving"))
-                is_book = "book" in item_lower and not is_bookshelf
+                is_bookshelf = (
+                    d.class_label == "bookshelf" or
+                    any(k in item_lower for k in ("bookshelf", "book shelf", "shelving", "bookcase", "shelf", "rack"))
+                )
+                is_book = ("book" in item_lower or "binder" in item_lower) and not is_bookshelf
+                # Physical scale filter: a retail handheld book cannot exceed 40% frame width, 45% frame height, or 15% frame area
+                if is_book:
+                    bw, bh = d.bbox[2], d.bbox[3]
+                    if bw > 0.40 * frame_w or bh > 0.45 * frame_h or (bw * bh) > 0.15 * (frame_w * frame_h):
+                        is_book = False
+                        is_bookshelf = True
+
                 is_phone = any(k in item_lower for k in ("phone", "smartphone", "cell phone"))
-                is_wall_picture = any(k in item_lower for k in ("picture", "poster", "wall art", "framed"))
+                is_wall_picture = d.class_label == "wall_picture" or any(k in item_lower for k in ("picture", "poster", "wall art", "framed"))
                 is_clock = "clock" in item_lower
                 is_bottle = "bottle" in item_lower
                 is_keyboard = "keyboard" in item_lower
                 is_mouse = "mouse" in item_lower
+
+                # Wall picture frames cannot be located on a human silhouette (collar folds, shirt wrinkles)
+                if is_wall_picture and all_person_boxes:
+                    wx, wy, ww, wh = d.bbox
+                    wcx, wcy = wx + ww * 0.5, wy + wh * 0.5
+                    inside_human = False
+                    for pb in all_person_boxes:
+                        px, py, pw, ph = pb
+                        if (px <= wcx <= px + pw and py <= wcy <= py + ph) or (
+                            max(0, min(wx + ww, px + pw) - max(wx, px)) * max(0, min(wy + wh, py + ph) - max(wy, py)) > 0.15 * (ww * wh)
+                        ):
+                            inside_human = True
+                            break
+                    if inside_human:
+                        continue
+
+                # WristWatch candidate cannot overlap beverage bottles or cups (protects bottle cap)
+                if is_watch:
+                    overlaps_bottle = False
+                    for ob in overlay_boxes:
+                        if ob.get("type") in ("BOTTLE", "CUP", "CAN") or "bottle" in ob.get("entity", "").lower():
+                            bx, by, bw, bh = ob["box"]
+                            wx, wy, ww, wh = d.bbox
+                            if (bx - 5 <= wx <= bx + bw + 5) and (by - 5 <= wy <= by + bh + 5):
+                                overlaps_bottle = True
+                                break
+                    if overlaps_bottle:
+                        continue
 
                 if is_veh:
                     b_type = "VEHICLE"
@@ -587,7 +632,12 @@ class CameraIngestionWorker:
                         # 5B. Wrist watch detection from pose keypoints
                         if pose_res.keypoints:
                             from src.ml.scene_object_detector import SceneObjectDetector
-                            wrist_watches = SceneObjectDetector.detect_wrist_watches(dec, wrist_keypoints=pose_res.keypoints)
+                            wrist_watches = SceneObjectDetector.detect_wrist_watches(
+                                dec,
+                                wrist_keypoints=pose_res.keypoints,
+                                person_boxes=[p_box],
+                                exclude_boxes=[ob["box"] for ob in overlay_boxes],
+                            )
                             for ww in wrist_watches:
                                 wb = ww["bbox"]
                                 if not any(abs(wb[0] - ob["box"][0]) < 25 and abs(wb[1] - ob["box"][1]) < 25 for ob in overlay_boxes if ob["type"] in ("ITEM", "WRISTWATCH")):
@@ -890,7 +940,36 @@ class CameraIngestionWorker:
                                 elif dy > 0.012:
                                     person_dir = "EXIT"
 
-                            # Tripwire crossing evaluation
+                            # If entity is a Person, associate proximate materials and track carrier attribution
+                            carried_mats: Dict[str, int] = {}
+                            is_person = "PERSON" in ob["type"]
+                            is_known = False
+                            person_name = "Unknown Person"
+                            emp_id = None
+
+                            if is_person:
+                                is_known = (face_res.decision == "MATCHED" and bool(face_res.matched_employee_id))
+                                person_name = face_res.employee_name if is_known else "Unknown Person"
+                                emp_id = face_res.matched_employee_id if is_known else None
+
+                                pcx = bx + bw / 2.0
+                                pcy = by + bh / 2.0
+                                max_dist = max(130.0, bw * 1.0)
+
+                                for minst in current_mat_instances:
+                                    mbx, mby, mbw, mbh = minst.bbox
+                                    mcx = mbx + mbw / 2.0
+                                    mcy = mby + mbh / 2.0
+                                    dist = math.hypot(mcx - pcx, mcy - pcy)
+                                    if dist <= max_dist:
+                                        carried_mats[minst.class_name] = carried_mats.get(minst.class_name, 0) + 1
+
+                            carried_mats_list = [
+                                {"name": cname, "quantity": cnt, "carrier_relation": "carrying"}
+                                for cname, cnt in carried_mats.items()
+                            ]
+
+                            # Tripwire crossing evaluation with anti-duplicate lock and automatic inventory flow
                             if prev_pt and active_tripwires:
                                 for tw in active_tripwires:
                                     if len(tw.line_coords) >= 2:
@@ -904,41 +983,28 @@ class CameraIngestionWorker:
                                         )
                                         if has_crossed and (tw.direction_mode in ("BOTH", tw_direction)):
                                             person_dir = tw_direction
-                                            emp_match = None
-                                            if face_res.decision == "MATCHED":
-                                                emp_match = {
-                                                    "decision": "MATCHED",
-                                                    "employee_id": face_res.matched_employee_id,
-                                                }
-                                            await TripwireEngine.record_crossing(
-                                                session=session,
-                                                tripwire_id=tw.tripwire_id,
-                                                camera_id=cam.camera_id,
-                                                track_id=track_id,
-                                                direction=tw_direction,
-                                                entity_type="PERSON" if "PERSON" in ob["type"] else "VEHICLE",
-                                                matched_employee=emp_match,
-                                            )
+                                            # Anti-duplicate gate lock: prevents loitering multi-fires
+                                            if TripwireEngine.should_allow_crossing(tw.tripwire_id, track_id, tw_direction):
+                                                emp_match = None
+                                                if face_res.decision == "MATCHED":
+                                                    emp_match = {
+                                                        "decision": "MATCHED",
+                                                        "employee_id": face_res.matched_employee_id,
+                                                        "employee_name": face_res.employee_name,
+                                                    }
+                                                await TripwireEngine.record_crossing(
+                                                    session=session,
+                                                    tripwire_id=tw.tripwire_id,
+                                                    camera_id=cam.camera_id,
+                                                    track_id=track_id,
+                                                    direction=tw_direction,
+                                                    entity_type="PERSON" if is_person else "VEHICLE",
+                                                    matched_employee=emp_match,
+                                                    carried_materials=carried_mats_list if is_person else None,
+                                                    zone_id=getattr(tw, "zone_id", None),
+                                                )
 
-                            # If entity is a Person, associate proximate materials and track carrier attribution
-                            if "PERSON" in ob["type"]:
-                                is_known = (face_res.decision == "MATCHED" and bool(face_res.matched_employee_id))
-                                person_name = face_res.employee_name if is_known else "Unknown Person"
-                                emp_id = face_res.matched_employee_id if is_known else None
-
-                                pcx = bx + bw / 2.0
-                                pcy = by + bh / 2.0
-                                max_dist = max(130.0, bw * 1.0)
-                                carried_mats: Dict[str, int] = {}
-
-                                for minst in current_mat_instances:
-                                    mbx, mby, mbw, mbh = minst.bbox
-                                    mcx = mbx + mbw / 2.0
-                                    mcy = mby + mbh / 2.0
-                                    dist = math.hypot(mcx - pcx, mcy - pcy)
-                                    if dist <= max_dist:
-                                        carried_mats[minst.class_name] = carried_mats.get(minst.class_name, 0) + 1
-
+                            if is_person:
                                 mat_parts = [f"{cnt}x {cname.split(' (')[0].split(' / ')[0]}" for cname, cnt in carried_mats.items()]
                                 mat_desc = ", ".join(mat_parts) if mat_parts else ""
 
@@ -1189,13 +1255,21 @@ class CameraIngestionWorker:
 
         snapshot_url = f"/snapshots/{snapshot_filename}"
 
-        # 7. Write ExitEvent Row
+        # 7. Write ExitEvent Row (Identity confidence floor: >= 0.65 and decision == MATCHED)
+        is_verified_employee = (
+            face_result.decision == "MATCHED"
+            and face_result.matched_employee_id is not None
+            and float(face_result.similarity or 0.0) >= 0.65
+        )
+        resolved_emp_id = face_result.matched_employee_id if is_verified_employee else None
+        resolved_emp_conf = face_result.similarity if is_verified_employee else None
+
         event = ExitEvent(
             event_id=event_id,
             ts=now,
             lane_id=lane_id,
-            employee_id=face_result.matched_employee_id,
-            employee_match_confidence=face_result.similarity if face_result.matched_employee_id else None,
+            employee_id=resolved_emp_id,
+            employee_match_confidence=resolved_emp_conf,
             cases_detected=vision_result.cases_detected,
             units_detected=vision_result.vision_count,
             vision_count=vision_result.vision_count,
@@ -1231,6 +1305,11 @@ class CameraIngestionWorker:
             session.add(det)
 
         # 8b. Real Store Material Counting & ExitEventLineItem Attribution
+        carrier_name = (
+            face_result.employee_name
+            if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= 0.65)
+            else "UNKNOWN_PERSON"
+        )
         event_line_items = []
         try:
             nparr = np.frombuffer(frame_bytes, np.uint8)
@@ -1293,7 +1372,7 @@ class CameraIngestionWorker:
                             })
 
                     dir_tag = "EXIT" if "EXIT" in trigger_reason.upper() else "ENTRY"
-                    carrier_name = face_result.employee_name if face_result.decision == "MATCHED" and face_result.matched_employee_id else "Unknown Person"
+                    carrier_name = face_result.employee_name if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= 0.65) else "UNKNOWN_PERSON"
                     mat_desc = ", ".join([f"{c}x {n}" for n, c in mat_seg_res.counts_by_class.items()])
                     event.notes = f"[{dir_tag}] Carrier: {carrier_name}. Handled: {mat_desc}. Trigger: {trigger_reason}."
         except Exception as _mat_err:
@@ -1316,6 +1395,7 @@ class CameraIngestionWorker:
             alert_type = "OVER_CARRY" if verdict_result.delta_units > 0 else (
                 "UNDER_DECLARE" if verdict_result.delta_units < 0 else "SENSOR_DISAGREEMENT"
             )
+            carrier_str = carrier_name
             alert = Alert(
                 alert_id=f"ALT-2026-{uuid.uuid4().hex[:6].upper()}",
                 camera_id=cam.camera_id,
@@ -1324,6 +1404,7 @@ class CameraIngestionWorker:
                 severity=verdict_result.severity if verdict_result.severity in ("LOW", "MEDIUM", "HIGH") else "MEDIUM",
                 delta_units=verdict_result.delta_units,
                 status="OPEN",
+                resolution_note=f"Discrepancy [{alert_type}]: {verdict_result.delta_units} units variance. Carrier: {carrier_str}.",
                 created_at=now,
             )
             session.add(alert)

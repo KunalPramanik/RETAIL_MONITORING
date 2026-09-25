@@ -175,9 +175,10 @@ class DispatchEngine:
             disp.status = "FLAGGED_DISCREPANCY"
             severity = "HIGH" if discrepancy_type == "OVER_AUTHORIZED" else "MEDIUM"
             alert_type = "OVER_CARRY" if discrepancy_type == "OVER_AUTHORIZED" else "UNDER_DECLARE"
+            carrier_str = disp.carrier_employee_id or "UNKNOWN_PERSON"
             desc = (
                 f"Dispatch Discrepancy [{discrepancy_type}]: Dock '{disp.dock_lane_id}' variance of {variance} units. "
-                f"Vehicle: {disp.vehicle_identifier or 'UNKNOWN'}, Manifest: {disp.manifest_id or 'NONE'}."
+                f"Carrier: {carrier_str}. Vehicle: {disp.vehicle_identifier or 'UNKNOWN'}, Manifest: {disp.manifest_id or 'NONE'}."
             )
             alert = Alert(
                 alert_id=f"alt_disp_{uuid.uuid4().hex[:8]}",

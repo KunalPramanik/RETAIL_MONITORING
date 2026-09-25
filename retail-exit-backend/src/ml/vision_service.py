@@ -671,7 +671,10 @@ class VisionInferenceService:
         try:
             from src.ml.scene_object_detector import SceneObjectDetector
             exclude = [d.bbox for d in detections]
-            scene_objects = SceneObjectDetector.detect_scene_objects(img, exclude_boxes=exclude)
+            person_boxes = [d.bbox for d in detections if d.class_label == "person"]
+            scene_objects = SceneObjectDetector.detect_scene_objects(
+                img, exclude_boxes=exclude, person_boxes=person_boxes
+            )
             for so in scene_objects:
                 so_bbox = so["bbox"]
                 so_lbl = so["class_label"]
@@ -691,6 +694,8 @@ class VisionInferenceService:
 
                 if so_lbl == "doorway":
                     c_label = "doorway"
+                elif so_lbl in ("bookshelf", "wall_picture"):
+                    c_label = so_lbl
                 elif so_lbl == "bag":
                     c_label = "single_unit"
                     if so_is_inv:

@@ -20,6 +20,9 @@ from src.db.models import (
     PersonAppearanceSummary,
     CameraPairingToken,
     StaticImageDetection,
+    MaterialDefectEvent,
+    MaterialMovementLedger,
+    MaterialInventoryBalance,
     TripwireCrossingEvent,
     VirtualTripwireConfig,
     DispatchSession,
@@ -48,6 +51,9 @@ async def clean_database():
     async with AsyncSessionLocal() as session:
         # Delete in foreign key dependency order
         models_to_clean = [
+            MaterialDefectEvent,
+            MaterialMovementLedger,
+            MaterialInventoryBalance,
             TripwireCrossingEvent,
             VirtualTripwireConfig,
             DispatchSession,

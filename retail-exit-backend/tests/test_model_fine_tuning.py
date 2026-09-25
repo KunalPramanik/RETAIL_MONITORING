@@ -104,3 +104,46 @@ async def test_training_api_endpoints():
         assert res_status2.status_code == 200
         status_data = res_status2.json()
         assert status_data["status"] in ("PREPARING", "TRAINING", "EVALUATING", "COMPLETED")
+
+
+@pytest.mark.asyncio
+async def test_hard_negative_ingestion_and_yolo_export():
+    """Verifies that hard negative background frames are ingested with 0 boxes and exported to YOLO format."""
+    import base64
+    import numpy as np
+    import cv2
+    from src.ml.active_learning import active_learning_service
+
+    # Create synthetic blank background image (e.g. wall/empty room)
+    bg_img = np.full((480, 640, 3), 180, dtype=np.uint8)
+    _, enc = cv2.imencode(".jpg", bg_img)
+    b64_img = base64.b64encode(enc.tobytes()).decode("utf-8")
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        # 1. Ingest hard negative sample
+        res_hn = await ac.post("/api/ml/active-learning/hard-negative", json={
+            "camera_id": "CAM-TEST-WALL",
+            "scene_description": "Blank wall and poster background without merchandise",
+            "image_base64": b64_img,
+        })
+        assert res_hn.status_code == 200
+        data_hn = res_hn.json()
+        assert data_hn["success"] is True
+        assert data_hn["is_hard_negative"] is True
+        cand_id = data_hn["candidate_id"]
+
+        # 2. Export dataset into temporary test directory
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            res_exp = await ac.post("/api/ml/active-learning/export", json={
+                "train_ratio": 0.70,
+                "val_ratio": 0.15,
+                "output_dir": tmp_dir,
+            })
+            assert res_exp.status_code == 200
+            data_exp = res_exp.json()
+            assert data_exp["success"] is True
+            assert data_exp["hard_negative_count"] >= 1
+            assert os.path.exists(os.path.join(tmp_dir, "dataset.yaml"))
+

@@ -18,8 +18,10 @@ from src.api.discovery import router as discovery_router
 from src.api.model_routes import router as model_router
 from src.api.dispatch import router as dispatch_router
 from src.api.materials import router as materials_router
+from src.api.material_flow import router as material_flow_router
 from src.api.tripwire import router as tripwire_router
 from src.api.analytics_routes import router as analytics_router
+from src.api.advanced_routes import router as advanced_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -27,6 +29,7 @@ api_router.include_router(kpis_router)
 api_router.include_router(events_router)
 api_router.include_router(alerts_router)
 api_router.include_router(products_router)
+api_router.include_router(material_flow_router)
 api_router.include_router(materials_router)
 api_router.include_router(employees_router)
 api_router.include_router(invoices_router)
@@ -41,4 +44,5 @@ api_router.include_router(model_router)
 api_router.include_router(dispatch_router)
 api_router.include_router(tripwire_router)
 api_router.include_router(analytics_router)
+api_router.include_router(advanced_router)
 

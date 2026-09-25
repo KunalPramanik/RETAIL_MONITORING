@@ -318,6 +318,8 @@ app.add_middleware(
 
 # Mount REST API
 app.include_router(api_router)
+from src.api.material_flow import router as material_flow_router
+app.include_router(material_flow_router, prefix="/api/v1")
 
 # Mount Static Uploads for hard-copy bill documents & CCTV evidence
 uploads_dir = os.path.join(os.getcwd(), "uploads")

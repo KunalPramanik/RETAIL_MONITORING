@@ -56,21 +56,27 @@ class WallPictureDetector:
             # Filter candidate size: bounded between min dimension and 45% of frame dimensions
             if w < cls.MIN_DIM or h < cls.MIN_DIM or w > 0.45 * w_img or h > 0.45 * h_img:
                 continue
-            # Wall pictures are mounted on the wall (upper 80% of scene, not on floor/desk base)
-            if (y + 0.5 * h) > 0.80 * h_img:
+            # Wall pictures are mounted on the wall (upper 75% of scene, not on floor/desk base)
+            if (y + 0.5 * h) > 0.75 * h_img:
                 continue
             aspect = float(w) / max(1.0, float(h))
             if not (cls.MIN_ASPECT_RATIO <= aspect <= cls.MAX_ASPECT_RATIO):
                 continue
 
-            # Exclude if heavily overlapping with an excluded box (e.g. moving human body or face)
+            # Exclude if overlapping with an excluded box (e.g. human body, face, bottles, monitors)
             if exclude_boxes:
+                cx, cy = x + w * 0.5, y + h * 0.5
                 overlap = False
                 for eb in exclude_boxes:
-                    ix1, iy1 = max(x, eb[0]), max(y, eb[1])
-                    ix2, iy2 = min(x + w, eb[0] + eb[2]), min(y + h, eb[1] + eb[3])
+                    ex, ey, ew, eh = eb
+                    # Center inside an excluded box (e.g. collar inside human torso/face)
+                    if ex <= cx <= ex + ew and ey <= cy <= ey + eh:
+                        overlap = True
+                        break
+                    ix1, iy1 = max(x, ex), max(y, ey)
+                    ix2, iy2 = min(x + w, ex + ew), min(y + h, ey + eh)
                     iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
-                    if (iw * ih) > 0.35 * (w * h):
+                    if (iw * ih) > 0.15 * (w * h):
                         overlap = True
                         break
                 if overlap:

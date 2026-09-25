@@ -19,6 +19,7 @@ import asyncio
 from dataclasses import dataclass, field, asdict
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timezone
+import re
 
 from src.ml.model_registry import (
     ModelRegistry,
@@ -180,7 +181,11 @@ class FineTuningService:
             self._current_job.message = "Exporting fine-tuned weights and validating promotion gates..."
 
             registry = ModelRegistry.get_instance()
-            existing_versions = [int(v.split("-v")[-1].replace(".", "")[:2]) for v in registry.models.keys() if "-v" in v and v.split("-v")[-1].replace(".", "")[:2].isdigit()]
+            existing_versions = []
+            for v in registry.models.keys():
+                match = re.search(r"v1\.(\d+)\.", v)
+                if match:
+                    existing_versions.append(int(match.group(1)))
             next_patch = max(existing_versions) + 1 if existing_versions else 1
             candidate_version = f"yolox-retail-finetuned-v1.{next_patch}.0"
 

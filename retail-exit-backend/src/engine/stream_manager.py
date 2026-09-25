@@ -474,6 +474,15 @@ class CameraStreamManager:
             sleep_needed = max(0.01, frame_interval - elapsed)
             await asyncio.sleep(sleep_needed)
 
+    def get_latest_frame_bytes(self, camera_key: str) -> Optional[bytes]:
+        """Convenience method to retrieve the latest frame bytes for an existing active stream."""
+        with self._lock:
+            session = self._streams.get(camera_key)
+            if session:
+                with session.lock:
+                    return session.last_real_frame_bytes or session.last_frame_bytes
+        return None
+
     def stop_session(self, camera_key: str) -> None:
         """Stops and removes a camera stream session."""
         with self._lock:
@@ -491,3 +500,10 @@ class CameraStreamManager:
 
 # Global stream manager singleton
 camera_stream_manager = CameraStreamManager()
+stream_manager = camera_stream_manager
+
+
+def get_latest_frame_bytes(camera_key: str) -> Optional[bytes]:
+    """Retrieves the latest frame bytes for an active camera from the global manager."""
+    return camera_stream_manager.get_latest_frame_bytes(camera_key)
+

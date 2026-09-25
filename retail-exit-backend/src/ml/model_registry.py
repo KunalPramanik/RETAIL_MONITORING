@@ -185,11 +185,12 @@ class ModelRegistry:
     ) -> ModelVersion:
         """Registers a newly trained or imported model checkpoint as a candidate."""
         now_str = datetime.now(timezone.utc).isoformat()
+        target_status = "production" if model_version == self.active_production_version else "candidate"
         mv = ModelVersion(
             model_version=model_version,
             model_name=model_name,
             weights_path=weights_path,
-            status="candidate",
+            status=target_status,
             created_at=now_str,
             base_model=base_model,
             dataset_version=dataset_version,
@@ -198,7 +199,7 @@ class ModelRegistry:
         )
         self.models[model_version] = mv
         self._persist()
-        logger.info("Registered model checkpoint %s (%s)", model_version, model_name)
+        logger.info("Registered model checkpoint %s (%s, status=%s)", model_version, model_name, target_status)
         return mv
 
     def check_promotion_gates(self, metrics: ModelMetrics) -> Tuple[bool, List[str]]:

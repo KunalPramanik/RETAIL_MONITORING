@@ -64,7 +64,9 @@ class AsyncModbusTCPDriver:
     async def write_coil(self, coil_address: int, value: bool) -> bool:
         """Writes single coil state (FC05). True = 0xFF00 (Energize), False = 0x0000 (De-energize)."""
         t0 = time.perf_counter()
-        if self._simulated or not self._writer:
+        reader = self._reader
+        writer = self._writer
+        if self._simulated or not writer or not reader:
             # Simulated edge relay behavior with sub-1ms response
             await asyncio.sleep(0.001)
             return True
@@ -76,9 +78,9 @@ class AsyncModbusTCPDriver:
         req = struct.pack(">HHHBBHH", self._trans_id, 0, 6, self.unit_id, 5, coil_address, coil_val)
 
         try:
-            self._writer.write(req)
-            await asyncio.wait_for(self._writer.drain(), timeout=self.timeout_s)
-            resp = await asyncio.wait_for(self._reader.readexactly(12), timeout=self.timeout_s)
+            writer.write(req)
+            await asyncio.wait_for(writer.drain(), timeout=self.timeout_s)
+            resp = await asyncio.wait_for(reader.readexactly(12), timeout=self.timeout_s)
             elapsed_ms = (time.perf_counter() - t0) * 1000.0
             if elapsed_ms > 50.0:
                 logger.warning("Modbus actuation exceeded 50ms latency SLA: %.2fms", elapsed_ms)

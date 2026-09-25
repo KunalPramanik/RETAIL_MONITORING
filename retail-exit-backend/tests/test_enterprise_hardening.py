@@ -211,6 +211,7 @@ def test_storage_to_exit_diversion_rule():
     assert traj is not None
     assert traj.has_diversion_anomaly is True
     assert traj.journey_status == "FLAGGED_DIVERSION"
+    assert traj.diversion_details is not None
     assert traj.diversion_details["diverted_items"]["cement_bag"] == 5
     assert traj.diversion_details["missing_staging_dock_event"] is True
 

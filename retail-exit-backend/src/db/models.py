@@ -98,6 +98,7 @@ class Product(Base):
     reorder_threshold: Any = Column(Integer, nullable=False, default=0)
     rfid_epc_prefix: Any = Column(String(64), nullable=True)
     avg_unit_weight_g: Any = Column(Numeric(10, 2), nullable=True)
+    vision_class_id: Any = Column(Integer, nullable=True, index=True) # Dynamically links YOLOX output to Product
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
     updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
 

@@ -21,6 +21,7 @@ from src.api.smart_wall_routes import router as smart_wall_router
 from src.api.evidence_routes import router as evidence_router
 from src.api.health_routes import router as health_router
 from src.api.integration_routes import router as integration_router
+from src.api.inventory_routes import router as inventory_router
 from src.api.dispatch import router as dispatch_router
 from src.api.materials import router as materials_router
 from src.api.material_flow import router as material_flow_router
@@ -51,6 +52,7 @@ api_router.include_router(smart_wall_router)
 api_router.include_router(evidence_router)
 api_router.include_router(health_router)
 api_router.include_router(integration_router)
+api_router.include_router(inventory_router)
 api_router.include_router(dispatch_router)
 api_router.include_router(tripwire_router)
 api_router.include_router(analytics_router)

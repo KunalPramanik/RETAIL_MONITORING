@@ -458,6 +458,198 @@
       },
       "shadow_traffic_pct": 20.0,
       "notes": "Fine-tuned for 2 epochs on domain dataset with loss 1.7053."
+    },
+    "yolox-retail-finetuned-v1.30.0": {
+      "model_version": "yolox-retail-finetuned-v1.30.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-C9546232)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.30.0.onnx",
+      "status": "candidate",
+      "created_at": "2026-09-30T08:17:22.692556+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-6s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T08:17:22.692556+00:00"
+      },
+      "shadow_traffic_pct": 0.0,
+      "notes": "Fine-tuned for 3 epochs on domain dataset with loss 1.4487."
+    },
+    "yolox-retail-finetuned-v1.31.0": {
+      "model_version": "yolox-retail-finetuned-v1.31.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-F222994D)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.31.0.onnx",
+      "status": "shadow",
+      "created_at": "2026-09-30T08:17:23.074222+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-6s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T08:17:23.074222+00:00"
+      },
+      "shadow_traffic_pct": 20.0,
+      "notes": "Fine-tuned for 2 epochs on domain dataset with loss 1.7053."
+    },
+    "yolox-retail-finetuned-v1.32.0": {
+      "model_version": "yolox-retail-finetuned-v1.32.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-CD5A39C5)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.32.0.onnx",
+      "status": "candidate",
+      "created_at": "2026-09-30T08:31:52.583021+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-7s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T08:31:52.583021+00:00"
+      },
+      "shadow_traffic_pct": 0.0,
+      "notes": "Fine-tuned for 3 epochs on domain dataset with loss 1.4487."
+    },
+    "yolox-retail-finetuned-v1.33.0": {
+      "model_version": "yolox-retail-finetuned-v1.33.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-42CB21FA)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.33.0.onnx",
+      "status": "shadow",
+      "created_at": "2026-09-30T08:31:52.974560+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-7s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T08:31:52.974560+00:00"
+      },
+      "shadow_traffic_pct": 20.0,
+      "notes": "Fine-tuned for 2 epochs on domain dataset with loss 1.7053."
+    },
+    "yolox-retail-finetuned-v1.34.0": {
+      "model_version": "yolox-retail-finetuned-v1.34.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-19BA09C4)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.34.0.onnx",
+      "status": "candidate",
+      "created_at": "2026-09-30T10:32:35.172841+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-8s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T10:32:35.172841+00:00"
+      },
+      "shadow_traffic_pct": 0.0,
+      "notes": "Fine-tuned for 3 epochs on domain dataset with loss 1.4487."
+    },
+    "yolox-retail-finetuned-v1.35.0": {
+      "model_version": "yolox-retail-finetuned-v1.35.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-34A9591F)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.35.0.onnx",
+      "status": "shadow",
+      "created_at": "2026-09-30T10:32:35.563757+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-8s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T10:32:35.563757+00:00"
+      },
+      "shadow_traffic_pct": 20.0,
+      "notes": "Fine-tuned for 2 epochs on domain dataset with loss 1.7053."
+    },
+    "yolox-retail-finetuned-v1.36.0": {
+      "model_version": "yolox-retail-finetuned-v1.36.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-EE6FDEB9)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.36.0.onnx",
+      "status": "candidate",
+      "created_at": "2026-09-30T10:41:26.396851+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-9s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T10:41:26.396851+00:00"
+      },
+      "shadow_traffic_pct": 0.0,
+      "notes": "Fine-tuned for 3 epochs on domain dataset with loss 1.4487."
+    },
+    "yolox-retail-finetuned-v1.37.0": {
+      "model_version": "yolox-retail-finetuned-v1.37.0",
+      "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-43F8F144)",
+      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.37.0.onnx",
+      "status": "shadow",
+      "created_at": "2026-09-30T10:41:26.791642+00:00",
+      "base_model": "megvii-yolox-tiny",
+      "dataset_version": "retail-active-9s",
+      "input_size": [
+        416,
+        416
+      ],
+      "metrics": {
+        "map_50": 0.9,
+        "case_unit_recall": 1.0,
+        "empty_scene_fp_rate": 0.0,
+        "pairwise_precision": 1.0,
+        "latency_ms": 16.8,
+        "eval_dataset_size": 50,
+        "evaluated_at": "2026-09-30T10:41:26.791642+00:00"
+      },
+      "shadow_traffic_pct": 20.0,
+      "notes": "Fine-tuned for 2 epochs on domain dataset with loss 1.7053."
     }
   }
 }

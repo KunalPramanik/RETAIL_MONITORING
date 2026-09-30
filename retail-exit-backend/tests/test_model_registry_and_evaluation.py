@@ -16,7 +16,7 @@ Verifies:
 import os
 import pytest
 from src.ml.model_registry import ModelRegistry, ModelMetrics
-from src.ml.training.evaluator import AccuracyEvaluator, calculate_box_iou
+from ml.training.evaluator import AccuracyEvaluator, calculate_box_iou
 from src.ml.active_learning import ActiveLearningService
 from src.ml.shadow_service import ShadowDeploymentService
 

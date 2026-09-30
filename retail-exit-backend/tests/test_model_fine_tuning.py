@@ -12,7 +12,7 @@ import os
 import pytest
 from httpx import AsyncClient, ASGITransport
 from src.main import app
-from src.ml.training.trainer import FineTuningService, fine_tuning_service
+from ml.training.trainer import FineTuningService, fine_tuning_service
 from src.ml.model_registry import ModelRegistry
 
 

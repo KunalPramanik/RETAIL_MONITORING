@@ -111,6 +111,28 @@ class CameraStreamSession:
                     cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2500)
                 except Exception:
                     pass
+                # AA.4 Codec checkpoint: detect H.265/HEVC streams that break MediaMTX WebRTC.
+                # MediaMTX WebRTC output only supports H.264/VP8/VP9/AV1 — not H.265.
+                # Cameras whose native main-stream is H.265 will produce a broken or black
+                # WebRTC browser preview without an explicit transcoding rule.
+                try:
+                    raw_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+                    if raw_fourcc:
+                        fourcc_str = "".join(
+                            chr((raw_fourcc >> (8 * i)) & 0xFF) for i in range(4)
+                        ).strip("\x00").upper()
+                        hevc_fourccs = {"HEVC", "H265", "HVC1", "HEV1", "X265"}
+                        if any(h in fourcc_str for h in hevc_fourccs):
+                            logger.warning(
+                                "[AA.4] H.265/HEVC stream detected on camera '%s' (fourcc=%s). "
+                                "MediaMTX WebRTC only supports H.264/VP8/VP9/AV1. "
+                                "Browser preview will be broken or black without a transcoding rule. "
+                                "Fix: add a MediaMTX path rule with 'runOnReady: ffmpeg -i <source> -c:v libx264 ...' "
+                                "or switch the camera to H.264 sub-stream encoding.",
+                                self.camera_key, fourcc_str,
+                            )
+                except Exception:
+                    pass
                 return cap
             else:
                 if cap:

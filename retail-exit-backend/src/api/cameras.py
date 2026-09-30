@@ -320,6 +320,24 @@ def capture_camera_frame_sync(
                 cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
                 if cap.isOpened():
                     diag_info["is_handshake_ok"] = True
+                    # AA.4: inspect codec before read — H.265 produces decode failures on MediaMTX WebRTC
+                    codec_warning = ""
+                    try:
+                        raw_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
+                        if raw_fourcc:
+                            fourcc_str = "".join(
+                                chr((raw_fourcc >> (8 * i)) & 0xFF) for i in range(4)
+                            ).strip("\x00").upper()
+                            hevc_fourccs = {"HEVC", "H265", "HVC1", "HEV1", "X265"}
+                            if any(h in fourcc_str for h in hevc_fourccs):
+                                codec_warning = (
+                                    f" [CODEC ALERT] H.265/HEVC stream detected (fourcc={fourcc_str}). "
+                                    "MediaMTX WebRTC only supports H.264/VP8/VP9/AV1 — browser preview will be "
+                                    "broken or black. Fix: switch the camera to H.264 sub-stream encoding, or add a "
+                                    "MediaMTX transcoding rule: paths: ~^.*$: runOnReady: ffmpeg -i {source} -c:v libx264 ..."
+                                )
+                    except Exception:
+                        pass
                     ret, frame = cap.read()
                     cap.release()
                     if ret and frame is not None and frame.size > 0:
@@ -334,7 +352,9 @@ def capture_camera_frame_sync(
                         diag_info["stage"] = "DECODE_FAILED"
                         diag_info["error_message"] = (
                             f"Video Decode Failed: Connection opened on {target_host}:{target_port}, "
-                            "but no valid video frames could be decoded. Check camera encoding codec (H.264/H.265)."
+                            "but no valid video frames could be decoded. "
+                            "Check camera encoding codec (H.264 required for WebRTC)."
+                            + codec_warning
                         )
                 else:
                     cap.release()

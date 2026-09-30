@@ -16,6 +16,12 @@ logger = logging.getLogger("secops.ml.scene_detector")
 class SceneObjectDetector:
     """Dynamic detector for structural scene elements: doorways, hanging bags, and umbrellas."""
 
+    # Part Y: Dense shelf mode IoU suppression threshold.
+    # Standard scenes use IoU 0.35; spine-to-spine books and tightly packed shelf items
+    # use 0.45 to prevent adjacent instances from being merged by NMS.
+    DENSE_SHELF_NMS_IOU_THRESHOLD: float = 0.45
+    STANDARD_NMS_IOU_THRESHOLD: float = 0.35
+
     @staticmethod
     def calculate_iou(boxA: List[int], boxB: List[int]) -> float:
         """Calculates Intersection over Union (IoU) between two bounding boxes [x, y, w, h]."""

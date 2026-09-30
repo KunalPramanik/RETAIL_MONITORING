@@ -1,26 +1,43 @@
-# Python Virtual Environment
-.venv/
-venv/
-
-# Caches
+﻿# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
 
-# Local database
-retail_exit.db
+# Virtual Environment
+.venv
+venv/
+ENV/
+
+# Database & Local Media
 *.sqlite3
+*.db
+snapshots/*.jpg
+snapshots/*.mp4
+ml/weights/checkpoints/*.onnx
+!ml/weights/registry.json
 
-# Uploads and snapshots
-uploads/invoices/*
-!uploads/invoices/.gitkeep
-snapshots/*
-!snapshots/.gitkeep
-
-# Model weights and checkpoints
-src/ml/weights/checkpoints/*
-!src/ml/weights/checkpoints/.gitkeep
-
-# Logs
-*.log
-
+# OS
+.DS_Store
+Thumbs.db

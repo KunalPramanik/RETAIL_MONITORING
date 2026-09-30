@@ -130,3 +130,63 @@ class MetricsCollector:
 
 
 metrics = MetricsCollector()
+
+
+from typing import Dict, Any
+from functools import wraps
+import time
+import asyncio
+
+class MetricsEngine:
+    _counters: Dict[str, int] = {}
+    _histograms: Dict[str, list] = {}
+
+    @classmethod
+    def increment(cls, metric_name: str, value: int = 1):
+        cls._counters[metric_name] = cls._counters.get(metric_name, 0) + value
+
+    @classmethod
+    def observe(cls, metric_name: str, value: float):
+        if metric_name not in cls._histograms:
+            cls._histograms[metric_name] = []
+        cls._histograms[metric_name].append(value)
+        if len(cls._histograms[metric_name]) > 1000:
+            cls._histograms[metric_name].pop(0)
+
+    @classmethod
+    def get_metrics(cls) -> Dict[str, Any]:
+        snapshot = {"counters": cls._counters.copy(), "histograms": {}}
+        for name, values in cls._histograms.items():
+            if values:
+                sorted_vals = sorted(values)
+                snapshot["histograms"][name] = {
+                    "p50": sorted_vals[int(len(sorted_vals) * 0.50)],
+                    "p95": sorted_vals[int(len(sorted_vals) * 0.95)],
+                    "p99": sorted_vals[int(len(sorted_vals) * 0.99)],
+                    "count": len(values)
+                }
+        return snapshot
+
+def track_latency(metric_name: str):
+    def decorator(func):
+        if asyncio.iscoroutinefunction(func):
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                start = time.perf_counter()
+                try:
+                    return await func(*args, **kwargs)
+                finally:
+                    duration_ms = (time.perf_counter() - start) * 1000
+                    MetricsEngine.observe(f"{metric_name}_latency_ms", duration_ms)
+            return async_wrapper
+        else:
+            @wraps(func)
+            def sync_wrapper(*args, **kwargs):
+                start = time.perf_counter()
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    duration_ms = (time.perf_counter() - start) * 1000
+                    MetricsEngine.observe(f"{metric_name}_latency_ms", duration_ms)
+            return sync_wrapper
+    return decorator

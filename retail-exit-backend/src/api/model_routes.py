@@ -19,8 +19,8 @@ import logging
 from src.ml.model_registry import ModelRegistry, ModelMetrics
 from src.ml.shadow_service import shadow_service
 from src.ml.active_learning import active_learning_service, CANDIDATES_DIR
-from src.ml.training.trainer import fine_tuning_service
-from src.ml.training.evaluator import AccuracyEvaluator
+from ml.training.trainer import fine_tuning_service
+from ml.training.evaluator import AccuracyEvaluator
 from src.ml.model_config import get_vision_config, reload_vision_config
 from src.api.deps_auth import require_roles
 

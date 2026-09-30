@@ -838,3 +838,53 @@ class MaterialDefectEvent(Base):
     ledger_entry = relationship("MaterialMovementLedger", back_populates="defect_events")
 
 
+
+
+class EvidenceArtifact(Base):
+    __tablename__ = "evidence_artifact"
+
+    artifact_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False, index=True)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=True)
+    artifact_type: Any = Column(String(32), nullable=False) # SNAPSHOT, CLIP, OCR_DOCUMENT, REPORT
+    s3_key: Any = Column(String(512), nullable=False)
+    cryptographic_hash: Any = Column(String(128), nullable=False) # SHA-256 for chain of custody
+    captured_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    retention_expires_at: Any = Column(DateTime(timezone=True), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+
+class SmartWallLayout(Base):
+    __tablename__ = "smart_wall_layout"
+
+    layout_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Any = Column(String(128), nullable=False)
+    grid_type: Any = Column(String(16), nullable=False) # 1x1, 2x2, 3x3, 4x4, 1+5, 1+7
+    camera_mappings: Any = Column(JSONType, nullable=False, default=dict) # {"0": "cam-1", "1": "cam-2"}
+    is_default: Any = Column(Boolean, nullable=False, default=False)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
+
+class AccessControlEvent(Base):
+    __tablename__ = "access_control_event"
+
+    access_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    door_id: Any = Column(String(64), nullable=False, index=True)
+    employee_id: Any = Column(String(36), ForeignKey("employee.employee_id"), nullable=True)
+    credential_type: Any = Column(String(32), nullable=False) # RFID_BADGE, FACE, PIN, BLUETOOTH
+    access_status: Any = Column(String(32), nullable=False) # GRANTED, DENIED, ANTI_PASSBACK_VIOLATION
+    denial_reason: Any = Column(String(128), nullable=True)
+    event_time: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+
+class VehicleDetection(Base):
+    __tablename__ = "vehicle_detection"
+
+    detection_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=False, index=True)
+    license_plate: Any = Column(String(32), nullable=True, index=True)
+    plate_confidence: Any = Column(Numeric(5, 4), nullable=True)
+    vehicle_class: Any = Column(String(32), nullable=False) # CAR, TRUCK, VAN, MOTORCYCLE
+    color: Any = Column(String(32), nullable=True)
+    direction: Any = Column(String(32), nullable=True)
+    watchlist_hit: Any = Column(Boolean, nullable=False, default=False)
+    event_time: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+

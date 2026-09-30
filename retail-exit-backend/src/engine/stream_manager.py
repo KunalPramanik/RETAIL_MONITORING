@@ -43,6 +43,30 @@ class CameraStreamSession:
         self.fps_observed: float = 0.0
         self.resolution: Tuple[int, int] = (1280, 720)
         self.lock = threading.Lock()
+        
+        # V8 Health Metrics
+        self.reconnect_count: int = 0
+        self.decode_failure_count: int = 0
+        self.codec: str = "UNKNOWN"
+        self.latency_ms: float = 0.0
+
+
+
+    def compute_health_status(self) -> str:
+        """V8 Health Status Computation. Returns granular enum."""
+        if not self.is_connected:
+            if self.error_count > 10:
+                return "AUTH_FAILED" if "401" in str(self.source) else "OFFLINE"
+            return "PENDING_SETUP"
+        if self.codec in ["HEVC", "H265"]:
+            return "CODEC_MISMATCH" # Needs transcoding
+        if self.fps_observed > 0 and self.fps_observed < 10.0:
+            return "LOW_FPS"
+        if self.decode_failure_count > 50:
+            return "STREAM_UNDECODABLE"
+        if self.reconnect_count > 5:
+            return "DEGRADED"
+        return "ONLINE"
 
     def start(self) -> None:
         """Starts the capture background thread with immediate technical standby frame."""

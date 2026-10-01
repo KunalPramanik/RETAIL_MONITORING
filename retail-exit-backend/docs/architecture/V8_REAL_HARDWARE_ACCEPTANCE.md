@@ -1,4 +1,0 @@
-# V8_REAL_HARDWARE_ACCEPTANCE
-
-*Status: DRAFTING - Phase 1 Audit*
-

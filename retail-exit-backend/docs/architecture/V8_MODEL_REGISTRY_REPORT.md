@@ -1,4 +1,0 @@
-# V8_MODEL_REGISTRY_REPORT
-
-*Status: DRAFTING - Phase 1 Audit*
-

@@ -38,6 +38,19 @@ class VisionModelConfig:
     face_candidate_min_score: float = 0.45
     min_real_z_std: float = 15.0
     liveness_pass_threshold: float = 0.60
+    
+    # Structural / Architectural Size Gates (Issue 3: Eliminate hardcoded magic numbers)
+    max_vehicle_frame_ratio_w: float = 0.98
+    max_vehicle_frame_ratio_h: float = 0.98
+    max_case_frame_ratio_w: float = 0.70
+    max_case_frame_ratio_h: float = 0.45
+    max_item_frame_ratio_w: float = 0.75
+    max_item_frame_ratio_h: float = 0.70
+    max_item_area_ratio: float = 0.65
+    max_person_frame_ratio_w: float = 0.85
+    max_person_frame_ratio_h: float = 0.70
+    face_min_y_offset: int = 25
+    face_min_height: int = 30
 
     # ── Multi-Object Tracker (ByteTrack / Sort) ──
     tracker_max_lost_frames: int = 15

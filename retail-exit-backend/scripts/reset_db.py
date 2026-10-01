@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 import sys
 
 from src.db.models import Base
-from src.config import settings
+from src.core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("secops.reset_db")
@@ -35,3 +35,4 @@ async def reset_schema():
 
 if __name__ == "__main__":
     asyncio.run(reset_schema())
+

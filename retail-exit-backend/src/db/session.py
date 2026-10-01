@@ -53,6 +53,10 @@ def _sync_upgrade_sqlite_schema(sync_conn):
             sync_conn.execute(text("ALTER TABLE camera ADD COLUMN sub_stream_path VARCHAR(255)"))
         if "pipeline_mode" not in cam_cols:
             sync_conn.execute(text("ALTER TABLE camera ADD COLUMN pipeline_mode VARCHAR(64) DEFAULT 'STANDARD_DETECTION'"))
+        if "roi_polygon" not in cam_cols:
+            sync_conn.execute(text("ALTER TABLE camera ADD COLUMN roi_polygon JSON"))
+        if "ignored_classes" not in cam_cols:
+            sync_conn.execute(text("ALTER TABLE camera ADD COLUMN ignored_classes JSON"))
         
         res = sync_conn.execute(text("PRAGMA table_info(camera_heartbeat)"))
         hb_cols = [row[1] for row in res.fetchall()]

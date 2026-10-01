@@ -281,9 +281,9 @@ class FaceRecognitionService:
                 # Minimum size filter: ignore sub-pixel artifact noise (<18px)
                 if w_face < 18 or h_face < 18:
                     continue
-                # Filter ceiling noise or low confidence using centralized face candidate gate (0.45)
-                # Prevents random textures on doors, bottles, and walls from being passed to liveness & static classifier
-                if y1 < 25 and (y2 - y1) < 30:
+                # Filter ceiling noise using dynamic configuration thresholds
+                cfg = get_vision_config()
+                if y1 < getattr(cfg, "face_min_y_offset", 25) and (y2 - y1) < getattr(cfg, "face_min_height", 30):
                     continue
                 face_gate = get_vision_config().face_candidate_min_score
                 if det_score < face_gate:
@@ -435,58 +435,6 @@ class FaceRecognitionService:
         match_res.static_detections = static_detections
         match_res.live_person_boxes = live_person_boxes
 
-        # Annotate face detections on the frame
-        orig_h, orig_w = img.shape[:2]
-        for (box, default_label, col) in box_annotations:
-            x, y, w, h = box
-            if match_res.decision == "MATCHED" and match_res.employee_name:
-                label = f"{match_res.employee_name} {int(match_res.similarity * 100)}%"
-                box_color = (0, 200, 0)
-            else:
-                label = default_label
-                box_color = col
-
-            cv2.rectangle(img, (x, y), (x + w, y + h), box_color, 2)
-            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
-            lbl_x = int(x + (w / 2.0) - (tw / 2.0))
-            lbl_x = max(2, min(lbl_x, orig_w - tw - 6))
-            lbl_y = y + h + th + 6
-            if lbl_y + 4 > orig_h:
-                lbl_y = y - 4
-            cv2.rectangle(img, (lbl_x, lbl_y - th - 4), (lbl_x + tw + 6, lbl_y + 2), box_color, -1)
-            cv2.putText(
-                img,
-                label,
-                (lbl_x + 3, lbl_y - 2),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.36,
-                (0, 0, 0),
-                1,
-                cv2.LINE_AA,
-            )
-
-        # Update diagnostics banner to accurately display unified detections count
-        total_detections = prior_detections_count + len(detected_boxes)
-        if total_detections > 0:
-            status_banner = f"SURVEILLANCE CV // DETECTIONS: {total_detections} (CASES:{cases_detected} UNITS:{units_detected}) // ACTIVE"
-        else:
-            status_banner = "SURVEILLANCE CV // MONITORING ACTIVE (0 DETECTIONS)"
-
-        (bw_t, bh_t), _ = cv2.getTextSize(status_banner, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
-        banner_y = min(orig_h - 12, max(40, 44))
-        cv2.rectangle(img, (8, banner_y - bh_t - 6), (min(orig_w - 4, 8 + bw_t + 12), banner_y + 4), (10, 15, 20), -1)
-        cv2.putText(
-            img,
-            status_banner,
-            (13, banner_y - 2),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.36,
-            (0, 255, 200),
-            1,
-            cv2.LINE_AA,
-        )
-
-        _, encoded_jpg = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-        annotated_bytes = encoded_jpg.tobytes()
+        annotated_bytes = frame_bytes
 
         return match_res, annotated_bytes, detected_boxes

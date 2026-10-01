@@ -35,6 +35,7 @@ class CameraStreamSession:
         self.thread: Optional[threading.Thread] = None
 
         self.last_frame_bytes: Optional[bytes] = None
+        self.last_annotated_frame_bytes: Optional[bytes] = None
         self.last_frame_bgr: Optional[np.ndarray] = None
         self.last_real_frame_bytes: Optional[bytes] = None
         self.last_frame_time: float = 0.0
@@ -507,7 +508,9 @@ class CameraStreamManager:
             session.last_access_time = t_start
             frame_bytes = None
             with session.lock:
-                if session.last_frame_bytes is not None:
+                if session.last_annotated_frame_bytes is not None:
+                    frame_bytes = session.last_annotated_frame_bytes
+                elif session.last_frame_bytes is not None:
                     frame_bytes = session.last_frame_bytes
 
             if frame_bytes is not None:

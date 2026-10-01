@@ -325,6 +325,8 @@ class VisionInferenceService:
         frame_bytes: bytes,
         confidence_floor: float = 0.25,
         catalog_products: Optional[List[Dict[str, Any]]] = None,
+        roi_polygon: Optional[list] = None,
+        ignored_classes: Optional[list] = None,
     ) -> Tuple[VisionInferenceResult, bytes]:
         """Runs real YOLOX deep-learning object detection on camera frame bytes."""
         t0 = time.perf_counter()
@@ -512,23 +514,40 @@ class VisionInferenceService:
                     if conf < target_floor:
                         continue
 
-                    # Structural / Architectural Filter:
-                    # Single retail items carried by shoppers do not span full architectural room fixtures.
-                    # Reject oversized boxes covering full room walls or large desk fixtures.
-                    # Vehicles can legitimately occupy up to 98% of portal cameras.
+                    # Issue 2 Fix: Apply dynamic explicit Regions of Interest (ROI) filtering
+                    if roi_polygon and len(roi_polygon) >= 3:
+                        import cv2 as _cv2
+                        import numpy as _np
+                        cx = float(bx + bw / 2.0)
+                        cy = float(by + bh / 2.0)
+                        pts = _np.array(roi_polygon, _np.int32)
+                        dist = _cv2.pointPolygonTest(pts, (cx, cy), False)
+                        if dist < 0:
+                            continue  # Center is strictly outside ROI
+
+                    specific_label_check = cfg.class_labels.get(cid, "Retail Item")
+
+                    # Issue 2 Fix: Apply ignored_classes explicit filtering (e.g. STORAGE SHELF, STATIC_IMAGE)
+                    if ignored_classes and isinstance(ignored_classes, list):
+                        if specific_label_check.upper() in [x.upper() for x in ignored_classes]:
+                            continue
+                        # If the exact class or semantic string contains words in the ignore list
+                        if any(ign.upper() in specific_label_check.upper() for ign in ignored_classes):
+                            continue
+
+                    # Structural / Architectural Filter (Dynamically Configured):
                     box_area = bw * bh
                     frame_area = orig_w * orig_h
                     if cid in vehicle_classes:
-                        if bw > 0.98 * orig_w and bh > 0.98 * orig_h:
+                        if bw > cfg.max_vehicle_frame_ratio_w * orig_w and bh > cfg.max_vehicle_frame_ratio_h * orig_h:
                             continue
                     elif cid in cfg.case_classes:
-                        # Reject giant furniture / table surfaces falsely tagged as carton
-                        if (bw > 0.70 * orig_w and bh > 0.45 * orig_h) or (bw / max(1, bh) > 3.0 and conf < 0.65):
+                        if (bw > cfg.max_case_frame_ratio_w * orig_w and bh > cfg.max_case_frame_ratio_h * orig_h) or (bw / max(1, bh) > 3.0 and conf < 0.65):
                             continue
                     elif cid != 0:
-                        if (bw > 0.75 * orig_w and bh > 0.70 * orig_h) or (box_area > 0.65 * frame_area and bw > 0.70 * orig_w):
+                        if (bw > cfg.max_item_frame_ratio_w * orig_w and bh > cfg.max_item_frame_ratio_h * orig_h) or (box_area > cfg.max_item_area_ratio * frame_area and bw > cfg.max_item_frame_ratio_w * orig_w):
                             continue
-                    elif bw > 0.85 * orig_w and bh > 0.70 * orig_h:
+                    elif bw > cfg.max_person_frame_ratio_w * orig_w and bh > cfg.max_person_frame_ratio_h * orig_h:
                         continue
 
                     specific_label = cfg.class_labels.get(cid, "Retail Item")
@@ -727,97 +746,35 @@ class VisionInferenceService:
         except Exception as _scene_err:
             logger.debug("Scene object detection error: %s", _scene_err)
 
-        # Draw all dynamic bounding boxes with specific labels and clean percentage badges
-        for d in detections:
-            bx, by, bw, bh = d.bbox
-            conf_pct = int(d.confidence * 100)
-            disp_label = (d.specific_label or d.class_label).upper()
-
-            if d.class_label == "person":
-                badge_text = f"{disp_label} {conf_pct}%"
-                color = (0, 255, 180)
-            elif d.class_label == "case_full":
-                badge_text = f"{disp_label} {conf_pct}%"
-                color = (0, 230, 115)
-            elif d.class_label == "vehicle":
-                badge_text = f"{disp_label} {conf_pct}%"
-                color = (255, 190, 0)  # Bright Cyan / Blue in BGR
-            elif d.class_label in ("doorway", "wall_picture", "bookshelf") or d.is_environment_only:
-                badge_text = f"{disp_label} {conf_pct}%"
-                color = (255, 200, 0)  # Bright Cyan in BGR
-            else:
-                badge_text = f"{disp_label} {conf_pct}%"
-                color = (0, 165, 255)
-
-            cv2.rectangle(img, (bx, by), (bx + bw, by + bh), color, 2)
-            (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_SIMPLEX, 0.38, 1)
-            lbl_x = max(2, min(bx, orig_w - tw - 8))
-            lbl_y = max(th + 6, by)
-            cv2.rectangle(img, (lbl_x, max(0, lbl_y - th - 6)), (lbl_x + tw + 6, lbl_y), color, -1)
-            cv2.putText(
-                img,
-                badge_text,
-                (lbl_x + 3, lbl_y - 4),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.38,
-                (0, 0, 0),
-                1,
-                cv2.LINE_AA,
-            )
+        # Issue 2 Fix: Apply depth-relief/liveness quarantine generalized to objects in reflections/screens
+        try:
+            from src.ml.static_image_service import quarantine_enclosed_visual_content
+            # Extract display containers (monitors, laptops, phones, mirrors, wall pictures, glossy shelving)
+            container_boxes = []
+            for d in detections:
+                lbl = (d.specific_label or d.class_label or "").lower()
+                # If it's a known reflective/display surface
+                if any(k in lbl for k in ("picture", "poster", "screen", "monitor", "display", "tv", "cell phone", "phone", "smartphone", "laptop", "mirror", "glass")):
+                    container_boxes.append(d.bbox)
+            
+            if container_boxes:
+                for d in detections:
+                    if d.bbox in container_boxes:
+                        continue # Don't quarantine the container itself
+                    is_enclosed = quarantine_enclosed_visual_content([d.bbox], container_boxes, intersection_threshold=0.8)
+                    if is_enclosed:
+                        # Quarantine false detections inside screens/reflections
+                        d.is_environment_only = True
+                        d.is_inventory_relevant = False
+                        d.specific_label = "Reflection / Display Artifact"
+                        if d.class_label == "person":
+                            d.class_label = "static_image"
+        except Exception as _refl_err:
+            logger.debug("Reflection filter error: %s", _refl_err)
 
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.95
-
-        # CCTV Diagnostics Banner (Zero hardcoding, fully dynamic)
-        ir_tag = " // [IR NIGHT MODE ACTIVE]" if is_ir else ""
-        if len(detections) > 0:
-            status_banner = f"SURVEILLANCE CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units}){ir_tag} // {latency_ms:.0f}ms"
-        else:
-            status_banner = f"SURVEILLANCE CV // MONITORING ACTIVE (0 DETECTIONS){ir_tag} // {latency_ms:.0f}ms"
-
-        (bw_t, bh_t), _ = cv2.getTextSize(status_banner, cv2.FONT_HERSHEY_SIMPLEX, 0.36, 1)
-        banner_y = min(orig_h - 12, max(40, 44))
-        cv2.rectangle(img, (8, banner_y - bh_t - 6), (min(orig_w - 4, 8 + bw_t + 12), banner_y + 4), (10, 15, 20), -1)
-        cv2.putText(
-            img,
-            status_banner,
-            (13, banner_y - 2),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.36,
-            (0, 255, 200),
-            1,
-            cv2.LINE_AA,
-        )
-
-        # Shadow deployment frame evaluation (strictly non-interfering)
-        try:
-            from src.ml.shadow_service import shadow_service
-            shadow_service.evaluate_shadow_frame(img, [asdict(d) for d in detections])
-        except Exception as _sh_err:
-            logger.debug("Shadow evaluation error: %s", _sh_err)
-
-        # Continuous Active Learning: track confidence & capture sub-floor proposals
-        try:
-            from src.ml.active_learning import active_learning_service
-            for c in conf_scores:
-                active_learning_service.log_confidence(c)
-
-            sub_floor_proposals = [
-                {"bbox": d.bbox, "class": d.specific_label or d.class_label, "confidence": d.confidence}
-                for d in detections if d.confidence < 0.50
-            ]
-            if sub_floor_proposals:
-                active_learning_service.capture_candidate_frame(
-                    frame_bytes=frame_bytes,
-                    camera_id="EXIT-SURVEILLANCE",
-                    proposals=sub_floor_proposals,
-                    reason="sub_floor_confidence"
-                )
-        except Exception as _al_err:
-            logger.debug("Active learning logging error: %s", _al_err)
-
-        _, encoded_jpg = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
-        annotated_bytes = encoded_jpg.tobytes()
+        annotated_bytes = frame_bytes
 
         return (
             VisionInferenceResult(

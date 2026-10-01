@@ -257,6 +257,8 @@ class Camera(Base):
     resolution: Any = Column(String(32), nullable=True, default="1920x1080")
     fps: Any = Column(Integer, nullable=True, default=30)
     pipeline_mode: Any = Column(String(64), nullable=False, default="STANDARD_DETECTION")
+    roi_polygon: Any = Column(JSONType, nullable=True)  # Dynamic Region of Interest (e.g. [[x,y], ...])
+    ignored_classes: Any = Column(JSONType, nullable=True)  # Classes to ignore (e.g. ["STORAGE_SHELF"])
     status: Any = Column(String(32), nullable=False, default="PENDING_SETUP")
     last_heartbeat_at: Any = Column(DateTime(timezone=True), nullable=True)
     offline_since: Any = Column(DateTime(timezone=True), nullable=True)

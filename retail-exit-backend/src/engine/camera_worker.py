@@ -40,6 +40,7 @@ from src.db.models import (
 )
 from dataclasses import asdict
 from src.ml.vision_service import VisionInferenceService
+from src.services.vision_detection.frame_renderer import FrameRenderer
 from src.ml.face_service import FaceRecognitionService
 from src.ml.material_segmentation import MaterialSegmentationService
 from src.ml.hazard_service import FlameHazardDetector
@@ -255,7 +256,11 @@ class CameraIngestionWorker:
             roster = self._cached_roster
 
             vis_res, obj_bytes = await asyncio.to_thread(
-                VisionInferenceService.analyze_frame_bytes, frame_bytes, catalog_products=catalog
+                VisionInferenceService.analyze_frame_bytes, 
+                frame_bytes, 
+                catalog_products=catalog,
+                roi_polygon=cam.roi_polygon,
+                ignored_classes=cam.ignored_classes
             )
 
             # Pre-extract display containers (wall pictures, screens, monitors, laptops, phones) for content-in-content quarantine
@@ -276,7 +281,55 @@ class CameraIngestionWorker:
                 camera_id=cam.camera_id,
                 container_boxes=display_containers,
             )
-            annotated_bytes = final_bytes or obj_bytes or frame_bytes
+            
+            # Issue 1: Single Source of Truth for Rendering
+            try:
+                import cv2
+                import numpy as np
+                nparr = np.frombuffer(frame_bytes, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                
+                draw_boxes = []
+                for d in vis_res.detections:
+                    bx, by, bw, bh = d.bbox
+                    disp_label = (d.specific_label or d.class_label).upper()
+                    conf_pct = int(d.confidence * 100)
+                    
+                    if d.class_label == "person":
+                        color = (0, 255, 180)
+                    elif d.class_label == "case_full":
+                        color = (0, 230, 115)
+                    elif d.class_label == "vehicle":
+                        color = (255, 190, 0)
+                    elif d.class_label in ("doorway", "wall_picture", "bookshelf") or d.is_environment_only:
+                        color = (255, 200, 0)
+                    else:
+                        color = (0, 165, 255)
+                        
+                    draw_boxes.append({
+                        'bbox': [bx, by, bw, bh],
+                        'label': f"{disp_label} {conf_pct}%",
+                        'color': color
+                    })
+                    
+                for fb in face_boxes:
+                    draw_boxes.append({
+                        'bbox': [fb[0], fb[1], fb[2], fb[3]],
+                        'label': 'FACE',
+                        'color': (255, 100, 100)
+                    })
+                    
+                total_cases = sum(1 for d in vis_res.detections if d.class_label == "case_full")
+                total_units = sum(d.pack_size for d in vis_res.detections if d.class_label in ("case_full", "single_unit", "vehicle"))
+                
+                status_banner = f"SURVEILLANCE CV // DETECTIONS: {len(vis_res.detections) + len(face_boxes)} (CASES:{total_cases} UNITS:{total_units})"
+                
+                img = FrameRenderer.draw_overlay(img, draw_boxes, status_banner, vis_res.latency_ms)
+                _, encoded_jpg = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+                annotated_bytes = encoded_jpg.tobytes()
+            except Exception as _render_err:
+                logger.error("Render Error: %s", _render_err)
+                annotated_bytes = final_bytes or obj_bytes or frame_bytes
 
             carrier_label = face_res.employee_name if face_res.matched_employee_id else "UNVERIFIED"
 
@@ -1090,6 +1143,18 @@ class CameraIngestionWorker:
         self._last_detections[cam.camera_id] = detection_data
         self._last_raw_frames[cam.camera_id] = frame_bytes
         self._last_annotated_frames[cam.camera_id] = annotated_bytes
+        
+        # PUSH to single source of truth stream manager
+        try:
+            from src.engine.stream_manager import camera_stream_manager
+            sess = camera_stream_manager._streams.get(cam.camera_id)
+            if sess:
+                with sess.lock:
+                    sess.last_annotated_frame_bytes = annotated_bytes
+        except Exception as push_err:
+            import logging
+            logging.getLogger("secops").error(f"Failed to push annotated frame: {push_err}")
+            pass
 
         # Persist snapshots asynchronously in background thread (zero event-loop blocking)
         def _persist_to_disk(c_id: str, raw_b: bytes, ann_b: bytes):
@@ -1206,6 +1271,8 @@ class CameraIngestionWorker:
         vision_result, annotated_bytes = VisionInferenceService.analyze_frame_bytes(
             frame_bytes=frame_bytes,
             catalog_products=catalog,
+            roi_polygon=cam.roi_polygon,
+            ignored_classes=cam.ignored_classes
         )
 
         # 3. Run Real OpenCV Face Recognition on the annotated frame with Anti-Spoofing Liveness

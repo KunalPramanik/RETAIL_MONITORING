@@ -1010,77 +1010,35 @@ async def get_camera_snapshot(
             should_capture_live = True
 
     if should_capture_live:
-        target_path = cam.sub_stream_path if (stream == "sub" and cam.sub_stream_path) else cam.rtsp_path
-        # Fast path via CameraStreamManager buffer
-        sm_bytes, sm_lat = camera_stream_manager.get_latest_jpeg(
-            cam.camera_id, str(cam.ip_address or ""), str(target_path or ""), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.4
-        )
-        if sm_bytes:
-            frame_bytes, desc, latency_ms = sm_bytes, f"Live Stream ({cam.ip_address})", sm_lat
-        else:
-            frame_bytes, desc, latency_ms = await asyncio.to_thread(
-                capture_camera_frame_sync,
-                str(cam.ip_address or ""),
-                str(target_path or ""),
-                str(cam.credentials_ref or ""),
-                str(cam.sub_stream_path or ""),
-                1.5,
-                str(cam.stream_url or "") if cam.stream_url else None,
-            )
-        if frame_bytes:
-            annotated_bytes = frame_bytes
-            try:
-                from src.ml.vision_service import VisionInferenceService
-                from src.ml.face_service import FaceRecognitionService
-                from src.db.models import Product, Employee
-
-                prod_res = await session.execute(select(Product))
-                products = prod_res.scalars().all()
-                catalog = [
-                    {"product_id": p.product_id, "sku_code": p.sku_code, "pack_size": p.pack_size}
-                    for p in products
-                ]
-                emp_res = await session.execute(select(Employee).where(Employee.active_flag == True))
-                employees = emp_res.scalars().all()
-                roster = [
-                    {"employee_id": e.employee_id, "name": e.name, "face_embedding": e.face_embedding}
-                    for e in employees
-                ]
-
-                vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes, catalog_products=catalog)
-                face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
-                    frame_bytes=obj_bytes or frame_bytes,
-                    enrolled_employees=roster,
-                    prior_detections_count=len(vis_res.detections),
-                    cases_detected=vis_res.cases_detected,
-                    units_detected=vis_res.vision_count,
-                    raw_frame_bytes=frame_bytes,
-                    camera_id=camera_id,
+        # SINGLE SOURCE OF TRUTH (Issue 1): The snapshot endpoint must NOT re-run inference independently.
+        # It must fetch the exact frame that was already processed by the camera_worker loop.
+        serve_bytes = None
+        desc = "Live Annotated Frame"
+        
+        try:
+            from src.engine.stream_manager import camera_stream_manager
+            sess = camera_stream_manager.sessions.get(cam.camera_id)
+            if sess:
+                with sess.lock:
+                    if raw and sess.last_frame_bytes:
+                        serve_bytes = sess.last_frame_bytes
+                    elif not raw and sess.last_annotated_frame_bytes:
+                        serve_bytes = sess.last_annotated_frame_bytes
+                        
+            if serve_bytes:
+                return Response(
+                    content=serve_bytes,
+                    media_type="image/jpeg",
+                    headers={
+                        "Cache-Control": "no-cache, no-store, must-revalidate",
+                        "Pragma": "no-cache",
+                        "Expires": "0",
+                        "X-Camera-Latency-Ms": str(latency_ms),
+                        "X-Camera-Source": str(desc),
+                    },
                 )
-                annotated_bytes = final_bytes or obj_bytes or frame_bytes
-            except Exception:
-                pass
-
-            try:
-                with open(snapshot_path, "wb") as f:
-                    f.write(annotated_bytes)
-                with open(raw_path, "wb") as f:
-                    f.write(frame_bytes)
-            except Exception:
-                pass
-
-            serve_bytes = frame_bytes if raw else annotated_bytes
-            return Response(
-                content=serve_bytes,
-                media_type="image/jpeg",
-                headers={
-                    "Cache-Control": "no-cache, no-store, must-revalidate",
-                    "Pragma": "no-cache",
-                    "Expires": "0",
-                    "X-Camera-Latency-Ms": str(latency_ms),
-                    "X-Camera-Source": str(desc),
-                },
-            )
+        except Exception:
+            pass
 
     # Read disk snapshot if available (serving raw frame if raw=True)
     disk_target = raw_path if (raw and os.path.exists(raw_path)) else snapshot_path

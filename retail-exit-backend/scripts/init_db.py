@@ -9,7 +9,7 @@ import logging
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from src.db.models import Base
-from src.core.config import settings
+from src.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("secops.init_db")

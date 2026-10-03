@@ -103,7 +103,7 @@ export default function Dashboard() {
       <div className="p-12 text-center animate-in fade-in duration-300">
         <Activity size={48} className="mx-auto text-gray-600 mb-4 animate-bounce" />
         <h2 className="text-2xl font-bold text-gray-400">Module Initialization</h2>
-        <p className="text-gray-500 mt-2">The {activeView} module is securely connecting to the PostgreSQL backend.</p>
+        <p className="text-gray-500 mt-2">The " + activeView + " module is securely connecting to the PostgreSQL backend.</p>
       </div>
     );
   };
@@ -128,7 +128,7 @@ export default function Dashboard() {
             <button
               key={item.id}
               onClick={() => setActiveView(item.id)}
-              className={w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 }
+              className={"w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 " + (activeView === item.id ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" : "text-gray-400 hover:text-white hover:bg-gray-800")}
             >
               <item.icon size={20} /> {item.id}
             </button>
@@ -137,7 +137,7 @@ export default function Dashboard() {
         <div className="p-4 border-t border-gray-800 space-y-2">
           <button 
             onClick={() => setActiveView("Settings")}
-            className={w-full flex items-center gap-3 p-3 rounded-lg transition-colors }
+            className={"w-full flex items-center gap-3 p-3 rounded-lg transition-colors " + (activeView === "Settings" ? "bg-gray-800 text-white" : "text-gray-400 hover:text-white hover:bg-gray-800")}
           >
             <Settings size={20} /> Settings
           </button>

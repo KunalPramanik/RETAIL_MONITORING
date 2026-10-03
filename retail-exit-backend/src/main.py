@@ -1,4 +1,4 @@
-"""FastAPI Application Main Entrypoint
+﻿"""FastAPI Application Main Entrypoint
 
 Smart Retail Exit Monitoring & Inventory Intelligence Platform (SEC-OPS 2.0).
 Provides RESTful APIs, real-time WebSocket streams, telemetry metrics, and edge pipelines.
@@ -110,7 +110,7 @@ async def lifespan(app: FastAPI):
     _is_shutting_down = False
 
     logger.info("Initializing SEC-OPS backend services and database schema...")
-    await init_db()
+    # DB initialized via Alembic Migrations in Production
 
     # Initialize baseline configuration (Store, ThresholdConfig) with clean operational defaults
     async with AsyncSessionLocal() as session:
@@ -260,7 +260,7 @@ async def periodic_camera_monitor():
                             sl.status = "OFFLINE"
                             sl.offline_since = now
                             logger.warning(
-                                f"LANE_SILENT: Exit Lane {sl.lane_id} ({sl.label}) heartbeat timed out (>15 min silent) — transitioned to OFFLINE."
+                                f"LANE_SILENT: Exit Lane {sl.lane_id} ({sl.label}) heartbeat timed out (>15 min silent) â€” transitioned to OFFLINE."
                             )
                             await ws_hub.broadcast_event(
                                 "lane_status_changed",

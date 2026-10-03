@@ -1,50 +1,39 @@
-"""Application Configuration Module
+﻿"\""Application Configuration Module
 
-Supports environment variable loading with sensible defaults for local development
-and containerized deployment.
-"""
+Strictly loads all variables from environment to ensure zero hardcoding.
+"\""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import field_validator
-from typing import List, Union, Any
+from typing import List
 import os
 
-
 class Settings(BaseSettings):
-    APP_NAME: str = "SEC-OPS Retail Exit Monitoring Platform"
-    APP_VERSION: str = "2.0.0"
-    ENVIRONMENT: str = "development"
-    SECOPS_DEBUG: bool = True
+    APP_NAME: str = os.getenv("APP_NAME", "SEC-OPS Retail Exit Monitoring Platform")
+    APP_VERSION: str = os.getenv("APP_VERSION", "2.0.0")
+    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production")
+    SECOPS_DEBUG: bool = os.getenv("SECOPS_DEBUG", "false").lower() == "true"
     
-    # Database
-    DATABASE_URL: str = os.getenv(
-        "DATABASE_URL", 
-        "sqlite+aiosqlite:///./retail_exit.db"
-    )
+    # Database (No Hardcoded Credentials)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     
-    # CORS
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:4173",
-        "*"
-    ]
+    # CORS (Dynamic parsing)
+    CORS_ORIGINS: List[str] = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
     
-    # Security
-    SECRET_KEY: str = "sec-ops-production-secret-key-32-chars-min"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
+    # Security (Strict No Hardcoding)
+    SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
+    ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))
     
     # Edge Ingestion & ML Defaults
-    DEFAULT_STORE_ID: str = "store_0402"
-    DEFAULT_VISION_MODEL: str = "yolov8-retail-pack-v2.1"
-    DEFAULT_OCR_MODEL: str = "paddleocr-invoice-layout-v3.0"
-    DEFAULT_FACE_MODEL: str = "arcface-r100-512d-v1.4"
+    DEFAULT_STORE_ID: str = os.getenv("DEFAULT_STORE_ID", "")
+    DEFAULT_VISION_MODEL: str = os.getenv("DEFAULT_VISION_MODEL", "")
+    DEFAULT_OCR_MODEL: str = os.getenv("DEFAULT_OCR_MODEL", "")
+    DEFAULT_FACE_MODEL: str = os.getenv("DEFAULT_FACE_MODEL", "")
     
-    # WebSocket Broadcast
-    WS_HEARTBEAT_INTERVAL_SEC: int = 15
+    # Infrastructure
+    REDIS_URL: str = os.getenv("REDIS_URL", "")
+    WS_HEARTBEAT_INTERVAL_SEC: int = int(os.getenv("WS_HEARTBEAT_INTERVAL_SEC", "15"))
     
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -52,6 +41,4 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
-
 settings = Settings()
-

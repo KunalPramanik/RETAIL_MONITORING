@@ -1,166 +1,47 @@
-version: '3.8'
-
-# ─────────────────────────────────────────────────────────────────────────────
-# SEC-OPS 2.0 Containerized Production Deployment Stack
-# Single-command deployment for Edge Store Appliance and Loss Prevention Center
-# ─────────────────────────────────────────────────────────────────────────────
+﻿version: '3.8'
 
 services:
-  # ── 1. PostgreSQL 16 ACID Database ─────────────────────────────────────────
   db:
-    image: postgres:16-alpine
-    container_name: secops-postgres
-    restart: unless-stopped
+    image: postgres:15-alpine
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-secops_admin}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secops_secure_pass_2026}
-      POSTGRES_DB: ${POSTGRES_DB:-secops_db}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      POSTGRES_USER: secops
+      POSTGRES_PASSWORD: secops_password
+      POSTGRES_DB: secops_retail
     ports:
       - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-secops_admin} -d ${POSTGRES_DB:-secops_db}"]
+      test: ["CMD-SHELL", "pg_isready -U secops"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2048M
 
-  # ── 2. Redis 7 High-Throughput Pub/Sub & Cache ─────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: secops-redis
-    restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
-    volumes:
-      - redis_data:/data
     ports:
       - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
-      timeout: 3s
+      timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
 
-  # ── 3. MediaMTX Live RTSP / WebRTC Media Server ────────────────────────────
-  mediamtx:
-    image: bluenviron/mediamtx:latest
-    container_name: secops-mediamtx
-    restart: unless-stopped
-    ports:
-      - "8554:8554"   # RTSP
-      - "8888:8888"   # HLS
-      - "8889:8889"   # WebRTC / WHEP
-    environment:
-      MTX_PROTOCOLS: "tcp"
-      MTX_WEBRTCADDITIONALHOSTS: "${EXTERNAL_SERVER_IP:-127.0.0.1}"
-    deploy:
-      resources:
-        limits:
-          cpus: '1.5'
-          memory: 1024M
-
-  # ── 4. SEC-OPS 2.0 FastAPI Backend Engine ──────────────────────────────────
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.backend
-    container_name: secops-backend
-    restart: unless-stopped
+    build: 
+      context: ./retail-exit-backend
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://secops:secops_password@db:5432/secops_retail
+      - REDIS_URL=redis://redis:6379/0
+      - ENVIRONMENT=production
+    ports:
+      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    environment:
-      APP_ENV: production
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-secops_admin}:${POSTGRES_PASSWORD:-secops_secure_pass_2026}@db:5432/${POSTGRES_DB:-secops_db}
-      DATABASE_URL_SYNC: postgresql://${POSTGRES_USER:-secops_admin}:${POSTGRES_PASSWORD:-secops_secure_pass_2026}@db:5432/${POSTGRES_DB:-secops_db}
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-secops-super-secret-jwt-key-change-in-production}
-      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost,http://localhost:80,http://127.0.0.1}"
-      
-      # Turnstile GPIO Driver configuration (RPi hardware or emulated)
-      TURNSTILE_GPIO_MODE: ${TURNSTILE_GPIO_MODE:-AUTO}
-      TURNSTILE_RELAY_PIN: ${TURNSTILE_RELAY_PIN:-17}
-      TURNSTILE_READBACK_PIN: ${TURNSTILE_READBACK_PIN:-27}
-      TURNSTILE_AUTO_UNLOCK_SECONDS: ${TURNSTILE_AUTO_UNLOCK_SECONDS:-30.0}
 
-      # External Notification Webhooks
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      MOBILE_PUSH_WEBHOOK_URL: ${MOBILE_PUSH_WEBHOOK_URL:-}
-    volumes:
-      - media_data:/app/media
-      - model_weights:/app/src/ml/weights
-      # Optional: mount local Raspberry Pi GPIO device nodes if deploying on physical edge hardware
-      # - /dev/gpiomem:/dev/gpiomem
-    ports:
-      - "8000:8000"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/lanes"]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
-    deploy:
-      resources:
-        limits:
-          cpus: '3.0'
-          memory: 4096M
-      # ───────────────────────────────────────────────────────────────────────
-      # Optional: NVIDIA GPU Passthrough for Hardware Accelerated Inference
-      # To enable, install nvidia-container-toolkit and uncomment below:
-      # ───────────────────────────────────────────────────────────────────────
-      # reservations:
-      #   devices:
-      #     - driver: nvidia
-      #       count: all
-      #       capabilities: [gpu]
-
-  # ── 5. SEC-OPS 2.0 Nginx Console Web UI ────────────────────────────────────
-  console:
-    build:
-      context: .
-      dockerfile: Dockerfile.frontend
-    container_name: secops-console
-    restart: unless-stopped
-    depends_on:
-      backend:
-        condition: service_healthy
-    ports:
-      - "80:80"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost/nginx-health"]
-      interval: 20s
-      timeout: 5s
-      retries: 3
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-
-# ── Persistent Storage Volumes ────────────────────────────────────────────────
 volumes:
-  postgres_data:
-    name: secops_postgres_data
-  redis_data:
-    name: secops_redis_data
-  media_data:
-    name: secops_media_data
-  model_weights:
-    name: secops_model_weights
-
+  pgdata:

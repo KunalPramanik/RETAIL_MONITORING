@@ -1,4 +1,4 @@
-"""API Route Aggregator Module"""
+﻿"""API Route Aggregator Module"""
 
 from fastapi import APIRouter
 
@@ -28,6 +28,7 @@ from src.api.material_flow import router as material_flow_router
 from src.api.tripwire import router as tripwire_router
 from src.api.analytics_routes import router as analytics_router
 from src.api.advanced_routes import router as advanced_router
+from src.api.auth import router as auth_router
 
 api_router = APIRouter(prefix="/api")
 
@@ -57,4 +58,5 @@ api_router.include_router(dispatch_router)
 api_router.include_router(tripwire_router)
 api_router.include_router(analytics_router)
 api_router.include_router(advanced_router)
+api_router.include_router(auth_router)
 

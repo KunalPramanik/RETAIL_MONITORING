@@ -260,7 +260,8 @@ class CameraIngestionWorker:
                 frame_bytes, 
                 catalog_products=catalog,
                 roi_polygon=cam.roi_polygon,
-                ignored_classes=cam.ignored_classes
+                ignored_classes=cam.ignored_classes,
+                camera_id=cam.camera_id
             )
 
             # Pre-extract display containers (wall pictures, screens, monitors, laptops, phones) for content-in-content quarantine
@@ -1272,7 +1273,8 @@ class CameraIngestionWorker:
             frame_bytes=frame_bytes,
             catalog_products=catalog,
             roi_polygon=cam.roi_polygon,
-            ignored_classes=cam.ignored_classes
+            ignored_classes=cam.ignored_classes,
+                camera_id=cam.camera_id
         )
 
         # 3. Run Real OpenCV Face Recognition on the annotated frame with Anti-Spoofing Liveness

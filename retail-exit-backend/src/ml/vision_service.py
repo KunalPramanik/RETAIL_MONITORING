@@ -17,6 +17,7 @@ import numpy as np
 import onnxruntime as ort
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
+from src.ml.tracker import SimpleByteTrack
 from datetime import datetime, timezone
 
 from src.ml.model_config import get_vision_config
@@ -65,6 +66,7 @@ class VisionInferenceService:
 
     _session: Optional[ort.InferenceSession] = None
     _loaded_version: Optional[str] = None
+    _trackers: Dict[str, SimpleByteTrack] = {}
 
     # COCO Class mapping to retail exit monitoring classes
     # 0 = person
@@ -262,7 +264,7 @@ class VisionInferenceService:
             for c_idx in range(cases):
                 conf = round(0.9500 + (c_idx % 4) * 0.012, 4)
                 conf_scores.append(conf)
-                track_id_seq += 1
+                # track_id_seq increment removed in favor of ByteTrack
 
                 base_x = 80 + (c_idx * 160) % 520
                 base_y = 120 + ((c_idx * 70) % 360)
@@ -285,7 +287,7 @@ class VisionInferenceService:
             for s_idx in range(singles):
                 conf = round(0.9100 + (s_idx % 4) * 0.015, 4)
                 conf_scores.append(conf)
-                track_id_seq += 1
+                # track_id_seq increment removed in favor of ByteTrack
 
                 base_x = 100 + ((s_idx * 90) % 480)
                 base_y = 200 + ((s_idx * 80) % 340)
@@ -327,6 +329,7 @@ class VisionInferenceService:
         catalog_products: Optional[List[Dict[str, Any]]] = None,
         roi_polygon: Optional[list] = None,
         ignored_classes: Optional[list] = None,
+        camera_id: Optional[str] = None,
     ) -> Tuple[VisionInferenceResult, bytes]:
         """Runs real YOLOX deep-learning object detection on camera frame bytes."""
         t0 = time.perf_counter()
@@ -643,7 +646,7 @@ class VisionInferenceService:
                             total_singles += 1
                             total_units += 1
 
-                    track_id_seq += 1
+                    # track_id_seq increment removed in favor of ByteTrack
                     conf_scores.append(conf)
                     detections.append(
                         DetectedBox(
@@ -704,7 +707,7 @@ class VisionInferenceService:
                 if any(cls.calculate_iou(so_bbox, d.bbox) > 0.35 for d in detections):
                     continue
 
-                track_id_seq += 1
+                # track_id_seq increment removed in favor of ByteTrack
                 conf_scores.append(so_conf)
                 so_meta = cfg.get_class_metadata(so_lbl)
                 so_is_inv = so_meta.get("inventory_relevant", False if so_lbl in ("doorway", "bookshelf", "wall_picture") else True)
@@ -771,6 +774,18 @@ class VisionInferenceService:
                             d.class_label = "static_image"
         except Exception as _refl_err:
             logger.debug("Reflection filter error: %s", _refl_err)
+
+        
+        if camera_id:
+            if camera_id not in cls._trackers:
+                cls._trackers[camera_id] = SimpleByteTrack(track_buffer=30)
+            detections = cls._trackers[camera_id].update(detections)
+        else:
+            # Fallback sequential IDs
+            tid = 1
+            for d in detections:
+                d.track_id = tid
+                tid += 1
 
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.95

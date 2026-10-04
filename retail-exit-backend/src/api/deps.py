@@ -4,7 +4,7 @@ from jose import jwt, JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from src.db.session import get_db
-from src.db.models import User
+from src.db.models import AppUser as User
 from src.security import SECRET_KEY, ALGORITHM
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
@@ -23,7 +23,7 @@ async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depe
     except JWTError:
         raise credentials_exception
 
-    result = await db.execute(select(User).where(User.id == user_id))
+    result = await db.execute(select(User).where(User.user_id == user_id))
     user = result.scalars().first()
     if user is None:
         raise credentials_exception

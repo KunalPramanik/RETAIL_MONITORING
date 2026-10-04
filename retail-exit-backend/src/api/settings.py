@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from src.api.deps import get_current_user, role_required
-from src.db.models import User
+from src.db.models import AppUser as User
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 

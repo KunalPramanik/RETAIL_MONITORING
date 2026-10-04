@@ -1,18 +1,18 @@
 ﻿from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from src.db.models import ThresholdConfig, User
+from src.db.models import ThresholdConfig, AppUser as User
 from src.security import get_password_hash
 import uuid
 
 async def init_baseline_configuration(session: AsyncSession):
     # Ensure SUPER_ADMIN exists
-    result = await session.execute(select(User).where(User.username == "admin"))
+    result = await session.execute(select(User).where(User.email == "admin@secops.local"))
     if not result.scalars().first():
         hashed_password = get_password_hash("admin123")  # In production, require reset on first login
         admin_user = User(
             id=str(uuid.uuid4()),
-            username="admin",
-            hashed_password=hashed_password,
+            username="admin@secops.local",
+            password_hash=hashed_password,
             role="SUPER_ADMIN",
             is_active=True
         )

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 
 from src.db.session import get_db
-from src.db.models import User
+from src.db.models import AppUser as User
 from src.security import verify_password, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from src.api.deps import get_current_user
 
@@ -23,10 +23,10 @@ class UserCreate(BaseModel):
 
 @router.post("/login", response_model=Token)
 async def login_for_access_token(db: AsyncSession = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
-    result = await db.execute(select(User).where(User.username == form_data.username))
+    result = await db.execute(select(User).where(User.email == form_data.username))
     user = result.scalars().first()
     
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not user or not verify_password(form_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -41,7 +41,7 @@ async def login_for_access_token(db: AsyncSession = Depends(get_db), form_data: 
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.username == user_in.username))
+    result = await db.execute(select(User).where(User.email == user_in.username))
     if result.scalars().first():
         raise HTTPException(status_code=400, detail="Username already registered")
         

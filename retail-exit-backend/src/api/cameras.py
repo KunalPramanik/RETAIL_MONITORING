@@ -184,7 +184,7 @@ def capture_camera_frame_sync(
             # Direct HTTP/HTTPS snapshot or stream
             if stream_url.startswith(("http://", "https://")):
                 try:
-                    headers = {"Connection": "close", "User-Agent": "Mozilla/5.0"}
+                    headers = {"Connection": "close", "AppUser as User-Agent": "Mozilla/5.0"}
                     with httpx.Client(timeout=min(timeout_sec, 1.5), follow_redirects=True, headers=headers) as client:
                         for auth in distinct_auth:
                             try:
@@ -403,7 +403,7 @@ def capture_camera_frame_sync(
             # Try HTTP snapshot / single frame pull across candidate credentials
             for auth_item in distinct_auth:
                 try:
-                    headers = {"Connection": "close", "User-Agent": "Mozilla/5.0"}
+                    headers = {"Connection": "close", "AppUser as User-Agent": "Mozilla/5.0"}
                     with httpx.Client(timeout=1.0, follow_redirects=True, headers=headers) as client:
                         resp = client.get(v_url, auth=auth_item)
                         if resp.status_code == 200 and len(resp.content) > 500:

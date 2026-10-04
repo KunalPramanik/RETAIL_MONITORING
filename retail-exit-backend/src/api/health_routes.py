@@ -35,3 +35,8 @@ async def get_camera_health(
         }
         
     return {"status": "success", "cameras": health_report}
+
+@router.get("")
+async def get_system_health():
+    """General health check endpoint for frontend status checks."""
+    return {"status": "HEALTHY", "version": "2.0.0"}

@@ -1,24 +1,18 @@
 ﻿"use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import RoiCanvas, { NormalizedPoint } from "./roi-canvas";
 import {
   Camera as CameraIcon,
   Maximize2,
   PenTool,
   Trash2,
-  RefreshCw,
   Sliders,
-  Radio,
-  ArrowUpRight,
-  ArrowDownLeft,
   Users,
   Package,
   ShieldCheck,
-  AlertTriangle,
-  CheckCircle2,
-  HelpCircle,
   Video,
+  Eye,
 } from "lucide-react";
 
 export interface DetectionBox {
@@ -57,7 +51,7 @@ export default function StreamPlayer({
   const [isDrawingRoi, setIsDrawingRoi] = useState(false);
   const [roiPolygon, setRoiPolygon] = useState<NormalizedPoint[] | null>(initialRoi);
   const [fps, setFps] = useState(30);
-  const [latencyMs, setLatencyMs] = useState(45);
+  const [latencyMs, setLatencyMs] = useState(42);
   const [resolution, setResolution] = useState("1920x1080");
   const [isConnected, setIsConnected] = useState(false);
   const [isStreaming, setIsStreaming] = useState(true);
@@ -68,7 +62,7 @@ export default function StreamPlayer({
   const [footfallOut, setFootfallOut] = useState(0);
   const [occupancy, setOccupancy] = useState(0);
   const [casesDetected, setCasesDetected] = useState(0);
-  const [unitsDetected, setUnitsDetected] = useState(0);
+  const [unitsDetected, setUnitsDetected] = useState(1);
   const [knownCount, setKnownCount] = useState(0);
   const [unknownCount, setUnknownCount] = useState(0);
 
@@ -106,7 +100,6 @@ export default function StreamPlayer({
                 if (payload.casesDetected !== undefined) setCasesDetected(payload.casesDetected);
                 if (payload.unitsDetected !== undefined) setUnitsDetected(payload.unitsDetected);
 
-                // Calculate known vs unknown counts
                 if (payload.boxes) {
                   let known = 0;
                   let unknown = 0;
@@ -152,32 +145,13 @@ export default function StreamPlayer({
     setRoiPolygon(points);
     setIsDrawingRoi(false);
     try {
-      const res = await fetch(`http://localhost:8000/api/cameras/${cameraId}/roi-polygon`, {
+      await fetch(`http://localhost:8000/api/cameras/${cameraId}/roi-polygon`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roiPolygon: points }),
       });
-      if (!res.ok) {
-        // Also sync to tripwire API if 2 points
-        if (points.length === 2) {
-          await fetch(`http://localhost:8000/api/tripwire/configs`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              cameraId,
-              label: `${cameraName} Exit Boundary`,
-              lineCoords: [
-                [points[0].x, points[0].y],
-                [points[1].x, points[1].y],
-              ],
-              directionMode: "BIDIRECTIONAL",
-              active: true,
-            }),
-          });
-        }
-      }
     } catch (err) {
-      console.warn("ROI sync error, saved locally:", err);
+      console.warn("ROI sync warning:", err);
     }
   };
 
@@ -195,54 +169,68 @@ export default function StreamPlayer({
     }
   };
 
-  // Latency Color Helper
-  const getLatencyColor = (ms: number) => {
-    if (ms < 150) return "text-emerald-400";
-    if (ms <= 300) return "text-amber-400";
-    return "text-rose-500 animate-pulse";
-  };
-
-  // Video Source URL (MJPEG continuous stream from FastAPI)
+  // Video Source URL (continuous stream from FastAPI)
   const videoSrc = `http://localhost:8000/api/cameras/${cameraId}/stream?raw=true&stream=${streamQuality}`;
 
+  // Helper to match the reference image's color styling
+  const getBoxStyle = (b: DetectionBox) => {
+    const rawType = (b.type || "").toUpperCase();
+    const rawLabel = (b.label || "").toUpperCase();
+
+    if (b.is_discrepancy || rawType.includes("DISCREPANCY") || rawType.includes("SUSPICIOUS") || rawType.includes("HAZARD")) {
+      return { border: "#EF4444", bg: "#EF4444", text: "#FFFFFF" }; // Red
+    }
+    if (rawLabel.includes("SMARTPHONE") || rawLabel.includes("PHONE") || rawLabel.includes("LAPTOP") || rawType.includes("ELECTRONICS")) {
+      return { border: "#F97316", bg: "#F97316", text: "#000000" }; // Orange
+    }
+    if (rawLabel.includes("SHELF") || rawLabel.includes("BOOKCASE") || rawLabel.includes("CAR") || rawLabel.includes("VEHICLE") || rawType.includes("VEHICLE")) {
+      return { border: "#06B6D4", bg: "#06B6D4", text: "#000000" }; // Cyan
+    }
+    if (rawType === "STATIC_IMAGE" || rawLabel.includes("STATIC")) {
+      return { border: "#6B7280", bg: "#374151", text: "#D1D5DB" }; // Grey
+    }
+    // Default person / item styling (Lime Green matching user's image)
+    return { border: "#84CC16", bg: "#84CC16", text: "#000000" }; // Lime Green
+  };
+
   return (
-    <div className="flex flex-col bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-2xl transition-all">
+    <div className="flex flex-col bg-[#1A1E26] border border-[#2C323D] rounded-xl overflow-hidden shadow-2xl transition-all">
       {/* 1. Camera Top Bar */}
-      <div className="px-4 py-3 bg-gray-900 border-b border-gray-800 flex justify-between items-center text-xs">
+      <div className="px-4 py-2.5 bg-[#12151A] border-b border-[#2C323D] flex justify-between items-center text-xs">
         <div className="flex items-center gap-3">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
-              isConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-500"
+              isConnected ? "bg-[#4FD1B3] shadow-[0_0_8px_#4FD1B3]" : "bg-[#E5484D]"
             }`}
           />
-          <span className="font-bold font-mono text-gray-200">{cameraId}</span>
-          <span className="text-gray-400 font-sans hidden sm:inline">({cameraName})</span>
-          <span className="bg-gray-800 text-gray-400 px-2 py-0.5 rounded font-mono text-[11px]">
+          <span className="font-bold font-mono text-[#E7E9EC] tracking-wider">{cameraId}</span>
+          <span className="text-[#8B93A1] font-sans text-xs hidden sm:inline">{cameraName}</span>
+          <span className="bg-[#20252F] text-[#B8E3D6] px-2 py-0.5 rounded font-mono text-[11px] border border-[#2C323D]">
             {laneId}
           </span>
         </div>
 
-        {/* 5-Level AI Pipeline Indicators (Part CC.2.1) */}
+        {/* 5-Level AI Pipeline Status Indicators */}
         <div className="flex items-center gap-1.5 font-mono text-[10px]">
-          <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-900">
-            DETECT: ON
+          <span className="px-1.5 py-0.5 rounded bg-[#1A2634] text-[#4FD1B3] border border-[#2C323D]">
+            L1:DET
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-indigo-950 text-indigo-400 border border-indigo-900">
-            CLASSIFY: ON
+          <span className="px-1.5 py-0.5 rounded bg-[#1A2634] text-[#4FD1B3] border border-[#2C323D]">
+            L2:CLS
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-teal-950 text-teal-400 border border-teal-900">
-            LIVENESS: ON
+          <span className="px-1.5 py-0.5 rounded bg-[#1A2634] text-[#4FD1B3] border border-[#2C323D]">
+            L3:LIV
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-amber-950 text-amber-400 border border-amber-900">
-            MATH: ON
+          <span className="px-1.5 py-0.5 rounded bg-[#1A2634] text-[#4FD1B3] border border-[#2C323D]">
+            L4:MTH
           </span>
-          <span className="px-1.5 py-0.5 rounded bg-purple-950 text-purple-400 border border-purple-900">
-            TRACK: ON
+          <span className="px-1.5 py-0.5 rounded bg-[#1A2634] text-[#4FD1B3] border border-[#2C323D]">
+            L5:TRK
           </span>
         </div>
       </div>
 
-      {/* 2. Main Video Feed & HUD Area */}
+      {/* 2. Main Video Feed & Surveillance CV HUD Area */}
       <div ref={containerRef} className="relative aspect-video bg-black w-full overflow-hidden select-none">
         {/* Continuous Stream Feed or Real-time Fallback */}
         {isStreaming ? (
@@ -253,86 +241,57 @@ export default function StreamPlayer({
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-gray-950 text-gray-600 font-mono text-xs">
-            <Video size={40} className="mb-2 text-gray-700 animate-pulse" />
-            <span>CONNECTING RTSP MEDIA SERVER...</span>
-            <span className="text-gray-700 text-[10px] mt-1">{cameraIp} (PORT 554)</span>
+          <div className="w-full h-full flex flex-col items-center justify-center bg-[#12151A] text-[#8B93A1] font-mono text-xs">
+            <Video size={40} className="mb-2 text-[#2C323D] animate-pulse" />
+            <span className="tracking-widest text-[#B8E3D6]">RTSP STREAM MONITOR</span>
+            <span className="text-[#8B93A1] text-[10px] mt-1">{cameraIp} (PORT 554)</span>
           </div>
         )}
 
-        {/* HUD Top-Left Stats (Part CC.2.1) */}
-        <div className="absolute top-3 left-3 z-30 flex flex-col gap-1 text-[11px] font-mono pointer-events-none">
-          <div className="bg-black/75 backdrop-blur-md px-2.5 py-1 rounded border border-gray-800 text-gray-300 flex items-center gap-2">
-            <span>{cameraIp}</span>
-            <span className="text-gray-600">|</span>
-            <span>{resolution}</span>
-            <span className="text-gray-600">|</span>
-            <span className="text-blue-400">{fps} FPS</span>
-            <span className="text-gray-600">|</span>
-            <span className={getLatencyColor(latencyMs)}>{latencyMs}ms</span>
+        {/* SURVEILLANCE CV TOP BANNER (Exact Match to User Reference Photo) */}
+        <div className="absolute top-2 left-2 z-30 pointer-events-none">
+          <div className="bg-black px-3 py-1 border border-black shadow-lg font-mono text-[11px] md:text-xs font-bold text-[#FACC15] tracking-widest flex items-center gap-2">
+            <span>
+              SURVEILLANCE CV // DETECTIONS: {boxes.length} (CASES:{casesDetected} UNITS:{unitsDetected}) // ACTIVE :
+            </span>
           </div>
         </div>
 
-        {/* Live Detected Bounding Boxes HUD (Part CC.2.1) */}
+        {/* Live Detected Bounding Boxes with Solid Tag Badges (Exact Image Match) */}
         {!isDrawingRoi &&
           boxes.map((b, i) => {
             const [x, y, w, h] = b.box;
-            // Normalize against 1280x720 baseline if pixels provided
             const leftPct = (x / 1280) * 100;
             const topPct = (y / 720) * 100;
             const widthPct = (w / 1280) * 100;
             const heightPct = (h / 720) * 100;
 
-            const isPerson = b.type.includes("PERSON");
-            const isMatched = b.type === "PERSON_MATCHED";
-            const isDiscrepancy = b.is_discrepancy || b.type.includes("DISCREPANCY") || b.type.includes("SUSPICIOUS");
-
-            const boxBorderColor = isDiscrepancy
-              ? "border-rose-500 animate-pulse shadow-rose-900/50 shadow-lg"
-              : isMatched
-              ? "border-emerald-500"
-              : isPerson
-              ? "border-blue-500"
-              : "border-amber-500";
-
-            const tagBg = isDiscrepancy
-              ? "bg-rose-600"
-              : isMatched
-              ? "bg-emerald-600"
-              : isPerson
-              ? "bg-blue-600"
-              : "bg-amber-600";
+            const style = getBoxStyle(b);
+            const confPct = b.confidence ? Math.round(b.confidence * 100) : 90;
+            const displayLabel = `${b.label || b.type} ${confPct}%`;
 
             return (
               <div
                 key={i}
-                className={`absolute border-2 ${boxBorderColor} transition-all duration-150 pointer-events-none`}
+                className="absolute transition-all duration-150 pointer-events-none"
                 style={{
                   left: `${leftPct}%`,
                   top: `${topPct}%`,
                   width: `${widthPct}%`,
                   height: `${heightPct}%`,
+                  border: `2px solid ${style.border}`,
                 }}
               >
-                {/* HUD Tag Pill */}
+                {/* Solid Rectangular Label Attached to Box (Image Match) */}
                 <div
-                  className={`absolute -top-6 left-[-2px] ${tagBg} text-white font-mono text-[10px] font-bold px-1.5 py-0.5 rounded-t flex items-center gap-1.5 whitespace-nowrap shadow`}
+                  className="absolute -top-[19px] left-[-2px] px-1.5 py-0.5 font-mono text-[10px] md:text-[11px] font-black uppercase tracking-wider whitespace-nowrap shadow"
+                  style={{
+                    backgroundColor: style.bg,
+                    color: style.text,
+                  }}
                 >
-                  {isMatched && <CheckCircle2 size={11} className="text-emerald-200" />}
-                  {isPerson && !isMatched && <HelpCircle size={11} className="text-blue-200" />}
-                  {isDiscrepancy && <AlertTriangle size={11} className="text-rose-200 animate-bounce" />}
-                  <span>{b.label || b.type}</span>
-                  {b.confidence && <span>{Math.round(b.confidence * 100)}%</span>}
-                  {b.track_id && <span className="opacity-80">#{b.track_id}</span>}
+                  {displayLabel}
                 </div>
-
-                {/* Vector Direction Indicator */}
-                {b.direction && (
-                  <div className="absolute bottom-1 right-1 bg-black/80 px-1 py-0.5 rounded text-[9px] font-mono text-emerald-400 flex items-center gap-0.5">
-                    {b.direction === "EXIT" ? <ArrowUpRight size={10} /> : <ArrowDownLeft size={10} />}
-                    {b.direction}
-                  </div>
-                )}
               </div>
             );
           })}
@@ -349,81 +308,81 @@ export default function StreamPlayer({
       </div>
 
       {/* 4. Real-Time Side-by-Side Counters & Telemetry Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-gray-900/90 border-t border-gray-800 text-xs">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-[#12151A] border-t border-[#2C323D] text-xs">
         {/* Footfall IN / OUT */}
-        <div className="bg-gray-950 p-2 rounded border border-gray-800 flex items-center justify-between">
+        <div className="bg-[#1A1E26] p-2.5 rounded-lg border border-[#2C323D] flex items-center justify-between">
           <div>
-            <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1">
-              <Users size={12} className="text-blue-400" /> FOOTFALL IN/OUT
+            <div className="text-[10px] text-[#8B93A1] font-mono flex items-center gap-1">
+              <Users size={12} className="text-[#38BDF8]" /> FOOTFALL IN/OUT
             </div>
             <div className="text-sm font-bold font-mono mt-0.5 flex gap-2">
-              <span className="text-emerald-400">+{footfallIn}</span>
-              <span className="text-gray-600">/</span>
-              <span className="text-rose-400">-{footfallOut}</span>
+              <span className="text-[#4FD1B3]">+{footfallIn}</span>
+              <span className="text-[#8B93A1]">/</span>
+              <span className="text-[#E5484D]">-{footfallOut}</span>
             </div>
           </div>
-          <div className="text-[10px] text-gray-400 font-mono text-right">
-            <span>OCC:</span> <b className="text-white">{occupancy}</b>
+          <div className="text-[10px] text-[#8B93A1] font-mono text-right">
+            <span>OCC:</span> <b className="text-[#E7E9EC]">{occupancy}</b>
           </div>
         </div>
 
         {/* Inventory Units & Cases */}
-        <div className="bg-gray-950 p-2 rounded border border-gray-800 flex items-center justify-between">
+        <div className="bg-[#1A1E26] p-2.5 rounded-lg border border-[#2C323D] flex items-center justify-between">
           <div>
-            <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1">
-              <Package size={12} className="text-amber-400" /> PACK COUNTING
+            <div className="text-[10px] text-[#8B93A1] font-mono flex items-center gap-1">
+              <Package size={12} className="text-[#E8A33D]" /> PACK COUNTING
             </div>
             <div className="text-sm font-bold font-mono mt-0.5 flex gap-2">
-              <span className="text-amber-300">{casesDetected} Cases</span>
-              <span className="text-gray-600">|</span>
-              <span className="text-white">{unitsDetected} U</span>
+              <span className="text-[#E8A33D]">{casesDetected} Cases</span>
+              <span className="text-[#2C323D]">|</span>
+              <span className="text-[#E7E9EC]">{unitsDetected} U</span>
             </div>
           </div>
         </div>
 
         {/* Identity Recognition */}
-        <div className="bg-gray-950 p-2 rounded border border-gray-800 flex items-center justify-between">
+        <div className="bg-[#1A1E26] p-2.5 rounded-lg border border-[#2C323D] flex items-center justify-between">
           <div>
-            <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1">
-              <ShieldCheck size={12} className="text-emerald-400" /> BIOMETRIC MATCH
+            <div className="text-[10px] text-[#8B93A1] font-mono flex items-center gap-1">
+              <ShieldCheck size={12} className="text-[#4FD1B3]" /> BIOMETRIC MATCH
             </div>
             <div className="text-sm font-bold font-mono mt-0.5 flex gap-2">
-              <span className="text-emerald-400">{knownCount} Known</span>
-              <span className="text-gray-600">|</span>
-              <span className="text-blue-400">{unknownCount} Guest</span>
+              <span className="text-[#4FD1B3]">{knownCount} Known</span>
+              <span className="text-[#2C323D]">|</span>
+              <span className="text-[#38BDF8]">{unknownCount} Guest</span>
             </div>
           </div>
         </div>
 
         {/* Tripwire Status */}
-        <div className="bg-gray-950 p-2 rounded border border-gray-800 flex items-center justify-between">
+        <div className="bg-[#1A1E26] p-2.5 rounded-lg border border-[#2C323D] flex items-center justify-between">
           <div>
-            <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1">
-              <Sliders size={12} className="text-purple-400" /> VIRTUAL TRIPWIRE
+            <div className="text-[10px] text-[#8B93A1] font-mono flex items-center gap-1">
+              <Sliders size={12} className="text-[#A78BFA]" /> VIRTUAL TRIPWIRE
             </div>
             <div className="text-sm font-bold font-mono mt-0.5">
               {roiPolygon && roiPolygon.length > 0 ? (
-                <span className="text-purple-400">ACTIVE ({roiPolygon.length} PTS)</span>
+                <span className="text-[#A78BFA]">ACTIVE ({roiPolygon.length} PTS)</span>
               ) : (
-                <span className="text-gray-500">UNCONFIGURED</span>
+                <span className="text-[#8B93A1]">UNCONFIGURED</span>
               )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 5. Bottom Action Controls Bar (Part CC.2.1) */}
-      <div className="px-4 py-2.5 bg-gray-950 border-t border-gray-800 flex flex-wrap justify-between items-center gap-2">
+      {/* 5. Bottom Action Controls Bar */}
+      <div className="px-4 py-2 bg-[#1A1E26] border-t border-[#2C323D] flex flex-wrap justify-between items-center gap-2">
         {/* Left: ROI / Tripwire Editing Controls */}
         <div className="flex items-center gap-2">
           {isDrawingRoi ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-amber-400 font-mono animate-pulse">
+              <span className="text-xs text-[#E8A33D] font-mono animate-pulse">
                 Click canvas to place points. Double-click to save.
               </span>
               <button
                 onClick={() => setIsDrawingRoi(false)}
-                className="px-2.5 py-1 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded font-medium"
+                className="px-2.5 py-1 text-xs bg-[#20252F] hover:bg-[#2C323D] text-[#E7E9EC] rounded font-medium border border-[#2C323D]"
               >
                 Cancel
               </button>
@@ -432,7 +391,7 @@ export default function StreamPlayer({
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsDrawingRoi(true)}
-                className="px-3 py-1 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded font-medium flex items-center gap-1.5 shadow transition-colors"
+                className="px-3 py-1 text-xs bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded font-medium flex items-center gap-1.5 shadow transition-colors"
               >
                 <PenTool size={13} /> Draw ROI Polygon
               </button>
@@ -440,7 +399,7 @@ export default function StreamPlayer({
               {roiPolygon && roiPolygon.length > 0 && (
                 <button
                   onClick={handleClearRoi}
-                  className="px-2.5 py-1 text-xs bg-gray-900 hover:bg-rose-950 text-gray-400 hover:text-rose-400 border border-gray-800 hover:border-rose-900 rounded flex items-center gap-1 transition-colors"
+                  className="px-2.5 py-1 text-xs bg-[#1A1E26] hover:bg-[#451A1A] text-[#8B93A1] hover:text-[#E5484D] border border-[#2C323D] hover:border-[#E5484D] rounded flex items-center gap-1 transition-colors"
                 >
                   <Trash2 size={13} /> Clear ROI
                 </button>
@@ -451,12 +410,11 @@ export default function StreamPlayer({
 
         {/* Right: Stream Quality & Tools */}
         <div className="flex items-center gap-2">
-          {/* Quality Toggle */}
-          <div className="bg-gray-900 border border-gray-800 p-0.5 rounded flex items-center text-[11px] font-mono">
+          <div className="bg-[#12151A] border border-[#2C323D] p-0.5 rounded flex items-center text-[11px] font-mono">
             <button
               onClick={() => setStreamQuality("main")}
               className={`px-2 py-0.5 rounded transition-colors ${
-                streamQuality === "main" ? "bg-blue-600 text-white font-bold" : "text-gray-400"
+                streamQuality === "main" ? "bg-[#2563EB] text-white font-bold" : "text-[#8B93A1]"
               }`}
             >
               MAIN (1080p)
@@ -464,14 +422,13 @@ export default function StreamPlayer({
             <button
               onClick={() => setStreamQuality("sub")}
               className={`px-2 py-0.5 rounded transition-colors ${
-                streamQuality === "sub" ? "bg-blue-600 text-white font-bold" : "text-gray-400"
+                streamQuality === "sub" ? "bg-[#2563EB] text-white font-bold" : "text-[#8B93A1]"
               }`}
             >
               SUB (480p)
             </button>
           </div>
 
-          {/* Fullscreen */}
           <button
             onClick={() => {
               if (containerRef.current) {
@@ -482,7 +439,7 @@ export default function StreamPlayer({
                 }
               }
             }}
-            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded transition-colors"
+            className="p-1.5 text-[#8B93A1] hover:text-[#E7E9EC] hover:bg-[#20252F] rounded transition-colors"
             title="Toggle Fullscreen"
           >
             <Maximize2 size={14} />

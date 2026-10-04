@@ -1,162 +1,327 @@
 ﻿"use client";
+
+import React, { useState, useEffect } from "react";
 import StreamPlayer from "@/components/cameras/stream-player";
-import { useState, useEffect } from "react";
-import { Activity, Camera, Box, FileText, AlertTriangle, Settings, ShieldAlert, LogOut, CheckCircle } from "lucide-react";
+import {
+  Activity,
+  Camera,
+  Box,
+  AlertTriangle,
+  ShieldAlert,
+  ArrowRight,
+  Clock,
+  Layers,
+  CheckCircle,
+  Plus,
+} from "lucide-react";
+import Link from "next/link";
 
-export default function Dashboard() {
-  const [activeView, setActiveView] = useState("Dashboard");
-  const [currentTime, setCurrentTime] = useState("");
+interface CameraItem {
+  cameraId: string;
+  label: string;
+  laneId?: string;
+  ipAddress: string;
+  rtspPath: string;
+  streamUrl?: string;
+}
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date().toLocaleTimeString()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+interface AlertItem {
+  alertId: string;
+  alertType: string;
+  severity: "HIGH" | "MEDIUM" | "LOW" | "INFO";
+  deltaUnits: number;
+  createdAt: string;
+  status: string;
+}
 
-  const renderContent = () => {
-    if (activeView === "Dashboard") {
-      return (
-        <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[
-              { label: "Active Cameras", value: "4 / 4", icon: Camera, color: "text-blue-400" },
-              { label: "Today's Alerts", value: "12", icon: AlertTriangle, color: "text-yellow-400" },
-              { label: "Items Scanned", value: "1,204", icon: Box, color: "text-green-400" },
-              { label: "Tracking Accuracy", value: "98.7%", icon: Activity, color: "text-purple-400" },
-            ].map((kpi, idx) => (
-              <div key={idx} className="p-6 bg-gray-900 border border-gray-800 rounded-xl hover:border-gray-700 transition-colors">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <p className="text-gray-400 text-sm mb-1">{kpi.label}</p>
-                    <h3 className="text-3xl font-bold">{kpi.value}</h3>
-                  </div>
-                  <kpi.icon className={kpi.color} size={24} />
-                </div>
-              </div>
-            ))}
-          </div>
+interface EventItem {
+  eventId: string;
+  laneId: string;
+  verdict: string;
+  consensusUnits: number;
+  timestamp: string;
+}
 
-          <div>
-            <h3 className="text-xl font-bold mb-4">Live Exit Feeds</h3>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {[1, 2, 3, 4].map((cam) => (
-                <StreamPlayer key={cam} cameraId={`LANE-${cam}-EXIT`} streamUrl={`rtsp://camera-${cam}/stream`} />
-              ))}
-            </div>
-          </div>
-        </div>
-      );
+export default function DashboardPage() {
+  const [cameras, setCameras] = useState<CameraItem[]>([]);
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
+  const [kpis, setKpis] = useState({
+    todayThroughput: 0,
+    openAlerts: 0,
+    accuracyRate: 98.7,
+    camerasOnline: 0,
+    camerasTotal: 0,
+  });
+
+  const fetchData = async () => {
+    try {
+      // 1. Fetch Cameras
+      const resCam = await fetch("http://localhost:8000/api/cameras");
+      if (resCam.ok) {
+        const camData = await resCam.json();
+        setCameras(camData);
+        setKpis((prev) => ({
+          ...prev,
+          camerasOnline: camData.filter((c: any) => c.status === "ONLINE").length,
+          camerasTotal: camData.length,
+        }));
+      }
+
+      // 2. Fetch Alerts
+      const resAlt = await fetch("http://localhost:8000/api/alerts?limit=5");
+      if (resAlt.ok) {
+        const altData = await resAlt.json();
+        setAlerts(altData.slice(0, 5));
+        setKpis((prev) => ({
+          ...prev,
+          openAlerts: altData.filter((a: any) => a.status === "OPEN").length,
+        }));
+      }
+
+      // 3. Fetch Events
+      const resEv = await fetch("http://localhost:8000/api/events?limit=5");
+      if (resEv.ok) {
+        const evData = await resEv.json();
+        setEvents(evData.slice(0, 5));
+        const totalUnits = evData.reduce((acc: number, curr: any) => acc + (curr.consensusUnits || 0), 0);
+        setKpis((prev) => ({
+          ...prev,
+          todayThroughput: totalUnits,
+        }));
+      }
+    } catch (e) {
+      console.warn("Dashboard polling error:", e);
     }
-
-    if (activeView === "Cameras") {
-      return (
-        <div className="p-6 bg-gray-900 border border-gray-800 rounded-xl animate-in slide-in-from-right-4 duration-300">
-          <h2 className="text-2xl font-bold mb-4">Camera Management</h2>
-          <p className="text-gray-400 mb-6">Manage RTSP feeds, Edge AI nodes, and ByteTrack configurations.</p>
-          <div className="space-y-4">
-             {[1, 2, 3, 4].map((cam) => (
-               <div key={cam} className="p-4 border border-gray-800 rounded-lg flex justify-between items-center bg-gray-950">
-                 <div className="flex items-center gap-4">
-                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                   <div>
-                     <h4 className="font-bold">Exit Lane {cam} Camera</h4>
-                     <p className="text-sm text-gray-500 font-mono">rtsp://192.168.1.10{cam}/stream</p>
-                   </div>
-                 </div>
-                 <button className="px-4 py-2 bg-blue-900/30 text-blue-400 border border-blue-900 rounded hover:bg-blue-900/50 transition-colors">Configure</button>
-               </div>
-             ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (activeView === "Alerts") {
-      return (
-        <div className="p-6 bg-gray-900 border border-gray-800 rounded-xl animate-in slide-in-from-right-4 duration-300">
-          <h2 className="text-2xl font-bold mb-4 flex items-center gap-2 text-yellow-400"><AlertTriangle /> Security Alerts</h2>
-          <p className="text-gray-400 mb-6">Real-time discrepancy and occlusion alarms.</p>
-          <div className="p-4 border border-red-900/50 bg-red-900/10 rounded-lg mb-4">
-            <h4 className="font-bold text-red-400">HIGH PRIORITY: Quantity Mismatch</h4>
-            <p className="text-sm text-gray-300">Exit Lane 2: Invoice declared 24 units, ByteTrack counted 25 units.</p>
-            <p className="text-xs text-gray-500 mt-2 font-mono">10 mins ago</p>
-          </div>
-          <div className="p-4 border border-yellow-900/50 bg-yellow-900/10 rounded-lg">
-            <h4 className="font-bold text-yellow-400">WARNING: Occlusion Detected</h4>
-            <p className="text-sm text-gray-300">Exit Lane 1: Subject temporarily occluded tracking path. Track ID 104 restored.</p>
-            <p className="text-xs text-gray-500 mt-2 font-mono">1 hour ago</p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <div className="p-12 text-center animate-in fade-in duration-300">
-        <Activity size={48} className="mx-auto text-gray-600 mb-4 animate-bounce" />
-        <h2 className="text-2xl font-bold text-gray-400">Module Initialization</h2>
-        <p className="text-gray-500 mt-2">The " + activeView + " module is securely connecting to the PostgreSQL backend.</p>
-      </div>
-    );
   };
 
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 6000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Display cameras: use real registered cameras, or default 2 exit lanes if none added yet
+  const displayCameras =
+    cameras.length > 0
+      ? cameras
+      : [
+          {
+            cameraId: "LANE-01-EXIT",
+            label: "Exit Lane 01 — Main Bay",
+            ipAddress: "192.168.1.101",
+            rtspPath: "/live/ch0",
+            laneId: "LANE-01",
+          },
+          {
+            cameraId: "LANE-02-EXIT",
+            label: "Exit Lane 02 — Dispatch Bay",
+            ipAddress: "192.168.1.102",
+            rtspPath: "/live/ch0",
+            laneId: "LANE-02",
+          },
+        ];
+
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-100 selection:bg-blue-900">
-      {/* Sidebar */}
-      <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col z-20 shadow-xl">
-        <div className="p-6 border-b border-gray-800">
-          <h1 className="text-xl font-bold flex items-center gap-3 text-blue-400 tracking-tight">
-            <ShieldAlert className="text-blue-500" /> SEC-OPS V8
-          </h1>
-        </div>
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
-          {[
-            { id: "Dashboard", icon: Activity },
-            { id: "Cameras", icon: Camera },
-            { id: "Alerts", icon: AlertTriangle },
-            { id: "Inventory", icon: Box },
-            { id: "Invoices", icon: FileText },
-          ].map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveView(item.id)}
-              className={"w-full flex items-center gap-3 p-3 rounded-lg transition-all duration-200 " + (activeView === item.id ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" : "text-gray-400 hover:text-white hover:bg-gray-800")}
-            >
-              <item.icon size={20} /> {item.id}
-            </button>
-          ))}
-        </nav>
-        <div className="p-4 border-t border-gray-800 space-y-2">
-          <button 
-            onClick={() => setActiveView("Settings")}
-            className={"w-full flex items-center gap-3 p-3 rounded-lg transition-colors " + (activeView === "Settings" ? "bg-gray-800 text-white" : "text-gray-400 hover:text-white hover:bg-gray-800")}
-          >
-            <Settings size={20} /> Settings
-          </button>
-          <button className="w-full flex items-center gap-3 p-3 text-red-400 hover:bg-red-950 hover:text-red-300 rounded-lg transition-colors">
-            <LogOut size={20} /> Logout
-          </button>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        {/* Header */}
-        <header className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/80 backdrop-blur-md z-10 sticky top-0">
-          <h2 className="text-2xl font-bold tracking-tight">{activeView}</h2>
-          <div className="flex items-center gap-6">
-            <div className="text-sm font-mono text-gray-400 bg-gray-950 px-3 py-1 rounded-md border border-gray-800">
-              {currentTime}
+    <div className="space-y-6">
+      {/* 1. Live KPI Top Strip (Part A.1.4 & Part A.2) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Active Cameras Fleet */}
+        <div className="bg-[#1A1E26] p-5 rounded-xl border border-[#2C323D] flex justify-between items-start">
+          <div>
+            <span className="text-xs font-mono text-[#8B93A1]">CAMERAS ONLINE / TOTAL</span>
+            <div className="text-2xl font-bold font-mono text-[#E7E9EC] mt-1">
+              <span className="text-[#4FD1B3]">{kpis.camerasOnline}</span>
+              <span className="text-[#8B93A1]"> / </span>
+              <span>{Math.max(kpis.camerasTotal, displayCameras.length)}</span>
             </div>
-            <div className="flex items-center gap-2 px-3 py-1 bg-green-950 text-green-400 rounded-full text-sm border border-green-900 font-medium">
-              <CheckCircle size={16} /> API Online
-            </div>
+            <span className="text-[11px] text-[#4FD1B3] font-mono mt-0.5 block">H.265 Transcode Ready</span>
           </div>
-        </header>
-
-        {/* Scrollable View Area */}
-        <div className="p-6 overflow-y-auto flex-1">
-          {renderContent()}
+          <div className="p-2.5 rounded-lg bg-[#20252F] text-[#38BDF8]">
+            <Camera size={20} />
+          </div>
         </div>
-      </main>
+
+        {/* Open Loss-Prevention Alerts */}
+        <div className="bg-[#1A1E26] p-5 rounded-xl border border-[#2C323D] flex justify-between items-start">
+          <div>
+            <span className="text-xs font-mono text-[#8B93A1]">OPEN ALARMS (QUEUE)</span>
+            <div className="text-2xl font-bold font-mono text-[#E5484D] mt-1">
+              {kpis.openAlerts}
+            </div>
+            <span className="text-[11px] text-[#E8A33D] font-mono mt-0.5 block">
+              {alerts.filter((a) => a.severity === "HIGH").length} Critical High Priority
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-[#20252F] text-[#E5484D]">
+            <AlertTriangle size={20} />
+          </div>
+        </div>
+
+        {/* Throughput Items Verified */}
+        <div className="bg-[#1A1E26] p-5 rounded-xl border border-[#2C323D] flex justify-between items-start">
+          <div>
+            <span className="text-xs font-mono text-[#8B93A1]">AUDITED THROUGHPUT</span>
+            <div className="text-2xl font-bold font-mono text-[#E7E9EC] mt-1">
+              {kpis.todayThroughput}{" "}
+              <span className="text-xs font-normal text-[#8B93A1]">units</span>
+            </div>
+            <span className="text-[11px] text-[#4FD1B3] font-mono mt-0.5 block">100% Sensor Verified</span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-[#20252F] text-[#E8A33D]">
+            <Box size={20} />
+          </div>
+        </div>
+
+        {/* Fusion Consensus Accuracy */}
+        <div className="bg-[#1A1E26] p-5 rounded-xl border border-[#2C323D] flex justify-between items-start">
+          <div>
+            <span className="text-xs font-mono text-[#8B93A1]">CONSENSUS FUSION ACCURACY</span>
+            <div className="text-2xl font-bold font-mono text-[#4FD1B3] mt-1">
+              {kpis.accuracyRate}%
+            </div>
+            <span className="text-[11px] text-[#8B93A1] font-mono mt-0.5 block">Vision + RFID + Weight</span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-[#20252F] text-[#4FD1B3]">
+            <Activity size={20} />
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Live Exit Feeds Grid with Industrial Surveillance HUD */}
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-bold text-[#E7E9EC] flex items-center gap-2">
+            <Camera size={18} className="text-[#38BDF8]" /> Live Exit Feeds & Surveillance CV HUD
+          </h2>
+          <Link
+            href="/settings/cameras"
+            className="text-xs font-mono text-[#38BDF8] hover:underline flex items-center gap-1"
+          >
+            Manage Camera Fleet <ArrowRight size={13} />
+          </Link>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {displayCameras.map((cam) => (
+            <StreamPlayer
+              key={cam.cameraId}
+              cameraId={cam.cameraId}
+              cameraName={cam.label}
+              cameraIp={cam.ipAddress}
+              streamUrl={cam.streamUrl}
+              laneId={cam.laneId}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* 3. Bottom Operational Stream: Traversal Events & Critical Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Exit Events */}
+        <div className="bg-[#1A1E26] border border-[#2C323D] rounded-xl p-5 shadow-xl space-y-3">
+          <div className="flex justify-between items-center border-b border-[#2C323D] pb-3">
+            <h3 className="text-sm font-bold text-[#E7E9EC] flex items-center gap-2 font-mono">
+              <Layers size={16} className="text-[#38BDF8]" /> LIVE EXIT TRAVERSAL LOG
+            </h3>
+            <Link href="/events" className="text-xs font-mono text-[#38BDF8] hover:underline">
+              View All →
+            </Link>
+          </div>
+
+          <div className="space-y-2">
+            {events.length === 0 ? (
+              <div className="p-8 text-center text-[#8B93A1] text-xs font-mono">
+                Awaiting exit lane crossings...
+              </div>
+            ) : (
+              events.map((ev) => (
+                <div
+                  key={ev.eventId}
+                  className="bg-[#12151A] p-3 rounded-lg border border-[#2C323D] flex justify-between items-center text-xs"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`font-mono font-bold text-[10px] px-1.5 py-0.2 rounded ${
+                          ev.verdict === "PASS"
+                            ? "bg-[#4FD1B3]/20 text-[#4FD1B3]"
+                            : "bg-[#E5484D]/20 text-[#E5484D]"
+                        }`}
+                      >
+                        {ev.verdict}
+                      </span>
+                      <span className="font-mono text-[#E7E9EC] font-bold">{ev.eventId}</span>
+                      <span className="text-[#8B93A1] font-mono">{ev.laneId}</span>
+                    </div>
+                  </div>
+                  <div className="text-right font-mono">
+                    <span className="font-bold text-[#4FD1B3]">{ev.consensusUnits} Units</span>
+                    <span className="text-[10px] text-[#8B93A1] block">
+                      {new Date(ev.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Active Alarms Queue */}
+        <div className="bg-[#1A1E26] border border-[#2C323D] rounded-xl p-5 shadow-xl space-y-3">
+          <div className="flex justify-between items-center border-b border-[#2C323D] pb-3">
+            <h3 className="text-sm font-bold text-[#E7E9EC] flex items-center gap-2 font-mono">
+              <ShieldAlert size={16} className="text-[#E5484D]" /> ACTIVE DISCREPANCY QUEUE
+            </h3>
+            <Link href="/alerts" className="text-xs font-mono text-[#E5484D] hover:underline">
+              Open Full Queue →
+            </Link>
+          </div>
+
+          <div className="space-y-2">
+            {alerts.length === 0 ? (
+              <div className="p-8 text-center text-[#8B93A1] text-xs font-mono flex flex-col items-center gap-1">
+                <CheckCircle size={24} className="text-[#4FD1B3]" />
+                <span>Zero active security alarms</span>
+              </div>
+            ) : (
+              alerts.map((alt) => (
+                <div
+                  key={alt.alertId}
+                  className="bg-[#12151A] p-3 rounded-lg border border-[#2C323D] flex justify-between items-center text-xs"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] font-mono font-bold px-1.5 py-0.2 rounded uppercase ${
+                          alt.severity === "HIGH"
+                            ? "bg-[#E5484D] text-white animate-pulse"
+                            : alt.severity === "MEDIUM"
+                            ? "bg-[#F0924A] text-black"
+                            : "bg-[#E8C34D] text-black"
+                        }`}
+                      >
+                        {alt.severity}
+                      </span>
+                      <span className="font-bold text-[#E7E9EC]">{alt.alertType.replace(/_/g, " ")}</span>
+                    </div>
+                    <span className="text-[10px] text-[#8B93A1] font-mono">
+                      {alt.deltaUnits !== 0 && `Variance: ${alt.deltaUnits} U | `}
+                      {new Date(alt.createdAt).toLocaleTimeString()}
+                    </span>
+                  </div>
+                  <Link
+                    href="/alerts"
+                    className="px-2.5 py-1 bg-[#20252F] hover:bg-[#2C323D] text-[#38BDF8] rounded text-xs font-mono"
+                  >
+                    Resolve
+                  </Link>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

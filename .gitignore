@@ -1,6 +1,11 @@
 # =============================================================================
-# Git Ignore Configuration for Smart Retail Exit Monitoring System (SEC-OPS 2.0)
+# Git Ignore Configuration for Smart Retail Exit Monitoring System (SEC-OPS V8)
 # =============================================================================
+
+# Environment & Secrets (NEVER commit secrets to Git)
+.env
+.env.*
+!.env.example
 
 # Python Virtual Environments & Packages
 .venv/
@@ -19,30 +24,49 @@ __pycache__/
 .coverage
 htmlcov/
 .mypy_cache/
+.ruff_cache/
 
 # Node.js & Frontend Build Outputs
 node_modules/
+.next/
+out/
+build/
+dist/
+dist-ssr/
+*.tsbuildinfo
+next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-dist/
-dist-ssr/
 *.local
 
 # Database Files & SQLite
 *.db
 *.sqlite
 *.sqlite3
+retail_secops.db
 retail_exit.db
 
-# Uploaded Files & Temporary Surveillance Snapshots
+# Uploaded Files & Temporary Surveillance Media
+uploads/
+snapshots/
+retail-exit-backend/uploads/*
+!retail-exit-backend/uploads/.gitkeep
 retail-exit-backend/uploads/invoices/*
 !retail-exit-backend/uploads/invoices/.gitkeep
 retail-exit-backend/snapshots/*
 !retail-exit-backend/snapshots/.gitkeep
 retail-exit-backend/data/*
 !retail-exit-backend/data/.gitkeep
+retail-exit-backend/data/active_learning/candidates/*
+retail-exit-backend/data/active_learning/curated/*
+retail-exit-backend/data/dispatch_evidence/*
+
+# Temporary & Scratch Files
+*.csv.tmp
+*.log
+logs/
 
 # System & OS Files
 .DS_Store
@@ -55,8 +79,3 @@ desktop.ini
 .idea/
 *.sublime-workspace
 *.sublime-project
-
-# Logs
-*.log
-logs/
-

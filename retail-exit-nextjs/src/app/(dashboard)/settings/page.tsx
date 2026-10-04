@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
-import React, { useState, useEffect } from "react";
+import { safeFetch } from "@/lib/api-client";
+﻿import React, { useState, useEffect } from "react";
 import {
   Settings,
   Sliders,
@@ -35,13 +36,13 @@ export default function SettingsPage() {
 
   const fetchStatus = async () => {
     try {
-      const resT = await fetch("http://localhost:8000/api/hardware/turnstile/status");
+      const resT = await safeFetch("/api/hardware/turnstile/status");
       if (resT.ok) setTurnstileState(await resT.json());
 
-      const resU = await fetch("http://localhost:8000/api/discovery/usb");
+      const resU = await safeFetch("/api/discovery/usb");
       if (resU.ok) setUsbStatus(await resU.json());
 
-      const resTh = await fetch("http://localhost:8000/api/settings/thresholds");
+      const resTh = await safeFetch("/api/settings/thresholds");
       if (resTh.ok) setThresholds(await resTh.json());
     } catch (e) {
       console.warn("Failed to fetch settings status:", e);
@@ -54,7 +55,7 @@ export default function SettingsPage() {
 
   const handleTurnstileAction = async (action: "lock" | "unlock") => {
     try {
-      const res = await fetch(`http://localhost:8000/api/hardware/turnstile/${action}`, {
+      const res = await safeFetch(`/api/hardware/turnstile/${action}`, {
         method: "POST",
       });
       if (res.ok) {
@@ -70,7 +71,7 @@ export default function SettingsPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch("http://localhost:8000/api/settings/thresholds", {
+      const res = await safeFetch("/api/settings/thresholds", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(thresholds),
@@ -94,25 +95,25 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#1A1E26] p-6 rounded-xl border border-[#2C323D]">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#E7E9EC] flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-3">
             <Settings className="text-[#38BDF8]" /> Hardware & Security Threshold Settings
           </h1>
-          <p className="text-[#8B93A1] text-sm mt-1">
+          <p className="text-[var(--text-secondary)] text-sm mt-1">
             Configure turnstile GPIO barriers, USB scale hardware, RFID gate readers, and verdict engine tolerance bands.
           </p>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={toggleTheme}
-            className="px-3.5 py-2 bg-[#20252F] hover:bg-[#2C323D] text-[#E7E9EC] border border-[#2C323D] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors font-mono"
+            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors font-mono"
           >
             {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />} Theme: {theme.toUpperCase()}
           </button>
           <button
             onClick={fetchStatus}
-            className="px-3.5 py-2 bg-[#20252F] hover:bg-[#2C323D] text-[#E7E9EC] border border-[#2C323D] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
           >
             <RefreshCw size={15} /> Refresh Hardware
           </button>
@@ -121,9 +122,9 @@ export default function SettingsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 1. Turnstile Barrier Controller */}
-        <div className="bg-[#1A1E26] border border-[#2C323D] p-6 rounded-xl shadow-xl space-y-4">
-          <div className="flex justify-between items-center border-b border-[#2C323D] pb-3">
-            <h2 className="text-base font-bold text-[#E7E9EC] flex items-center gap-2">
+        <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] p-6 rounded-xl shadow-xl space-y-4">
+          <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+            <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
               <Shield className="text-[#E8A33D]" /> Exit-Lane Physical Turnstile Controller
             </h2>
             <span
@@ -137,18 +138,18 @@ export default function SettingsPage() {
             </span>
           </div>
 
-          <p className="text-xs text-[#8B93A1]">
+          <p className="text-xs text-[var(--text-secondary)]">
             Direct GPIO relay interface (Part R.1). Automatically triggers drop-arm lock upon HIGH-severity mismatch and
             unlocks following legal Supervisor Signature authorization.
           </p>
 
-          <div className="bg-[#12151A] p-4 rounded-lg border border-[#2C323D] font-mono text-xs space-y-2">
+          <div className="bg-[var(--bg-canvas)] p-4 rounded-lg border border-[var(--border-hairline)] font-mono text-xs space-y-2">
             <div className="flex justify-between">
-              <span className="text-[#8B93A1]">Relay State:</span>
-              <span className="text-[#E7E9EC]">{turnstileState.status || "NORMAL_OPERATION"}</span>
+              <span className="text-[var(--text-secondary)]">Relay State:</span>
+              <span className="text-[var(--text-primary)]">{turnstileState.status || "NORMAL_OPERATION"}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-[#8B93A1]">Driver Safety Mode:</span>
+              <span className="text-[var(--text-secondary)]">Driver Safety Mode:</span>
               <span className="text-[#4FD1B3]">FAIL-OPEN ON POWER LOSS (VERIFIED)</span>
             </div>
           </div>
@@ -170,9 +171,9 @@ export default function SettingsPage() {
         </div>
 
         {/* 2. Sensor & USB Hardware Status */}
-        <div className="bg-[#1A1E26] border border-[#2C323D] p-6 rounded-xl shadow-xl space-y-4">
-          <div className="flex justify-between items-center border-b border-[#2C323D] pb-3">
-            <h2 className="text-base font-bold text-[#E7E9EC] flex items-center gap-2">
+        <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] p-6 rounded-xl shadow-xl space-y-4">
+          <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+            <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
               <Cpu className="text-[#38BDF8]" /> Multi-Sensor Subsystem Telemetry
             </h2>
             <span className="text-xs font-mono text-[#4FD1B3]">ALL BUSES ACTIVE</span>
@@ -180,8 +181,8 @@ export default function SettingsPage() {
 
           <div className="space-y-3 text-xs font-mono">
             {/* USB Scale */}
-            <div className="bg-[#12151A] p-3 rounded-lg border border-[#2C323D] flex justify-between items-center">
-              <div className="flex items-center gap-2 text-[#E7E9EC]">
+            <div className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] flex justify-between items-center">
+              <div className="flex items-center gap-2 text-[var(--text-primary)]">
                 <Usb size={16} className="text-[#E8A33D]" />
                 <span>Exit Bay USB Load Cell Scale</span>
               </div>
@@ -189,8 +190,8 @@ export default function SettingsPage() {
             </div>
 
             {/* RFID Gate */}
-            <div className="bg-[#12151A] p-3 rounded-lg border border-[#2C323D] flex justify-between items-center">
-              <div className="flex items-center gap-2 text-[#E7E9EC]">
+            <div className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] flex justify-between items-center">
+              <div className="flex items-center gap-2 text-[var(--text-primary)]">
                 <Radio size={16} className="text-[#38BDF8]" />
                 <span>UHF RFID Gate Antennas (Pair)</span>
               </div>
@@ -198,8 +199,8 @@ export default function SettingsPage() {
             </div>
 
             {/* WiFi Mesh Sensors */}
-            <div className="bg-[#12151A] p-3 rounded-lg border border-[#2C323D] flex justify-between items-center">
-              <div className="flex items-center gap-2 text-[#E7E9EC]">
+            <div className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] flex justify-between items-center">
+              <div className="flex items-center gap-2 text-[var(--text-primary)]">
                 <Wifi size={16} className="text-[#A78BFA]" />
                 <span>Wireless Sensor Mesh Gateway</span>
               </div>
@@ -210,43 +211,43 @@ export default function SettingsPage() {
       </div>
 
       {/* 3. Verdict Engine Thresholds Form */}
-      <div className="bg-[#1A1E26] border border-[#2C323D] p-6 rounded-xl shadow-xl space-y-4">
-        <div className="flex justify-between items-center border-b border-[#2C323D] pb-3">
-          <h2 className="text-base font-bold text-[#E7E9EC] flex items-center gap-2">
+      <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] p-6 rounded-xl shadow-xl space-y-4">
+        <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+          <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
             <Sliders className="text-[#38BDF8]" /> Dynamic Loss-Prevention Verdict Thresholds
           </h2>
-          <span className="text-xs text-[#8B93A1]">Zero-Hardcode Rule Engine Configuration</span>
+          <span className="text-xs text-[var(--text-secondary)]">Zero-Hardcode Rule Engine Configuration</span>
         </div>
 
         <form onSubmit={handleSaveThresholds} className="space-y-4 text-sm">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-xs font-mono text-[#8B93A1] mb-1">UNIT TOLERANCE (UNITS)</label>
+              <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">UNIT TOLERANCE (UNITS)</label>
               <input
                 type="number"
                 min="0"
                 value={thresholds.unitTolerance}
                 onChange={(e) => setThresholds({ ...thresholds, unitTolerance: parseInt(e.target.value) || 0 })}
-                className="w-full bg-[#12151A] border border-[#2C323D] rounded-lg p-2.5 text-[#E7E9EC] font-mono outline-none focus:border-[#38BDF8]"
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
               />
-              <span className="text-[10px] text-[#8B93A1]">Max units difference allowed before flagging</span>
+              <span className="text-[10px] text-[var(--text-secondary)]">Max units difference allowed before flagging</span>
             </div>
 
             <div>
-              <label className="block text-xs font-mono text-[#8B93A1] mb-1">PERCENT TOLERANCE (%)</label>
+              <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">PERCENT TOLERANCE (%)</label>
               <input
                 type="number"
                 step="0.5"
                 min="0"
                 value={thresholds.pctTolerance}
                 onChange={(e) => setThresholds({ ...thresholds, pctTolerance: parseFloat(e.target.value) || 0 })}
-                className="w-full bg-[#12151A] border border-[#2C323D] rounded-lg p-2.5 text-[#E7E9EC] font-mono outline-none focus:border-[#38BDF8]"
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
               />
-              <span className="text-[10px] text-[#8B93A1]">Percentage delta allowed on large orders</span>
+              <span className="text-[10px] text-[var(--text-secondary)]">Percentage delta allowed on large orders</span>
             </div>
 
             <div>
-              <label className="block text-xs font-mono text-[#8B93A1] mb-1">CAMERA OFFLINE TIMEOUT (SEC)</label>
+              <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">CAMERA OFFLINE TIMEOUT (SEC)</label>
               <input
                 type="number"
                 min="10"
@@ -254,15 +255,15 @@ export default function SettingsPage() {
                 onChange={(e) =>
                   setThresholds({ ...thresholds, cameraOfflineAlertAfterSec: parseInt(e.target.value) || 60 })
                 }
-                className="w-full bg-[#12151A] border border-[#2C323D] rounded-lg p-2.5 text-[#E7E9EC] font-mono outline-none focus:border-[#38BDF8]"
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
               />
-              <span className="text-[10px] text-[#8B93A1]">Heartbeat lapse before raising CAMERA_OFFLINE alert</span>
+              <span className="text-[10px] text-[var(--text-secondary)]">Heartbeat lapse before raising CAMERA_OFFLINE alert</span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-mono text-[#8B93A1] mb-1">REPEAT OFFENDER WINDOW (DAYS)</label>
+              <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">REPEAT OFFENDER WINDOW (DAYS)</label>
               <input
                 type="number"
                 min="1"
@@ -270,11 +271,11 @@ export default function SettingsPage() {
                 onChange={(e) =>
                   setThresholds({ ...thresholds, repeatOffenderWindowDays: parseInt(e.target.value) || 30 })
                 }
-                className="w-full bg-[#12151A] border border-[#2C323D] rounded-lg p-2.5 text-[#E7E9EC] font-mono outline-none"
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-mono text-[#8B93A1] mb-1">REPEAT OFFENDER TRIGGER COUNT</label>
+              <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">REPEAT OFFENDER TRIGGER COUNT</label>
               <input
                 type="number"
                 min="1"
@@ -282,12 +283,12 @@ export default function SettingsPage() {
                 onChange={(e) =>
                   setThresholds({ ...thresholds, repeatOffenderCountTrigger: parseInt(e.target.value) || 3 })
                 }
-                className="w-full bg-[#12151A] border border-[#2C323D] rounded-lg p-2.5 text-[#E7E9EC] font-mono outline-none"
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
               />
             </div>
           </div>
 
-          <div className="flex justify-end pt-3 border-t border-[#2C323D]">
+          <div className="flex justify-end pt-3 border-t border-[var(--border-hairline)]">
             <button
               type="submit"
               disabled={saving}

@@ -110,6 +110,7 @@ async def lifespan(app: FastAPI):
     _is_shutting_down = False
 
     logger.info("Initializing SEC-OPS backend services and database schema...")
+    await init_db()
     # DB initialized via Alembic Migrations in Production
 
     # Initialize baseline configuration (Store, ThresholdConfig) with clean operational defaults

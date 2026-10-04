@@ -17,17 +17,17 @@ logger = logging.getLogger("secops.ml.wall_picture_detector")
 class WallPictureDetector:
     """Detects framed prints, wall posters, photographs, and planar wall art in CCTV scenes."""
 
-    MIN_DIM = 24             # Minimum pixel dimension
+    MIN_DIM = 90             # Minimum pixel dimension (must be a substantial wall frame, not face/feature fragments)
     MAX_AREA_RATIO = 0.35    # At most 35% of total frame area
-    MIN_ASPECT_RATIO = 0.35  # Vertical portrait frame
-    MAX_ASPECT_RATIO = 2.80  # Horizontal panoramic frame
+    MIN_ASPECT_RATIO = 0.45  # Vertical portrait frame
+    MAX_ASPECT_RATIO = 2.40  # Horizontal panoramic frame
 
     @classmethod
     def detect_wall_pictures(
         cls,
         frame: np.ndarray,
         exclude_boxes: Optional[List[List[int]]] = None,
-        max_detections: int = 6,
+        max_detections: int = 4,
     ) -> List[Dict[str, Any]]:
         """Detects planar wall picture frames, posters, and wall art in the given frame.
 
@@ -39,13 +39,13 @@ class WallPictureDetector:
         Returns:
             List of detected static picture dictionaries.
         """
-        if frame is None or frame.size == 0 or frame.shape[0] < 60 or frame.shape[1] < 60:
+        if frame is None or frame.size == 0 or frame.shape[0] < 120 or frame.shape[1] < 120:
             return []
 
         h_img, w_img = frame.shape[:2]
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        blurred = cv2.GaussianBlur(gray, (3, 3), 0)
-        edges = cv2.Canny(blurred, 30, 100)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        edges = cv2.Canny(blurred, 40, 120)
 
         contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -53,11 +53,11 @@ class WallPictureDetector:
 
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
-            # Filter candidate size: bounded between min dimension and 45% of frame dimensions
-            if w < cls.MIN_DIM or h < cls.MIN_DIM or w > 0.45 * w_img or h > 0.45 * h_img:
+            # Filter candidate size: bounded between min dimension and 40% of frame dimensions
+            if w < cls.MIN_DIM or h < cls.MIN_DIM or w > 0.40 * w_img or h > 0.40 * h_img:
                 continue
-            # Wall pictures are mounted on the wall (upper 75% of scene, not on floor/desk base)
-            if (y + 0.5 * h) > 0.75 * h_img:
+            # Wall pictures are mounted on the wall (upper 70% of scene, not on floor/desk base)
+            if (y + 0.5 * h) > 0.70 * h_img:
                 continue
             aspect = float(w) / max(1.0, float(h))
             if not (cls.MIN_ASPECT_RATIO <= aspect <= cls.MAX_ASPECT_RATIO):
@@ -69,22 +69,31 @@ class WallPictureDetector:
                 overlap = False
                 for eb in exclude_boxes:
                     ex, ey, ew, eh = eb
-                    # Center inside an excluded box (e.g. collar inside human torso/face)
                     if ex <= cx <= ex + ew and ey <= cy <= ey + eh:
                         overlap = True
                         break
                     ix1, iy1 = max(x, ex), max(y, ey)
                     ix2, iy2 = min(x + w, ex + ew), min(y + h, ey + eh)
                     iw, ih = max(0, ix2 - ix1), max(0, iy2 - iy1)
-                    if (iw * ih) > 0.15 * (w * h):
+                    if (iw * ih) > 0.10 * (w * h):
                         overlap = True
                         break
                 if overlap:
                     continue
 
+            # Skin tone check: reject crops containing skin (faces, beards, necks, clothes on body)
+            crop_bgr = frame[y : y + h, x : x + w]
+            if crop_bgr.size == 0:
+                continue
+            hsv = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2HSV)
+            skin_mask = cv2.inRange(hsv, np.array([0, 30, 60], dtype=np.uint8), np.array([25, 255, 255], dtype=np.uint8))
+            skin_ratio = float(np.mean(skin_mask > 0))
+            if skin_ratio > 0.08:
+                continue
+
             # Evaluate boundary bezel edge density (frames have straight perimeter lines)
             crop_edges = edges[y : y + h, x : x + w]
-            border = max(2, min(h, w) // 10)
+            border = max(3, min(h, w) // 10)
             top_e = np.mean(crop_edges[:border, :] > 0)
             bot_e = np.mean(crop_edges[-border:, :] > 0)
             lft_e = np.mean(crop_edges[:, :border] > 0)
@@ -95,8 +104,8 @@ class WallPictureDetector:
             crop_gray = gray[y : y + h, x : x + w]
             inner_var = float(cv2.Laplacian(crop_gray, cv2.CV_64F).var())
 
-            # Wall picture frames typically have bezel score >= 0.12 and interior variance >= 45.0
-            if bezel_score >= 0.11 and inner_var >= 40.0:
+            # Wall picture frames require high bezel score >= 0.25 and interior variance >= 60.0
+            if bezel_score >= 0.25 and inner_var >= 60.0:
                 rank_score = bezel_score * inner_var
                 candidates.append((x, y, w, h, rank_score, bezel_score, inner_var))
 
@@ -106,7 +115,7 @@ class WallPictureDetector:
         # Non-Maximum Suppression to eliminate redundant nested frames
         boxes_for_nms = [[c[0], c[1], c[2], c[3]] for c in candidates]
         scores_for_nms = [float(c[4]) for c in candidates]
-        indices = cv2.dnn.NMSBoxes(boxes_for_nms, scores_for_nms, 5.0, 0.35)
+        indices = cv2.dnn.NMSBoxes(boxes_for_nms, scores_for_nms, 15.0, 0.30)
 
         results: List[Dict[str, Any]] = []
         if len(indices) > 0:
@@ -136,8 +145,8 @@ class WallPictureDetector:
                 else:
                     friendly_name = "Wall Picture Frame"
 
-                conf = max(0.70, cls_res.confidence)
-                display_label = f"Static: {friendly_name} ({int(conf * 100)}%)"
+                conf = min(0.95, max(0.40, cls_res.confidence))
+                display_label = f"Static: {friendly_name}"
 
                 results.append({
                     "box": [int(bx), int(by), int(bw), int(bh)],

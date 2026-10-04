@@ -364,13 +364,13 @@ class CameraIngestionWorker:
                         overlay_boxes.append({
                             "box": [pb_x, pb_y, pb_w, pb_h],
                             "type": "PERSON_MATCHED",
-                            "label": f"Known: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
+                            "label": f"Known: {face_res.employee_name}",
                             "confidence": round(float(face_res.similarity), 4),
                             "color": "green",
                             "entity": face_res.employee_name,
                             "identity_status": "CONFIRMED_MATCH",
                             "employee_id": face_res.matched_employee_id,
-                            "sub_label": f"Verified: {face_res.employee_name} ({int(face_res.similarity * 100)}%)",
+                            "sub_label": f"Verified: {face_res.employee_name}",
                             "detection_state": "CONFIRMED",
                         })
 
@@ -388,7 +388,7 @@ class CameraIngestionWorker:
                         overlay_boxes.append({
                             "box": [pb_x, pb_y, pb_w, pb_h],
                             "type": "PERSON_UNMATCHED",
-                            "label": f"Unknown Person ({int(conf * 100)}%)",
+                            "label": "Unknown Person",
                             "confidence": round(float(conf), 4),
                             "color": "cyan",
                             "entity": "Unknown Person",
@@ -428,7 +428,7 @@ class CameraIngestionWorker:
                         overlay_boxes.append({
                             "box": d.bbox,
                             "type": "PERSON_UNMATCHED",
-                            "label": f"Unknown Person ({int(d.confidence * 100)}%)",
+                            "label": "Unknown Person",
                             "confidence": round(float(d.confidence), 4),
                             "color": "cyan",
                             "entity": "Unknown Person",
@@ -473,25 +473,14 @@ class CameraIngestionWorker:
 
                 is_phone = any(k in item_lower for k in ("phone", "smartphone", "cell phone"))
                 is_wall_picture = d.class_label == "wall_picture" or any(k in item_lower for k in ("picture", "poster", "wall art", "framed"))
+                if is_wall_picture:
+                    # Environmental wall art/pictures are suppressed from live retail item overlays to eliminate false positives
+                    continue
+
                 is_clock = "clock" in item_lower
                 is_bottle = "bottle" in item_lower
                 is_keyboard = "keyboard" in item_lower
                 is_mouse = "mouse" in item_lower
-
-                # Wall picture frames cannot be located on a human silhouette (collar folds, shirt wrinkles)
-                if is_wall_picture and all_person_boxes:
-                    wx, wy, ww, wh = d.bbox
-                    wcx, wcy = wx + ww * 0.5, wy + wh * 0.5
-                    inside_human = False
-                    for pb in all_person_boxes:
-                        px, py, pw, ph = pb
-                        if (px <= wcx <= px + pw and py <= wcy <= py + ph) or (
-                            max(0, min(wx + ww, px + pw) - max(wx, px)) * max(0, min(wy + wh, py + ph) - max(wy, py)) > 0.15 * (ww * wh)
-                        ):
-                            inside_human = True
-                            break
-                    if inside_human:
-                        continue
 
                 # WristWatch candidate cannot overlap beverage bottles or cups (protects bottle cap)
                 if is_watch:
@@ -508,63 +497,59 @@ class CameraIngestionWorker:
 
                 if is_veh:
                     b_type = "VEHICLE"
-                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_label = item_label
                     b_color = "cyan"
                 elif is_case:
                     b_type = "CASE"
-                    b_label = f"Case: {item_label} ({int(d.confidence * 100)}%)"
+                    b_label = f"Case: {item_label}"
                     b_color = "green"
                 elif is_door:
                     b_type = "DOORWAY"
-                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_label = item_label
                     b_color = "cyan"
                 elif is_screen:
                     b_type = "DESKTOP_SCREEN"
-                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_label = "Desktop Screen"
                     b_color = "cyan"
                 elif is_laptop:
                     b_type = "LAPTOP"
-                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_label = "Laptop"
                     b_color = "cyan"
                 elif is_watch:
                     b_type = "WRISTWATCH"
-                    b_label = f"WristWatch ({int(d.confidence * 100)}%)"
+                    b_label = "WristWatch"
                     b_color = "amber"
                 elif is_bookshelf:
                     b_type = "BOOKSHELF"
-                    b_label = f"Bookshelf ({int(d.confidence * 100)}%)"
+                    b_label = "Bookshelf"
                     b_color = "cyan"
                 elif is_book:
                     b_type = "BOOK"
-                    b_label = f"Book ({int(d.confidence * 100)}%)"
+                    b_label = "Book"
                     b_color = "amber"
                 elif is_phone:
                     b_type = "SMARTPHONE"
-                    b_label = f"Smartphone ({int(d.confidence * 100)}%)"
-                    b_color = "cyan"
-                elif is_wall_picture:
-                    b_type = "WALL_PICTURE"
-                    b_label = f"Wall Picture Frame ({int(d.confidence * 100)}%)"
+                    b_label = "Smartphone"
                     b_color = "cyan"
                 elif is_clock:
                     b_type = "CLOCK"
-                    b_label = f"Clock ({int(d.confidence * 100)}%)"
+                    b_label = "Clock"
                     b_color = "cyan"
                 elif is_bottle:
                     b_type = "BOTTLE"
-                    b_label = f"Bottle ({int(d.confidence * 100)}%)"
+                    b_label = "Bottle"
                     b_color = "amber"
                 elif is_keyboard:
                     b_type = "KEYBOARD"
-                    b_label = f"Keyboard ({int(d.confidence * 100)}%)"
+                    b_label = "Keyboard"
                     b_color = "cyan"
                 elif is_mouse:
                     b_type = "MOUSE"
-                    b_label = f"Mouse ({int(d.confidence * 100)}%)"
+                    b_label = "Mouse"
                     b_color = "cyan"
                 else:
                     b_type = "ITEM"
-                    b_label = f"{item_label} ({int(d.confidence * 100)}%)"
+                    b_label = item_label
                     b_color = "amber"
 
                 # Check if item (such as a wristwatch) is worn by or associated with a person

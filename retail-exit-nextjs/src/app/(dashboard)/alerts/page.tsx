@@ -1,6 +1,7 @@
-﻿"use client";
+"use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { safeFetch } from "@/lib/api-client";
+﻿import React, { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle,
   ShieldAlert,
@@ -49,7 +50,7 @@ export default function AlertsPage() {
   const fetchAlerts = async () => {
     try {
       setLoading(true);
-      const res = await fetch("http://localhost:8000/api/alerts");
+      const res = await safeFetch("/api/alerts");
       if (res.ok) {
         const data = await res.json();
         // Sort: OPEN first, then HIGH -> MEDIUM -> LOW
@@ -76,7 +77,7 @@ export default function AlertsPage() {
 
   const handleAcknowledge = async (alertId: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/alerts/${alertId}/acknowledge`, {
+      const res = await safeFetch(`/api/alerts/${alertId}/acknowledge`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ acknowledgedBy: "Supervisor" }),
@@ -143,7 +144,7 @@ export default function AlertsPage() {
     setIsSubmitting(true);
     try {
       // 1. Resolve alert
-      const res = await fetch(`http://localhost:8000/api/alerts/${resolvingAlert.alertId}/resolve`, {
+      const res = await safeFetch(`/api/alerts/${resolvingAlert.alertId}/resolve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -154,7 +155,7 @@ export default function AlertsPage() {
 
       if (res.ok) {
         // 2. Command turnstile unlock
-        await fetch("http://localhost:8000/api/hardware/turnstile/unlock", {
+        await safeFetch("/api/hardware/turnstile/unlock", {
           method: "POST",
         });
 
@@ -183,12 +184,12 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#1A1E26] p-6 rounded-xl border border-[#2C323D]">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-[#E7E9EC] flex items-center gap-3">
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-3">
             <ShieldAlert className="text-[#E5484D]" /> Real-Time Discrepancy & Security Alarms
           </h1>
-          <p className="text-[#8B93A1] text-sm mt-1">
+          <p className="text-[var(--text-secondary)] text-sm mt-1">
             Severity-ranked loss-prevention alarms, sensor divergence, inventory mismatches, and Supervisor Signature
             Gate turnstile unlock controls.
           </p>
@@ -196,7 +197,7 @@ export default function AlertsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={fetchAlerts}
-            className="px-3.5 py-2 bg-[#20252F] hover:bg-[#2C323D] text-[#E7E9EC] border border-[#2C323D] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
           >
             <RefreshCw size={15} /> Refresh Queue
           </button>
@@ -204,9 +205,9 @@ export default function AlertsPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-[#1A1E26] p-4 rounded-xl border border-[#2C323D]">
+      <div className="flex flex-wrap items-center justify-between gap-4 bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-[#8B93A1]">STATUS:</span>
+          <span className="text-xs font-mono text-[var(--text-secondary)]">STATUS:</span>
           {["ALL", "OPEN", "ACKNOWLEDGED", "RESOLVED"].map((st) => (
             <button
               key={st}
@@ -214,7 +215,7 @@ export default function AlertsPage() {
               className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
                 statusFilter === st
                   ? "bg-[#2563EB] text-white font-bold"
-                  : "bg-[#12151A] text-[#8B93A1] hover:text-[#E7E9EC] border border-[#2C323D]"
+                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
               }`}
             >
               {st}
@@ -223,7 +224,7 @@ export default function AlertsPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs font-mono text-[#8B93A1]">SEVERITY:</span>
+          <span className="text-xs font-mono text-[var(--text-secondary)]">SEVERITY:</span>
           {["ALL", "HIGH", "MEDIUM", "LOW"].map((sev) => (
             <button
               key={sev}
@@ -231,7 +232,7 @@ export default function AlertsPage() {
               className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
                 severityFilter === sev
                   ? "bg-[#2563EB] text-white font-bold"
-                  : "bg-[#12151A] text-[#8B93A1] hover:text-[#E7E9EC] border border-[#2C323D]"
+                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
               }`}
             >
               {sev}
@@ -243,10 +244,10 @@ export default function AlertsPage() {
       {/* Alerts Stream List */}
       <div className="space-y-3">
         {filtered.length === 0 && !loading ? (
-          <div className="p-12 text-center text-[#8B93A1] bg-[#1A1E26] rounded-xl border border-[#2C323D]">
+          <div className="p-12 text-center text-[var(--text-secondary)] bg-[var(--bg-panel)] rounded-xl border border-[var(--border-hairline)]">
             <CheckCircle size={40} className="mx-auto mb-3 text-[#4FD1B3]" />
-            <h4 className="text-base font-bold text-[#E7E9EC]">Zero Active Discrepancies</h4>
-            <p className="text-xs text-[#8B93A1] mt-1 max-w-sm mx-auto">
+            <h4 className="text-base font-bold text-[var(--text-primary)]">Zero Active Discrepancies</h4>
+            <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-sm mx-auto">
               All exit-bay sensor consensus checks and invoice matches are currently operating within tolerance.
             </p>
           </div>
@@ -268,14 +269,14 @@ export default function AlertsPage() {
             return (
               <div
                 key={item.alertId}
-                className={`p-5 rounded-xl border-l-4 bg-[#1A1E26] border border-[#2C323D] ${borderCol} flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all`}
+                className={`p-5 rounded-xl border-l-4 bg-[var(--bg-panel)] border border-[var(--border-hairline)] ${borderCol} flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all`}
               >
                 <div className="space-y-1.5 flex-1">
                   <div className="flex items-center gap-3">
                     <span className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold uppercase ${pillCol}`}>
                       {item.severity} SEVERITY
                     </span>
-                    <span className="font-mono text-xs text-[#8B93A1]">{item.alertId}</span>
+                    <span className="font-mono text-xs text-[var(--text-secondary)]">{item.alertId}</span>
                     <span className="font-mono text-xs text-[#38BDF8]">
                       {item.cameraId || item.eventId || "SYSTEM-EVENT"}
                     </span>
@@ -292,7 +293,7 @@ export default function AlertsPage() {
                     </span>
                   </div>
 
-                  <h3 className="text-base font-bold text-[#E7E9EC] flex items-center gap-2">
+                  <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                     {item.alertType.replace(/_/g, " ")}
                     {item.deltaUnits !== 0 && (
                       <span className="text-xs font-mono font-normal text-[#E5484D]">
@@ -302,12 +303,12 @@ export default function AlertsPage() {
                   </h3>
 
                   {item.resolutionNote && (
-                    <p className="text-xs text-[#B8E3D6] font-mono bg-[#12151A] p-2 rounded border border-[#2C323D]">
+                    <p className="text-xs text-[#B8E3D6] font-mono bg-[var(--bg-canvas)] p-2 rounded border border-[var(--border-hairline)]">
                       Resolution: {item.resolutionNote} — Authorized by {item.resolvedBy}
                     </p>
                   )}
 
-                  <div className="text-xs text-[#8B93A1] font-mono flex items-center gap-2">
+                  <div className="text-xs text-[var(--text-secondary)] font-mono flex items-center gap-2">
                     <Clock size={12} /> {new Date(item.createdAt).toLocaleString()}
                   </div>
                 </div>
@@ -317,7 +318,7 @@ export default function AlertsPage() {
                   {item.status === "OPEN" && (
                     <button
                       onClick={() => handleAcknowledge(item.alertId)}
-                      className="px-3 py-1.5 bg-[#20252F] hover:bg-[#2C323D] text-[#E8A33D] border border-[#2C323D] rounded-lg text-xs font-mono font-medium transition-colors"
+                      className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[#E8A33D] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium transition-colors"
                     >
                       Acknowledge
                     </button>
@@ -345,19 +346,19 @@ export default function AlertsPage() {
       {/* Supervisor Signature Gate Modal (Part CC.3) */}
       {resolvingAlert && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#1A1E26] border border-[#2C323D] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-[#2C323D] pb-3">
-              <h3 className="text-lg font-bold text-[#E7E9EC] flex items-center gap-2">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <ShieldAlert size={18} className="text-[#E5484D]" /> Supervisor Signature Gate (Part CC.3)
               </h3>
-              <button onClick={() => setResolvingAlert(null)} className="text-[#8B93A1] hover:text-white">
+              <button onClick={() => setResolvingAlert(null)} className="text-[var(--text-secondary)] hover:text-white">
                 ✕
               </button>
             </div>
 
-            <div className="bg-[#12151A] p-3 rounded-lg border border-[#2C323D] text-xs font-mono text-[#8B93A1] space-y-1">
+            <div className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] text-xs font-mono text-[var(--text-secondary)] space-y-1">
               <div>
-                Alert Target: <b className="text-[#E7E9EC]">{resolvingAlert.alertType}</b> (#{resolvingAlert.alertId})
+                Alert Target: <b className="text-[var(--text-primary)]">{resolvingAlert.alertType}</b> (#{resolvingAlert.alertId})
               </div>
               <div>
                 Discrepancy Variance: <b className="text-[#E5484D]">{resolvingAlert.deltaUnits} units</b>
@@ -370,18 +371,18 @@ export default function AlertsPage() {
 
             <form onSubmit={handleSubmitResolution} className="space-y-4 text-sm">
               <div>
-                <label className="block text-xs font-mono text-[#8B93A1] mb-1">SUPERVISOR / OFFICER NAME *</label>
+                <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">SUPERVISOR / OFFICER NAME *</label>
                 <input
                   type="text"
                   required
                   value={supervisorName}
                   onChange={(e) => setSupervisorName(e.target.value)}
-                  className="w-full bg-[#12151A] border border-[#2C323D] rounded-lg p-2.5 text-[#E7E9EC] outline-none"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-[#8B93A1] mb-1">
+                <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">
                   MANDATORY LOSS-PREVENTION RESOLUTION NOTE *
                 </label>
                 <textarea
@@ -390,25 +391,25 @@ export default function AlertsPage() {
                   value={resolutionNote}
                   onChange={(e) => setResolutionNote(e.target.value)}
                   placeholder="e.g. Verified with store manager. Discrepancy cleared due to promotional sample pack."
-                  className="w-full bg-[#12151A] border border-[#2C323D] rounded-lg p-2.5 text-[#E7E9EC] outline-none text-xs font-mono"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none text-xs font-mono"
                 />
               </div>
 
               {/* Digital Signature Pad (Part CC.3) */}
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-xs font-mono text-[#8B93A1] flex items-center gap-1.5">
+                  <label className="text-xs font-mono text-[var(--text-secondary)] flex items-center gap-1.5">
                     <PenTool size={13} className="text-[#38BDF8]" /> DIGITAL SIGNATURE PAD (DRAW WITH MOUSE/PEN) *
                   </label>
                   <button
                     type="button"
                     onClick={clearSignature}
-                    className="text-[11px] font-mono text-[#8B93A1] hover:text-[#E5484D] flex items-center gap-1"
+                    className="text-[11px] font-mono text-[var(--text-secondary)] hover:text-[#E5484D] flex items-center gap-1"
                   >
                     <RotateCcw size={11} /> Clear Ink
                   </button>
                 </div>
-                <div className="border border-[#2C323D] rounded-lg bg-black overflow-hidden relative cursor-crosshair">
+                <div className="border border-[var(--border-hairline)] rounded-lg bg-black overflow-hidden relative cursor-crosshair">
                   <canvas
                     ref={canvasRef}
                     width={450}
@@ -427,11 +428,11 @@ export default function AlertsPage() {
                 </div>
               </div>
 
-              <div className="flex justify-end gap-3 pt-2 border-t border-[#2C323D]">
+              <div className="flex justify-end gap-3 pt-2 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
                   onClick={() => setResolvingAlert(null)}
-                  className="px-4 py-2 bg-[#20252F] hover:bg-[#2C323D] text-[#E7E9EC] rounded-lg text-sm font-medium"
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium"
                 >
                   Cancel
                 </button>

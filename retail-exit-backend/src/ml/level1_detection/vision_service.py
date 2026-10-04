@@ -61,9 +61,9 @@ class VisionInferenceResult:
 
 
 class VisionInferenceService:
-    MODEL_VERSION = "yolox-x-v1"
-    WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "..", "weights", "yolox_x.onnx")
-    INPUT_SIZE = (640, 640)
+    MODEL_VERSION = "yolox-tiny-coco-v0.1.0"
+    WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "..", "weights", "yolox_tiny.onnx")
+    INPUT_SIZE = (416, 416)
 
     _session: Optional[ort.InferenceSession] = None
     _loaded_version: Optional[str] = None
@@ -112,6 +112,12 @@ class VisionInferenceService:
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             cls._session = ort.InferenceSession(target_path, sess_options=opts, providers=["CPUExecutionProvider"])
             cls._loaded_version = target_version
+            try:
+                in_shape = cls._session.get_inputs()[0].shape
+                if len(in_shape) == 4 and isinstance(in_shape[2], int) and isinstance(in_shape[3], int):
+                    cls.INPUT_SIZE = (in_shape[2], in_shape[3])
+            except Exception:
+                pass
         return cls._session
 
     @staticmethod
@@ -444,13 +450,8 @@ class VisionInferenceService:
                         cand_cls_list.append(cid)
                         cand_sc_list.append(sc)
 
-            # Pre-scan for wall picture frames in scene for semantic discrimination
+            # Pre-scan for wall picture frames suppressed to prevent false positive hallucinations
             detected_wall_pics = []
-            try:
-                from src.ml.wall_picture_detector import WallPictureDetector
-                detected_wall_pics = WallPictureDetector.detect_wall_pictures(img)
-            except Exception as _wp_err:
-                logger.debug("WallPictureDetector error in vision_service: %s", _wp_err)
 
             if len(cand_indices) > 0:
                 cand_boxes = boxes_xyxy[cand_indices]
@@ -701,6 +702,8 @@ class VisionInferenceService:
             for so in scene_objects:
                 so_bbox = so["bbox"]
                 so_lbl = so["class_label"]
+                if so_lbl in ("wall_picture", "bookshelf", "doorway"):
+                    continue
                 so_spec = so["specific_label"]
                 so_conf = so["confidence"]
 

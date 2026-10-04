@@ -665,8 +665,18 @@ async def register_camera(
     # Check if lane exists if provided
     if body.laneId:
         lane_res = await session.execute(select(Lane).where(Lane.lane_id == body.laneId))
-        if not lane_res.scalar_one_or_none():
-            raise HTTPException(status_code=400, detail=f"Lane '{body.laneId}' does not exist")
+        lane_rec = lane_res.scalar_one_or_none()
+        if not lane_rec:
+            store_res = await session.execute(select(Store).limit(1))
+            store = store_res.scalars().first()
+            new_lane = Lane(
+                lane_id=body.laneId,
+                store_id=store.store_id if store else "STORE-01",
+                label=f"Exit Lane {body.laneId}",
+                status="ONLINE"
+            )
+            session.add(new_lane)
+            await session.flush()
 
     now = get_utc_now()
     # Auto-normalise: ensure rtsp_path always has a leading slash (unless it is a full URL)
@@ -1222,8 +1232,18 @@ async def update_camera(
     if body.laneId is not None:
         if body.laneId != "":
             lane_res = await session.execute(select(Lane).where(Lane.lane_id == body.laneId))
-            if not lane_res.scalar_one_or_none():
-                raise HTTPException(status_code=400, detail=f"Lane '{body.laneId}' does not exist")
+            lane_rec = lane_res.scalar_one_or_none()
+            if not lane_rec:
+                store_res = await session.execute(select(Store).limit(1))
+                store = store_res.scalars().first()
+                new_lane = Lane(
+                    lane_id=body.laneId,
+                    store_id=store.store_id if store else "STORE-01",
+                    label=f"Exit Lane {body.laneId}",
+                    status="ONLINE"
+                )
+                session.add(new_lane)
+                await session.flush()
             cam.lane_id = body.laneId
             # If camera was pending setup, assigning a valid lane promotes to ONLINE
             if cam.status == "PENDING_SETUP":

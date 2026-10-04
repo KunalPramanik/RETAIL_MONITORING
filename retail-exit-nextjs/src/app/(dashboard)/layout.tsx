@@ -1,8 +1,10 @@
-﻿"use client";
+"use client";
 
+import { safeFetch } from "@/lib/api-client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ThemeToggle } from "@/lib/theme-provider";
 import {
   Activity,
   Camera,
@@ -33,7 +35,7 @@ export default function DashboardLayout({
 
     const checkApi = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/health");
+        const res = await safeFetch("/api/health");
         setApiOnline(res.ok);
       } catch {
         // backend might be starting
@@ -61,21 +63,21 @@ export default function DashboardLayout({
   ];
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#12151A] text-[#E7E9EC] select-none">
-      {/* 1. Left Navigation Rail (Part A.1.4) */}
-      <aside className="w-64 bg-[#1A1E26] border-r border-[#2C323D] flex flex-col z-20 shadow-2xl">
+    <div className="flex h-screen overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] select-none transition-colors duration-200">
+      {/* 1. Left Navigation Rail */}
+      <aside className="w-64 bg-[var(--sidebar-bg)] border-r border-[var(--border-hairline)] flex flex-col z-20 shadow-xl transition-colors duration-200">
         {/* Brand / Logo */}
-        <div className="p-5 border-b border-[#2C323D] flex items-center justify-between">
+        <div className="p-5 border-b border-[var(--border-hairline)] flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-[#2563EB] text-white shadow-lg shadow-blue-900/40">
+            <div className="p-2 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-900/30">
               <ShieldAlert size={20} />
             </div>
             <div>
-              <span className="font-bold text-base tracking-tight text-[#E7E9EC] block leading-none">
-                SEC-OPS <span className="text-[#38BDF8] text-xs">V8</span>
+              <span className="font-bold text-base tracking-tight text-[var(--text-primary)] block leading-none">
+                SEC-OPS <span className="text-[#38BDF8] text-xs font-mono">V8</span>
               </span>
-              <span className="text-[10px] font-mono text-[#8B93A1] tracking-wider block mt-0.5">
-                SURVEILLANCE AI
+              <span className="text-[10px] font-mono text-[var(--text-muted)] tracking-wider block mt-0.5 uppercase">
+                Surveillance AI
               </span>
             </div>
           </Link>
@@ -95,11 +97,11 @@ export default function DashboardLayout({
                 href={item.href}
                 className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all ${
                   isActive
-                    ? "bg-[#2563EB] text-white shadow-lg shadow-blue-900/30 font-bold border-l-2 border-[#38BDF8]"
-                    : "text-[#8B93A1] hover:text-[#E7E9EC] hover:bg-[#20252F]"
+                    ? "bg-[#2563EB] text-white shadow-lg shadow-blue-900/25 font-bold border-l-2 border-[#38BDF8]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-panel-hover)]"
                 }`}
               >
-                <item.icon size={16} className={isActive ? "text-white" : "text-[#8B93A1]"} />
+                <item.icon size={16} className={isActive ? "text-white" : "text-[var(--text-secondary)]"} />
                 <span>{item.label}</span>
               </Link>
             );
@@ -107,14 +109,14 @@ export default function DashboardLayout({
         </nav>
 
         {/* User / Station Footer */}
-        <div className="p-4 border-t border-[#2C323D] bg-[#12151A]">
+        <div className="p-4 border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] transition-colors duration-200">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#20252F] border border-[#2C323D] flex items-center justify-center font-bold text-xs text-[#38BDF8]">
+            <div className="w-8 h-8 rounded-full bg-[var(--bg-panel-raised)] border border-[var(--border-hairline)] flex items-center justify-center font-bold text-xs text-[#38BDF8]">
               CSO
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-bold text-[#E7E9EC] truncate">Security Supervisor</div>
-              <div className="text-[10px] font-mono text-[#8B93A1] truncate">Station #01 (Main Exit)</div>
+              <div className="text-xs font-bold text-[var(--text-primary)] truncate">Security Supervisor</div>
+              <div className="text-[10px] font-mono text-[var(--text-muted)] truncate">Station #01 (Main Exit)</div>
             </div>
           </div>
         </div>
@@ -123,26 +125,31 @@ export default function DashboardLayout({
       {/* 2. Main Content View Area */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         {/* Top Control Room Header */}
-        <header className="px-6 py-3.5 border-b border-[#2C323D] flex justify-between items-center bg-[#1A1E26] z-10 sticky top-0 shadow-md">
+        <header className="px-6 py-3 border-b border-[var(--border-hairline)] flex justify-between items-center bg-[var(--header-bg)] z-10 sticky top-0 shadow-sm transition-colors duration-200">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-mono text-[#8B93A1]">CONTROL CONSOLE //</span>
-            <span className="text-sm font-bold tracking-tight text-[#E7E9EC]">
+            <span className="text-xs font-mono text-[var(--text-muted)]">CONTROL CONSOLE //</span>
+            <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">
               {navItems.find((n) => (n.href === "/" ? pathname === "/" : pathname.startsWith(n.href)))?.label ||
                 "Console"}
             </span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="text-xs font-mono text-[#B8E3D6] bg-[#12151A] px-3 py-1 rounded-md border border-[#2C323D] flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#4FD1B3] animate-pulse"></span>
+          <div className="flex items-center gap-3">
+            {/* Theme Toggle (System / Dark / Light) */}
+            <ThemeToggle />
+
+            {/* Real-time Clock */}
+            <div className="text-xs font-mono text-[var(--data-mono-text)] bg-[var(--bg-canvas)] px-3 py-1 rounded-md border border-[var(--border-hairline)] flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[var(--status-ok)] animate-pulse"></span>
               <span>{currentTime || "12:00:00"}</span>
             </div>
 
+            {/* API Health Pill */}
             <div
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono border font-medium ${
                 apiOnline
-                  ? "bg-[#4FD1B3]/10 text-[#4FD1B3] border-[#4FD1B3]/30"
-                  : "bg-[#E5484D]/10 text-[#E5484D] border-[#E5484D]/30"
+                  ? "bg-[var(--status-ok)]/10 text-[var(--status-ok)] border-[var(--status-ok)]/30"
+                  : "bg-[var(--status-high)]/10 text-[var(--status-high)] border-[var(--status-high)]/30"
               }`}
             >
               <CheckCircle size={13} /> {apiOnline ? "API: 8000 ONLINE" : "API: CONNECTING"}

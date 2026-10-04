@@ -707,22 +707,6 @@ class SceneObjectDetector:
         for s in shelves:
             all_excluded.append(s["bbox"])
 
-        wall_pics = []
-        try:
-            from src.ml.wall_picture_detector import WallPictureDetector
-            raw_pics = WallPictureDetector.detect_wall_pictures(img, exclude_boxes=all_excluded)
-            for wp in raw_pics:
-                b = wp["box"]
-                wall_pics.append({
-                    "bbox": b,
-                    "class_label": "wall_picture",
-                    "specific_label": "Wall Picture Frame",
-                    "confidence": round(float(wp.get("confidence", 0.88)), 2),
-                    "color": "cyan",
-                    "type": "WALL_PICTURE",
-                })
-        except Exception as _wp_err:
-            logger.debug("Wall picture scene detection error: %s", _wp_err)
-
-        return doors + screens + watches + gear + shelves + wall_pics
+        # Wall picture heuristics intentionally omitted from live scene stream to prevent false positives
+        return doors + screens + watches + gear + shelves
 

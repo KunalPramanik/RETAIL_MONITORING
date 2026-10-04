@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.pool import NullPool
 import os
 
-from src.config import settings
+from src.core.config import settings
 from src.db.models import Base
 
 # Async Engine with NullPool for SQLite to prevent lingering connection pool issues on reload/shutdown

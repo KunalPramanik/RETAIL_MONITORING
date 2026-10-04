@@ -15,9 +15,10 @@ import logging
 import cv2
 import numpy as np
 import onnxruntime as ort
+from src.ml.model_config import model_config
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
-from src.ml.level5_tracking.tracker_service import SimpleByteTrack
+from src.ml.level5_tracking.tracker import SimpleByteTrack
 from datetime import datetime, timezone
 
 from src.ml.model_config import get_vision_config
@@ -60,9 +61,9 @@ class VisionInferenceResult:
 
 
 class VisionInferenceService:
-    MODEL_VERSION = "yolox-tiny-coco-v0.1.0"
-    WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "weights", "yolox_tiny.onnx")
-    INPUT_SIZE = (416, 416)
+    MODEL_VERSION = "yolox-x-v1"
+    WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "..", "weights", "yolox_x.onnx")
+    INPUT_SIZE = (640, 640)
 
     _session: Optional[ort.InferenceSession] = None
     _loaded_version: Optional[str] = None
@@ -602,7 +603,7 @@ class VisionInferenceService:
                             continue
                         # Hand/finger/fragment filter:
                         # Isolated hands/fingers have small height (bh < 0.20 * orig_h) or flat aspect ratio (bw/bh > 1.25)
-                        if bh < 0.20 * orig_h and conf < 0.50:
+                        if bh < 0.20 * orig_h and conf < model_config.confidence_floor:
                             continue
                         if (bw / max(1, bh)) > 1.25 and bh < 140:
                             continue

@@ -1,4 +1,4 @@
-﻿"""FastAPI Application Main Entrypoint
+"""FastAPI Application Main Entrypoint
 
 Smart Retail Exit Monitoring & Inventory Intelligence Platform (SEC-OPS 2.0).
 Provides RESTful APIs, real-time WebSocket streams, telemetry metrics, and edge pipelines.
@@ -17,7 +17,7 @@ import logging
 import asyncio
 from datetime import datetime, timezone, timedelta
 
-from src.config import settings
+from src.core.config import settings
 from src.db.session import init_db, close_db, AsyncSessionLocal
 from src.db.models import Camera, Alert, ThresholdConfig, Lane, get_utc_now
 from src.db.init_config import init_baseline_configuration

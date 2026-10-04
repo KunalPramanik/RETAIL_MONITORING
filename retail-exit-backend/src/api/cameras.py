@@ -61,10 +61,8 @@ def capture_camera_frame_sync(
     stream_url: Optional[str] = None,
     return_diag: bool = False,
 ) -> tuple:
-    """Attempts to capture a real frame from RTSP stream (main/sub), HTTP endpoints, or local devices.
-    
-    Returns (frame_bytes, source_description, latency_ms) or (frame_bytes, source_description, latency_ms, diag_info).
-    """
+    '''Attempts to capture a real frame from RTSP stream (main/sub), HTTP endpoints, or local devices.'''
+    from src.core.config import settings
     t0 = time.perf_counter()
     diag_info: Dict[str, Any] = {
         "stage": "UNKNOWN",
@@ -76,28 +74,24 @@ def capture_camera_frame_sync(
         "is_handshake_ok": False,
     }
 
-    # 1. Check for local webcam device indices (e.g. 0, 1, 'webcam')
     dev_idx = None
-    if stream_url and str(stream_url).strip() in ("0", "1", "2"):
-        dev_idx = int(stream_url.strip())
-    elif ip and str(ip).strip() in ("0", "1", "2", "webcam"):
-        dev_idx = int(ip.strip()) if ip.strip().isdigit() else 0
+    if settings.ENVIRONMENT.lower() in ("development", "dev", "test"):
+        if stream_url and str(stream_url).strip() in ("0", "1", "2"):
+            dev_idx = int(stream_url.strip())
+        elif ip and str(ip).strip() in ("0", "1", "2", "webcam"):
+            dev_idx = int(ip.strip()) if ip.strip().isdigit() else 0
 
     if dev_idx is not None:
         diag_info["host"] = f"dev_{dev_idx}"
         diag_info["is_reachable"] = True
         try:
-            # Only accept confirmed live hardware frames â€” not standby placeholders
-            buf, lat = camera_stream_manager.get_latest_real_jpeg(
-                f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=0.8
-            )
+            buf, lat = camera_stream_manager.get_latest_real_jpeg(f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=0.8)
             if buf is not None:
                 diag_info["stage"] = "SUCCESS"
-                diag_info["is_port_open"] = True
-                diag_info["is_handshake_ok"] = True
                 return (buf, f"Local Camera Device ({dev_idx})", lat, diag_info) if return_diag else (buf, f"Local Camera Device ({dev_idx})", lat)
-
-            # Attempt direct capture if stream manager has no real frame yet
+        except Exception:
+            pass
+        
             cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
             if not cap.isOpened():
                 cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)

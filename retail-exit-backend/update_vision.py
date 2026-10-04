@@ -1,39 +1,18 @@
-﻿import sys
-
-with open("src/ml/vision_service.py", "r", encoding="utf-8") as f:
+﻿with open("src/ml/level1_detection/vision_service.py", "r", encoding="utf-8") as f:
     content = f.read()
 
-# Add Tracker import
-if "from src.ml.tracker import SimpleByteTrack" not in content:
-    content = content.replace("from typing import List, Dict, Any, Tuple, Optional", "from typing import List, Dict, Any, Tuple, Optional\nfrom src.ml.tracker import SimpleByteTrack")
+# Update import and model version
+content = content.replace("MODEL_VERSION = \"yolox-tiny-coco-v0.1.0\"", "MODEL_VERSION = \"yolox-x-v1\"")
+content = content.replace("yolox_tiny.onnx", "yolox_x.onnx")
+content = content.replace("INPUT_SIZE = (416, 416)", "INPUT_SIZE = (640, 640)")
 
-# Add trackers dict to class
-if "_trackers: Dict[str, SimpleByteTrack]" not in content:
-    content = content.replace("_loaded_version: Optional[str] = None", "_loaded_version: Optional[str] = None\n    _trackers: Dict[str, SimpleByteTrack] = {}")
+# Add model_config import if not exists
+if "from src.ml.model_config import model_config" not in content:
+    content = content.replace("from dataclasses", "from src.ml.model_config import model_config\nfrom dataclasses")
 
-# Update signature
-if "camera_id: Optional[str] = None" not in content:
-    content = content.replace("ignored_classes: Optional[list] = None,", "ignored_classes: Optional[list] = None,\n        camera_id: Optional[str] = None,")
+# Replace hardcoded confidences
+content = content.replace("if conf < 0.50:", "if conf < model_config.confidence_floor:")
+content = content.replace("if bh < 0.20 * orig_h and conf < 0.50:", "if bh < 0.20 * orig_h and conf < model_config.confidence_floor:")
 
-# Replace Tracker logic
-content = content.replace("track_id_seq += 1", "# track_id_seq increment removed in favor of ByteTrack")
-
-# After detections are built, apply tracker
-tracker_logic = """
-        if camera_id:
-            if camera_id not in cls._trackers:
-                cls._trackers[camera_id] = SimpleByteTrack(track_buffer=30)
-            detections = cls._trackers[camera_id].update(detections)
-        else:
-            # Fallback sequential IDs
-            tid = 1
-            for d in detections:
-                d.track_id = tid
-                tid += 1
-"""
-
-if "cls._trackers[camera_id]" not in content:
-    content = content.replace("latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)", tracker_logic + "\n        latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)")
-
-with open("src/ml/vision_service.py", "w", encoding="utf-8") as f:
+with open("src/ml/level1_detection/vision_service.py", "w", encoding="utf-8") as f:
     f.write(content)

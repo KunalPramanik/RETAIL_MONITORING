@@ -282,3 +282,5 @@ def update_vision_config(**kwargs) -> VisionModelConfig:
             setattr(cfg, k, v)
             logger.info("Updated vision configuration parameter: %s = %s", k, v)
     return cfg
+
+model_config = get_vision_config()

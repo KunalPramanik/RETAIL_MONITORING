@@ -160,7 +160,7 @@ class LivenessDetectionService:
 
     @classmethod
     def _evaluate_texture(cls, img: np.ndarray, bbox: List[int]) -> float:
-        """Evaluates skin texture gradient vs halftone dots, Moiré, or flat paper."""
+        """Evaluates skin texture gradient vs halftone dots, MoirÃ©, or flat paper."""
         h_img, w_img = img.shape[:2]
         x1, y1, x2, y2 = bbox
         x1, y1 = max(0, x1), max(0, y1)
@@ -174,7 +174,7 @@ class LivenessDetectionService:
         lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
         # Extremely low lap_var (< 20) indicates blurry photo / blank wall
-        # Extremely high lap_var (> 2500) indicates digital screen Moiré / halftone print
+        # Extremely high lap_var (> 2500) indicates digital screen MoirÃ© / halftone print
         # Natural human skin faces typically range 60 - 800
         if lap_var < 25:
             return 0.15
@@ -321,7 +321,7 @@ class LivenessDetectionService:
         static_conf = 0.0
         static_label = None
         if not is_live:
-            from src.ml.static_image_service import StaticImageClassifier
+            from src.ml.level3_liveness.static_image_service import StaticImageClassifier
             static_res = StaticImageClassifier.classify_image_region(
                 full_image=img,
                 bbox=bbox,

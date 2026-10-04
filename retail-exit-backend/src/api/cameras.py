@@ -87,7 +87,7 @@ def capture_camera_frame_sync(
         diag_info["host"] = f"dev_{dev_idx}"
         diag_info["is_reachable"] = True
         try:
-            # Only accept confirmed live hardware frames — not standby placeholders
+            # Only accept confirmed live hardware frames â€” not standby placeholders
             buf, lat = camera_stream_manager.get_latest_real_jpeg(
                 f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=0.8
             )
@@ -117,7 +117,7 @@ def capture_camera_frame_sync(
                 else:
                     diag_info["stage"] = "LOCAL_DEVICE_PREEMPTED"
                     diag_info["error_message"] = (
-                        f"Local camera (index {dev_idx}) opened but read() failed — "
+                        f"Local camera (index {dev_idx}) opened but read() failed â€” "
                         "the device may be in use by another application (e.g. browser, Teams) "
                         "or blocked by Windows Camera Privacy Settings."
                     )
@@ -320,7 +320,7 @@ def capture_camera_frame_sync(
                 cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
                 if cap.isOpened():
                     diag_info["is_handshake_ok"] = True
-                    # AA.4: inspect codec before read — H.265 produces decode failures on MediaMTX WebRTC
+                    # AA.4: inspect codec before read â€” H.265 produces decode failures on MediaMTX WebRTC
                     codec_warning = ""
                     try:
                         raw_fourcc = int(cap.get(cv2.CAP_PROP_FOURCC))
@@ -332,7 +332,7 @@ def capture_camera_frame_sync(
                             if any(h in fourcc_str for h in hevc_fourccs):
                                 codec_warning = (
                                     f" [CODEC ALERT] H.265/HEVC stream detected (fourcc={fourcc_str}). "
-                                    "MediaMTX WebRTC only supports H.264/VP8/VP9/AV1 — browser preview will be "
+                                    "MediaMTX WebRTC only supports H.264/VP8/VP9/AV1 â€” browser preview will be "
                                     "broken or black. Fix: switch the camera to H.264 sub-stream encoding, or add a "
                                     "MediaMTX transcoding rule: paths: ~^.*$: runOnReady: ffmpeg -i {source} -c:v libx264 ..."
                                 )
@@ -515,7 +515,7 @@ def generate_diagnostic_preview_frame(
     cv2.rectangle(img, (bx, by), (bx + box_w, by + box_h), (25, 32, 42), -1)
     cv2.rectangle(img, (bx, by), (bx + box_w, by + box_h), (70, 85, 105), 1)
 
-    # Status text — reflect actual status so operator knows the true state
+    # Status text â€” reflect actual status so operator knows the true state
     status_upper = status.upper().replace("_", " ")
     is_offline = status_upper in ("OFFLINE", "CONNECTION_FAILED", "NETWORK_UNREACHABLE", "PENDING SETUP")
     badge_color = (235, 165, 45) if is_offline else (34, 197, 94)
@@ -825,7 +825,7 @@ async def test_camera_connection(
         return CameraTestConnectionResponse(
             success=False,
             status="UNREACHABLE_IP",
-            errorMessage=f"Could not reach {ip}:554 — check camera power and network subnet routing.",
+            errorMessage=f"Could not reach {ip}:554 â€” check camera power and network subnet routing.",
             latencyMs=5000.0,
         )
 
@@ -833,7 +833,7 @@ async def test_camera_connection(
         return CameraTestConnectionResponse(
             success=False,
             status="AUTH_FAILURE",
-            errorMessage="RTSP 401 Unauthorized — invalid camera credentials provided.",
+            errorMessage="RTSP 401 Unauthorized â€” invalid camera credentials provided.",
             latencyMs=120.0,
         )
 
@@ -864,8 +864,8 @@ async def test_camera_connection(
     has_real_frame = frame_bytes is not None
     if has_real_frame:
         try:
-            from src.ml.vision_service import VisionInferenceService
-            from src.ml.face_service import FaceRecognitionService
+            from src.ml.level1_detection.vision_service import VisionInferenceService
+            from src.ml.face_recognition.face_service import FaceRecognitionService
             vis_res, obj_bytes = VisionInferenceService.analyze_frame_bytes(frame_bytes=frame_bytes, catalog_products=[])
             face_res, final_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
                 frame_bytes=obj_bytes or frame_bytes,
@@ -912,7 +912,7 @@ async def test_camera_connection(
             latencyMs=latency_ms,
         )
 
-    # If no real frame decoded — honest failure for ALL cases (registered or new wizard test).
+    # If no real frame decoded â€” honest failure for ALL cases (registered or new wizard test).
     # Saves a standby card to disk so the tile shows meaningful status to the operator.
     diag_label = cam.label if cam else (f"CAMERA {camera_id}")
     diag_lane = cam.lane_id if cam else None
@@ -1407,9 +1407,9 @@ async def record_camera_heartbeat(
     return resp
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # QR-Code Camera Auto-Pairing (Both Directions)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.post("/qr-decode", response_model=QRDecodeResponse)
 async def decode_camera_qr(body: QRDecodeRequest):

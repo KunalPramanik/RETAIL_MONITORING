@@ -28,7 +28,7 @@ from src.schemas.employees import (
     EmployeeMovementRecord,
     MaterialMovementItem,
 )
-from src.ml.face_service import FaceRecognitionService
+from src.ml.face_recognition.face_service import FaceRecognitionService
 
 logger = logging.getLogger("secops.api.employees")
 router = APIRouter(prefix="/employees", tags=["Employees"])

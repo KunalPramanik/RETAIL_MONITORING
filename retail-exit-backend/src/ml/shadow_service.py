@@ -89,7 +89,7 @@ class ShadowDeploymentService:
         t0 = time.perf_counter()
         try:
             # We import VisionInferenceService dynamically to avoid circular import
-            from src.ml.vision_service import VisionInferenceService
+            from src.ml.level1_detection.vision_service import VisionInferenceService
 
             input_tensor, ratio, _ = VisionInferenceService._preprocess_frame(img)
             raw_out = np.asarray(session.run(None, {"images": input_tensor[None, ...]})[0], dtype=np.float32)

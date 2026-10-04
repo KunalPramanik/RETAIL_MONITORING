@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import logging
 from typing import List, Dict, Any, Optional
-from src.ml.static_image_service import StaticImageClassifier
+from src.ml.level3_liveness.static_image_service import StaticImageClassifier
 
 logger = logging.getLogger("secops.ml.wall_picture_detector")
 

@@ -35,7 +35,7 @@ class VehicleIntelligenceService:
         """Lazy-loads ONNX OCR engine from ocr_service."""
         if cls._ocr_engine is None:
             try:
-                from src.ml.ocr_service import OcrService
+                from src.ml.ocr.invoice_ocr_service import OcrService
                 cls._ocr_engine = OcrService.get_ocr_engine()
             except Exception as e:
                 logger.warning("Could not load OCR engine for vehicle plates: %s", e)

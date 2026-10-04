@@ -14,7 +14,7 @@ from src.db.session import get_db
 from src.db.models import Invoice, Product, ExitEvent, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.invoices import InvoiceResponse, InvoiceLineItemSchema, InvoiceCreateSchema
-from src.ml.ocr_service import OcrService
+from src.ml.ocr.invoice_ocr_service import OcrService
 from src.realtime.hub import ws_hub
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])

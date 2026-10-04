@@ -15,7 +15,7 @@ import numpy as np
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional, Union, Tuple
 from insightface.app import FaceAnalysis
-from src.ml.liveness_service import LivenessDetectionService, LivenessResult
+from src.ml.level3_liveness.liveness_service import LivenessDetectionService, LivenessResult
 from src.ml.model_config import get_vision_config
 
 
@@ -311,7 +311,7 @@ class FaceRecognitionService:
                     # Check if face is enclosed within a display container (wall picture, monitor screen, smartphone)
                     is_enclosed_in_container = False
                     if container_boxes:
-                        from src.ml.static_image_service import quarantine_enclosed_visual_content
+                        from src.ml.level3_liveness.static_image_service import quarantine_enclosed_visual_content
                         enclosed = quarantine_enclosed_visual_content(
                             [face_xywh],
                             container_boxes,

@@ -24,7 +24,7 @@ import numpy as np
 
 from src.ml.model_config import get_vision_config
 from src.ml.wall_picture_detector import WallPictureDetector
-from src.ml.static_image_service import is_box_enclosed
+from src.ml.level3_liveness.static_image_service import is_box_enclosed
 
 logger = logging.getLogger("secops.ml.semantic_validation")
 
@@ -242,7 +242,7 @@ class SemanticValidationEngine:
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         detected_watches: List[Dict[str, Any]] = []
 
-        # ── Mode 1: Worn WristWatch Detection via Keypoints or Arm Regions ──
+        # â”€â”€ Mode 1: Worn WristWatch Detection via Keypoints or Arm Regions â”€â”€
         if wrist_keypoints:
             for k_name, pt in wrist_keypoints.items():
                 if "wrist" not in k_name.lower() or not isinstance(pt, (tuple, list)) or len(pt) < 2:
@@ -318,7 +318,7 @@ class SemanticValidationEngine:
                                 })
                                 break
 
-        # ── Mode 2: Standalone WristWatch (Resting on Desk / Table) ──
+        # â”€â”€ Mode 2: Standalone WristWatch (Resting on Desk / Table) â”€â”€
         # Search candidate circular/squarish dial contours outside person boxes
         blurred = cv2.GaussianBlur(gray, (3, 3), 0)
         edges = cv2.Canny(blurred, 40, 120)

@@ -33,10 +33,10 @@ from src.db.models import (
 from src.schemas.events import IngestEventRequest, ExitEventResponse, EventLineItemSchema
 from src.schemas.alerts import AlertResponse
 from src.api.alerts import serialize_alert
-from src.ml.vision_service import VisionInferenceService
+from src.ml.level1_detection.vision_service import VisionInferenceService
 from src.ml.rfid_service import RfidService
 from src.ml.weight_service import WeightService
-from src.ml.face_service import FaceRecognitionService
+from src.ml.face_recognition.face_service import FaceRecognitionService
 from src.ml.appearance_service import AppearanceService
 from src.engine.fusion import MultiSensorFusionEngine
 from src.engine.verdict import VerdictEngine

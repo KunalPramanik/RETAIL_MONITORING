@@ -98,7 +98,7 @@ class DenseShelfCountingService:
         # 1. Resolve or detect shelf bounding box
         resolved_shelf_box = shelf_bbox
         if not resolved_shelf_box:
-            from src.ml.scene_object_detector import SceneObjectDetector
+            from src.ml.level2_classification.fixture_classifier import SceneObjectDetector
             detected_shelves = SceneObjectDetector.detect_bookshelves(frame)
             if detected_shelves:
                 resolved_shelf_box = detected_shelves[0]["bbox"]

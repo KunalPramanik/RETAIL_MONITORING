@@ -39,9 +39,9 @@ from src.db.models import (
     get_utc_now,
 )
 from dataclasses import asdict
-from src.ml.vision_service import VisionInferenceService
+from src.ml.level1_detection.vision_service import VisionInferenceService
 from src.services.vision_detection.frame_renderer import FrameRenderer
-from src.ml.face_service import FaceRecognitionService
+from src.ml.face_recognition.face_service import FaceRecognitionService
 from src.ml.material_segmentation import MaterialSegmentationService
 from src.ml.hazard_service import FlameHazardDetector
 from src.ml.pose_service import SuspiciousBehaviorDetector
@@ -55,8 +55,8 @@ from src.ml.universal_taxonomy_service import UniversalTaxonomyService
 from src.engine.frame_analysis_report import FrameAnalysisReportGenerator
 from src.realtime.hub import ws_hub
 from src.ml.model_config import get_vision_config
-from src.ml.tracker_service import intra_camera_tracker
-from src.ml.static_image_service import quarantine_enclosed_visual_content
+from src.ml.level5_tracking.tracker_service_service import intra_camera_tracker
+from src.ml.level3_liveness.static_image_service import quarantine_enclosed_visual_content
 
 
 logger = logging.getLogger("secops.camera_worker")
@@ -600,7 +600,7 @@ class CameraIngestionWorker:
                     flames = FlameHazardDetector.detect_flames(dec)
                     for fl in flames:
                         is_confirmed = fl.confidence >= cfg.fire_confirmed_threshold
-                        lbl = f"FIRE · {int(fl.confidence * 100)}%" if is_confirmed else f"FLAME ANOMALY · {int(fl.confidence * 100)}%"
+                        lbl = f"FIRE Â· {int(fl.confidence * 100)}%" if is_confirmed else f"FLAME ANOMALY Â· {int(fl.confidence * 100)}%"
                         overlay_boxes.append({
                             "box": fl.bbox,
                             "type": "HAZARD_FIRE",
@@ -646,9 +646,9 @@ class CameraIngestionWorker:
                         if pose_res.is_suspicious:
                             is_confirmed = pose_res.confidence >= cfg.suspicious_confirmed_threshold
                             lbl = (
-                                f"SUSPICIOUS · {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})"
+                                f"SUSPICIOUS Â· {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})"
                                 if is_confirmed
-                                else f"POSSIBLE ANOMALY · {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})"
+                                else f"POSSIBLE ANOMALY Â· {int(pose_res.confidence * 100)}% ({pose_res.suspicious_reason})"
                             )
                             overlay_boxes.append({
                                 "box": p_box,
@@ -685,7 +685,7 @@ class CameraIngestionWorker:
 
                         # 5B. Wrist watch detection from pose keypoints
                         if pose_res.keypoints:
-                            from src.ml.scene_object_detector import SceneObjectDetector
+                            from src.ml.level2_classification.fixture_classifier import SceneObjectDetector
                             wrist_watches = SceneObjectDetector.detect_wrist_watches(
                                 dec,
                                 wrist_keypoints=pose_res.keypoints,
@@ -718,7 +718,7 @@ class CameraIngestionWorker:
                                 overlay_boxes.append({
                                     "box": ppe_res.helmet_box,
                                     "type": "PPE_COMPLIANT",
-                                    "label": f"HELMET · {int(ppe_res.helmet_confidence * 100)}%",
+                                    "label": f"HELMET Â· {int(ppe_res.helmet_confidence * 100)}%",
                                     "confidence": ppe_res.helmet_confidence,
                                     "color": "green",
                                     "entity": "Hard Hat",
@@ -727,7 +727,7 @@ class CameraIngestionWorker:
                                 overlay_boxes.append({
                                     "box": ppe_res.vest_box,
                                     "type": "PPE_COMPLIANT",
-                                    "label": f"VEST · {int(ppe_res.vest_confidence * 100)}%",
+                                    "label": f"VEST Â· {int(ppe_res.vest_confidence * 100)}%",
                                     "confidence": ppe_res.vest_confidence,
                                     "color": "green",
                                     "entity": "Safety Vest",
@@ -866,13 +866,13 @@ class CameraIngestionWorker:
             if overlay_boxes:
                 if any(b["type"] in ("PERSON_MATCHED", "PERSON_UNMATCHED") for b in overlay_boxes):
                     person_desc = f"Known: {face_res.employee_name}" if (face_res.decision == "MATCHED" and face_res.matched_employee_id) else "Unknown Person"
-                    msg = f"{cam_name} — {person_desc} Detected — {time_str}"
+                    msg = f"{cam_name} â€” {person_desc} Detected â€” {time_str}"
                     if not cam_logs or cam_logs[-1]["text"] != msg:
                         cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "PERSON"})
 
                 if any(b["type"] == "VEHICLE" for b in overlay_boxes):
                     for vb in [b for b in overlay_boxes if b["type"] == "VEHICLE"]:
-                        msg = f"{cam_name} — Vehicle Entry: {vb['label']} — {time_str}"
+                        msg = f"{cam_name} â€” Vehicle Entry: {vb['label']} â€” {time_str}"
                         if not cam_logs or cam_logs[-1]["text"] != msg:
                             cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "VEHICLE"})
                     # Auto-capture and persist vehicle snapshot dossier
@@ -885,14 +885,14 @@ class CameraIngestionWorker:
                         logger.debug("Vehicle snapshot persist error: %s", _vsnap_err)
 
                 if any(b["type"] == "ITEM" for b in overlay_boxes):
-                    msg = f"{cam_name} — {vis_res.cases_detected} Cases / {vis_res.vision_count} Units Detected — {time_str}"
+                    msg = f"{cam_name} â€” {vis_res.cases_detected} Cases / {vis_res.vision_count} Units Detected â€” {time_str}"
                     if not cam_logs or cam_logs[-1]["text"] != msg:
                         cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "ITEM"})
 
                 if any(b["type"] == "STATIC_IMAGE" for b in overlay_boxes):
                     for sb in [b for b in overlay_boxes if b["type"] == "STATIC_IMAGE"]:
                         class_title = str(sb["entity"]).replace("_", " ").title()
-                        msg = f"{cam_name} — Static: {class_title} — {time_str}"
+                        msg = f"{cam_name} â€” Static: {class_title} â€” {time_str}"
                         if not cam_logs or cam_logs[-1]["text"] != msg:
                             cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": msg, "type": "STATIC"})
 
@@ -950,7 +950,7 @@ class CameraIngestionWorker:
 
                             # Activity log for detected material inventory
                             mat_log_parts = [f"{c}x {k.split(' (')[0].split(' / ')[0]}" for k, c in seg_counts.items()]
-                            mat_log_msg = f"{cam_name} — Store Inventory: {', '.join(mat_log_parts)} — {time_str}"
+                            mat_log_msg = f"{cam_name} â€” Store Inventory: {', '.join(mat_log_parts)} â€” {time_str}"
                             if not cam_logs or cam_logs[-1]["text"] != mat_log_msg:
                                 cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": mat_log_msg, "type": "ITEM"})
             except Exception as _seg_err:
@@ -1075,7 +1075,7 @@ class CameraIngestionWorker:
                                         "box": ob["box"],
                                     }
                                     active_carriers.append(carrier_rec)
-                                    carrier_log = f"{cam_name} — Carrier: {summary_carrier} — {time_str}"
+                                    carrier_log = f"{cam_name} â€” Carrier: {summary_carrier} â€” {time_str}"
                                     if not cam_logs or cam_logs[-1]["text"] != carrier_log:
                                         cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": carrier_log, "type": "PERSON"})
                                 else:
@@ -1522,7 +1522,7 @@ class CameraIngestionWorker:
         tx_label = (
             f"PASS ({int(event.vision_confidence * 100 if event.vision_confidence else 98)}%)"
             if event.verdict == "PASS"
-            else f"MISMATCH — {event.severity} (Δ {event.delta_units} units)"
+            else f"MISMATCH â€” {event.severity} (Î” {event.delta_units} units)"
         )
         self._active_transactions[cam.camera_id] = {
             "eventId": event.event_id,
@@ -1538,7 +1538,7 @@ class CameraIngestionWorker:
         cam_logs.append({
             "id": str(uuid.uuid4()),
             "timestamp": now.strftime("%H:%M:%S"),
-            "text": f"{cam.label} — TX {event.event_id}: {tx_label} — {now.strftime('%H:%M:%S')}",
+            "text": f"{cam.label} â€” TX {event.event_id}: {tx_label} â€” {now.strftime('%H:%M:%S')}",
             "type": "TRANSACTION",
         })
 

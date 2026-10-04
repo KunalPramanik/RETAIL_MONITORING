@@ -5,7 +5,7 @@ Features:
 1. Megvii YOLOX Deep-Learning Object Detection (COCO pretrained backbone)
 2. Directional Exit Vector Verification (angle filtering to discard shoppers walking parallel)
 3. Trajectory Centroid Smoothing & IoU Overlap Disambiguation
-4. Dynamic Case Multiplier (cases_qty × pack_size + singles_qty)
+4. Dynamic Case Multiplier (cases_qty Ã— pack_size + singles_qty)
 """
 
 import os
@@ -17,7 +17,7 @@ import numpy as np
 import onnxruntime as ort
 from dataclasses import dataclass, asdict
 from typing import List, Dict, Any, Optional, Tuple
-from src.ml.tracker import SimpleByteTrack
+from src.ml.level5_tracking.tracker_service import SimpleByteTrack
 from datetime import datetime, timezone
 
 from src.ml.model_config import get_vision_config
@@ -561,7 +561,7 @@ class VisionInferenceService:
                     wearable = meta.get("wearable", False)
                     obj_role = meta.get("object_role", "physical_object")
 
-                    # ── V8 Semantic Validation & Anti-Confusion Discrimination ──
+                    # â”€â”€ V8 Semantic Validation & Anti-Confusion Discrimination â”€â”€
                     # 1. Wall Picture vs Book Discrimination (Observed Problem A)
                     if cid == 73 or "book" in specific_label.lower():
                         from src.ml.semantic_validation import SemanticValidationEngine
@@ -691,7 +691,7 @@ class VisionInferenceService:
 
         # Augment with dynamic scene objects (doorways, hanging bags, umbrellas)
         try:
-            from src.ml.scene_object_detector import SceneObjectDetector
+            from src.ml.level2_classification.fixture_classifier import SceneObjectDetector
             exclude = [d.bbox for d in detections]
             person_boxes = [d.bbox for d in detections if d.class_label == "person"]
             scene_objects = SceneObjectDetector.detect_scene_objects(
@@ -751,7 +751,7 @@ class VisionInferenceService:
 
         # Issue 2 Fix: Apply depth-relief/liveness quarantine generalized to objects in reflections/screens
         try:
-            from src.ml.static_image_service import quarantine_enclosed_visual_content
+            from src.ml.level3_liveness.static_image_service import quarantine_enclosed_visual_content
             # Extract display containers (monitors, laptops, phones, mirrors, wall pictures, glossy shelving)
             container_boxes = []
             for d in detections:

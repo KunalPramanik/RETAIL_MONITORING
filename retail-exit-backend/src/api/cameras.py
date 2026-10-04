@@ -569,6 +569,8 @@ def serialize_camera(c: Camera) -> CameraResponse:
         addedAt=c.added_at.isoformat() if c.added_at else datetime.now(timezone.utc).isoformat(),
         removedAt=c.removed_at.isoformat() if c.removed_at else None,
         ptzCapable=ptz_service.is_ptz_capable(c),
+        roiPolygon=getattr(c, "roi_polygon", None),
+        ignoredClasses=getattr(c, "ignored_classes", []) or [],
     )
 
 
@@ -1256,6 +1258,8 @@ async def update_camera(
         cam.fps = body.fps
     if body.status is not None:
         cam.status = body.status
+    if body.ignoredClasses is not None:
+        cam.ignored_classes = body.ignoredClasses
 
     await session.flush()
 
@@ -1788,3 +1792,31 @@ async def update_camera_roi_polygon(
     await session.commit()
     await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
     return {"status": "SUCCESS", "cameraId": camera_id, "roiPolygon": polygon}
+
+
+@router.patch("/{camera_id}/ignored-classes")
+async def update_camera_ignored_classes(
+    camera_id: str,
+    body: Dict[str, Any],
+    session: AsyncSession = Depends(get_db),
+):
+    """Updates the per-camera list of ignored detection classes (Part CC.2.1)."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    ignored = body.get("ignoredClasses")
+    if ignored is None:
+        ignored = body.get("ignored_classes", [])
+
+    if not isinstance(ignored, list):
+        raise HTTPException(status_code=400, detail="ignored_classes must be a list of strings")
+
+    cam.ignored_classes = ignored
+    await session.commit()
+    await cache_service.invalidate("cameras")
+    serialized = serialize_camera(cam)
+    await ws_hub.broadcast_event("camera_status_changed", serialized.model_dump())
+    return {"status": "SUCCESS", "cameraId": camera_id, "ignoredClasses": ignored}
+

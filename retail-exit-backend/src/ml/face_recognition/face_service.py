@@ -32,6 +32,7 @@ class FaceMatchResult:
     liveness_decision: str = "LIVE"   # 'LIVE' | 'STATIC_PHOTO' | 'SPOOF' | 'NO_FACE'
     static_detections: List[Dict[str, Any]] = field(default_factory=list)
     live_person_boxes: List[Dict[str, Any]] = field(default_factory=list)
+    badge_number: Optional[str] = None
 
 
 class FaceRecognitionService:
@@ -158,6 +159,11 @@ class FaceRecognitionService:
                 best_employee = emp
 
         best_score = max(0.0, min(1.0, best_score))
+        badge_num = (
+            best_employee.get("rfid_badge_id")
+            or best_employee.get("badge_id")
+            or (best_employee.get("employee_id")[:4].upper() if best_employee and best_employee.get("employee_id") else None)
+        ) if best_employee else None
 
         # IR Night Vision degradation handling
         if is_ir_mode:
@@ -170,6 +176,7 @@ class FaceRecognitionService:
                     model_version=cls.MODEL_VERSION,
                     unauthorized_alert_needed=False,
                     frames_evaluated=len(frames),
+                    badge_number=badge_num,
                 )
             else:
                 return FaceMatchResult(
@@ -180,6 +187,7 @@ class FaceRecognitionService:
                     model_version=cls.MODEL_VERSION,
                     unauthorized_alert_needed=False,
                     frames_evaluated=len(frames),
+                    badge_number=badge_num,
                 )
 
         if best_score >= threshold and best_employee:
@@ -191,6 +199,7 @@ class FaceRecognitionService:
                 model_version=cls.MODEL_VERSION,
                 unauthorized_alert_needed=False,
                 frames_evaluated=len(frames),
+                badge_number=badge_num,
             )
         elif best_score >= cls.LOW_CONFIDENCE_THRESHOLD and best_employee:
             return FaceMatchResult(
@@ -201,6 +210,7 @@ class FaceRecognitionService:
                 model_version=cls.MODEL_VERSION,
                 unauthorized_alert_needed=False,
                 frames_evaluated=len(frames),
+                badge_number=badge_num,
             )
         else:
             return FaceMatchResult(

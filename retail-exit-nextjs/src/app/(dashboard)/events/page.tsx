@@ -1,7 +1,8 @@
 "use client";
 
+import React, { useState, useEffect } from "react";
 import { safeFetch } from "@/lib/api-client";
-﻿import React, { useState, useEffect } from "react";
+import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
 import {
   Activity,
   Search,
@@ -12,6 +13,7 @@ import {
   Eye,
   FileSpreadsheet,
   Download,
+  FileCheck,
 } from "lucide-react";
 
 interface ExitEventItem {
@@ -35,6 +37,7 @@ export default function EventsPage() {
   const [search, setSearch] = useState("");
   const [verdictFilter, setVerdictFilter] = useState("ALL");
   const [selectedEvent, setSelectedEvent] = useState<ExitEventItem | null>(null);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   const fetchEvents = async () => {
     try {
@@ -77,6 +80,12 @@ export default function EventsPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowVerifyModal(true)}
+            className="px-3.5 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all font-mono"
+          >
+            <FileCheck size={15} /> Verify & Save (DD.3)
+          </button>
           <button
             onClick={fetchEvents}
             className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
@@ -184,6 +193,12 @@ export default function EventsPage() {
           </div>
         )}
       </div>
+
+      <VerifyAndSaveModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+        onSuccess={() => fetchEvents()}
+      />
     </div>
   );
 }

@@ -222,7 +222,12 @@ class CameraIngestionWorker:
         if not self._cached_roster or (now_epoch - self._cached_roster_ts > 15.0):
             emp_res = await session.execute(select(Employee).where(Employee.active_flag == True))
             self._cached_roster = [
-                {"employee_id": e.employee_id, "name": e.name, "face_embedding": e.face_embedding}
+                {
+                    "employee_id": e.employee_id,
+                    "name": e.name,
+                    "face_embedding": e.face_embedding,
+                    "rfid_badge_id": e.rfid_badge_id,
+                }
                 for e in emp_res.scalars().all()
             ]
             self._cached_roster_ts = now_epoch
@@ -376,6 +381,7 @@ class CameraIngestionWorker:
         # 1. Recognized authorized employees
         if face_res.decision == "MATCHED" and face_res.matched_employee_id:
             if face_res.similarity >= conf_floor:
+                badge_str = getattr(face_res, "badge_number", None) or (face_res.matched_employee_id[:4].upper() if face_res.matched_employee_id else "0000")
                 for fb in face_boxes:
                     fx, fy, fw, fh = fb
                     pb_x = max(0, fx - int(fw * 0.35))
@@ -386,12 +392,13 @@ class CameraIngestionWorker:
                     overlay_boxes.append({
                         "box": [pb_x, pb_y, pb_w, pb_h],
                         "type": "PERSON_MATCHED",
-                        "label": f"Known: {face_res.employee_name}",
+                        "label": f"[{face_res.employee_name} - AUTHORIZED, Badge #{badge_str}]",
                         "confidence": round(float(face_res.similarity), 4),
                         "color": "green",
                         "entity": face_res.employee_name,
                         "identity_status": "CONFIRMED_MATCH",
                         "employee_id": face_res.matched_employee_id,
+                        "badge_number": badge_str,
                         "sub_label": f"Verified: {face_res.employee_name}",
                         "detection_state": "CONFIRMED",
                     })
@@ -410,9 +417,9 @@ class CameraIngestionWorker:
                     overlay_boxes.append({
                         "box": [pb_x, pb_y, pb_w, pb_h],
                         "type": "PERSON_UNMATCHED",
-                        "label": "Unknown Person",
+                        "label": "[UNKNOWN - UNAUTHORIZED]",
                         "confidence": round(float(conf), 4),
-                        "color": "cyan",
+                        "color": "red",
                         "entity": "Unknown Person",
                         "identity_status": "NO_MATCH",
                         "sub_label": "Match: No confirmed database match",
@@ -443,9 +450,9 @@ class CameraIngestionWorker:
                     overlay_boxes.append({
                         "box": d.bbox,
                         "type": "PERSON_UNMATCHED",
-                        "label": "Unknown Person",
+                        "label": "[UNKNOWN - UNAUTHORIZED]",
                         "confidence": round(float(d.confidence), 4),
-                        "color": "cyan",
+                        "color": "red",
                         "entity": "Unknown Person",
                         "identity_status": "NO_MATCH",
                         "sub_label": "Match: No confirmed database match",
@@ -515,10 +522,13 @@ class CameraIngestionWorker:
                         parent_tid = f"person_{p_idx + 1}"
                         break
 
+            track_tag = parent_tid or f"TRK-{len(overlay_boxes) + 1}"
+            box_label_formatted = f"[{b_label} {int(d.confidence * 100)}% ID:{track_tag}]"
+
             overlay_boxes.append({
                 "box": d.bbox,
                 "type": b_type,
-                "label": b_label,
+                "label": box_label_formatted,
                 "confidence": round(float(d.confidence), 4),
                 "color": b_color,
                 "entity": item_label,
@@ -529,6 +539,7 @@ class CameraIngestionWorker:
                 "is_environment_only": d.is_environment_only,
                 "is_inventory_relevant": d.is_inventory_relevant,
             })
+
 
         return overlay_boxes, all_person_boxes
 
@@ -801,7 +812,7 @@ class CameraIngestionWorker:
                 overlay_boxes.append({
                     "box": s["box"],
                     "type": "STATIC_IMAGE",
-                    "label": s["friendly_label"],
+                    "label": "[Static Artifact - Ignored]",
                     "confidence": round(float(s["confidence"]), 4),
                     "color": "static",
                     "entity": s["classification"],

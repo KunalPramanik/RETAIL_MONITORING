@@ -34,7 +34,18 @@ interface CameraItem {
   resolution?: string;
   fps?: number;
   lastHeartbeatAt?: string;
+  ignoredClasses?: string[];
 }
+
+const AVAILABLE_IGNORE_CLASSES = [
+  { id: "Wall Picture Frame", label: "Wall Picture Frame / Poster", desc: "Prevents static portrait/art on walls from triggering person detection" },
+  { id: "Display / Screen", label: "Display / TV / Screen", desc: "Prevents digital signage and monitors from being tracked as active carriers" },
+  { id: "Doorway / Exit Door", label: "Doorway / Exit Door Frame", desc: "Suppresses door structural frame edges and glass reflections" },
+  { id: "Ceiling / Floor Tile", label: "Ceiling / Floor Tile Pattern", desc: "Ignores high-contrast flooring grids and overhead light fixtures" },
+  { id: "Shopping Cart / Basket Frame", label: "Shopping Cart / Basket Frame", desc: "Ignores empty metal/plastic cart frames at stanchions" },
+  { id: "Storage Shelf / Stanchion", label: "Storage Shelf / Bollard Stanchion", desc: "Ignores structural beams, shelves, and dividing poles" },
+  { id: "POS Terminal / Stand", label: "POS Terminal / Countertop Stand", desc: "Ignores register stands, card readers, and pin pads" },
+];
 
 interface DiscoveredDevice {
   deviceId: string;
@@ -54,6 +65,11 @@ export default function CameraManagementPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
+
+  // CC.2.1 Ignored Classes Filter Modal State
+  const [selectedCameraForIgnore, setSelectedCameraForIgnore] = useState<CameraItem | null>(null);
+  const [currentIgnoredClasses, setCurrentIgnoredClasses] = useState<string[]>([]);
+  const [savingIgnore, setSavingIgnore] = useState(false);
 
   const [formData, setFormData] = useState({
     connectionType: "LAN_RTSP",
@@ -172,6 +188,33 @@ export default function CameraManagementPage() {
     }
   };
 
+  const openIgnoreClassesModal = (cam: CameraItem) => {
+    setSelectedCameraForIgnore(cam);
+    setCurrentIgnoredClasses(cam.ignoredClasses || []);
+  };
+
+  const handleSaveIgnoredClasses = async () => {
+    if (!selectedCameraForIgnore) return;
+    setSavingIgnore(true);
+    try {
+      const res = await safeFetch(`/api/cameras/${selectedCameraForIgnore.cameraId}/ignored-classes`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ignoredClasses: currentIgnoredClasses }),
+      });
+      if (res.ok) {
+        await fetchCameras();
+        setSelectedCameraForIgnore(null);
+      } else {
+        alert("Failed to update ignored classes.");
+      }
+    } catch (err) {
+      console.error("Error saving ignored classes:", err);
+    } finally {
+      setSavingIgnore(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
@@ -281,6 +324,7 @@ export default function CameraManagementPage() {
                   <th className="p-4">SOURCE ENDPOINT</th>
                   <th className="p-4">STREAM DETAILS</th>
                   <th className="p-4">METHOD</th>
+                  <th className="p-4">IGNORED CLASSES (CC.2.1)</th>
                   <th className="p-4 text-right">ACTIONS</th>
                 </tr>
               </thead>
@@ -319,8 +363,25 @@ export default function CameraManagementPage() {
                         {cam.pairingMethod}
                       </span>
                     </td>
+                    <td className="p-4">
+                      <button
+                        onClick={() => openIgnoreClassesModal(cam)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] border border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[#38BDF8] transition-colors"
+                        title="Configure Ignored Classes"
+                      >
+                        <Sliders size={12} className="text-[#38BDF8]" />
+                        <span>{(cam.ignoredClasses || []).length} Filtered</span>
+                      </button>
+                    </td>
                     <td className="p-4 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => openIgnoreClassesModal(cam)}
+                          className="p-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded border border-[var(--border-hairline)] transition-colors"
+                          title="Configure Ignored Classes (CC.2.1)"
+                        >
+                          <Sliders size={14} />
+                        </button>
                         <button
                           onClick={async () => {
                             const res = await safeFetch(`/api/cameras/${cam.cameraId}/test-connection`, { method: "POST" });
@@ -514,6 +575,87 @@ export default function CameraManagementPage() {
               >
                 Save & Deploy Camera
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedCameraForIgnore && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <Sliders size={18} className="text-[#38BDF8]" /> Ignored Detection Classes (CC.2.1)
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5 font-mono">
+                  Camera: {selectedCameraForIgnore.label} ({selectedCameraForIgnore.cameraId})
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedCameraForIgnore(null)}
+                className="text-[var(--text-secondary)] hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-secondary)]">
+              Select static background artifacts or non-carrier objects to suppress on this camera stream. Items selected will be ignored from AI person tracking and shrinkage verification.
+            </p>
+
+            <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+              {AVAILABLE_IGNORE_CLASSES.map((cls) => {
+                const isChecked = currentIgnoredClasses.includes(cls.id);
+                return (
+                  <label
+                    key={cls.id}
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                      isChecked
+                        ? "bg-[#38BDF8]/10 border-[#38BDF8]/40 text-[var(--text-primary)]"
+                        : "bg-[var(--bg-canvas)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel-raised)]"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 rounded accent-[#38BDF8]"
+                      checked={isChecked}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setCurrentIgnoredClasses([...currentIgnoredClasses, cls.id]);
+                        } else {
+                          setCurrentIgnoredClasses(currentIgnoredClasses.filter((c) => c !== cls.id));
+                        }
+                      }}
+                    />
+                    <div className="flex-1">
+                      <div className="text-sm font-semibold text-[var(--text-primary)]">{cls.label}</div>
+                      <div className="text-xs text-[var(--text-secondary)] mt-0.5">{cls.desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-between items-center pt-3 border-t border-[var(--border-hairline)]">
+              <span className="text-xs font-mono text-[var(--text-secondary)]">
+                {currentIgnoredClasses.length} class(es) filtered
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedCameraForIgnore(null)}
+                  className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveIgnoredClasses}
+                  disabled={savingIgnore}
+                  className="px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold transition-all disabled:opacity-50"
+                >
+                  {savingIgnore ? "Saving Filter..." : "Save Filter Config"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

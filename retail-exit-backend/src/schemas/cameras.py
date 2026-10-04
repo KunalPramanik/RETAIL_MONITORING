@@ -1,7 +1,7 @@
 """Pydantic Schemas for Camera Fleet Management"""
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 
 
@@ -26,6 +26,8 @@ class CameraResponse(BaseModel):
     removedAt: Optional[str] = None
     ptzCapable: Optional[bool] = False
     isIrMode: Optional[bool] = False
+    roiPolygon: Optional[List[Any]] = None
+    ignoredClasses: Optional[List[str]] = Field(default_factory=list)
 
 
 class CameraCreate(BaseModel):
@@ -39,6 +41,10 @@ class CameraCreate(BaseModel):
     pairingMethod: Optional[str] = "MANUAL"
     resolution: Optional[str] = "1920x1080"
     fps: Optional[int] = 30
+    ignoredClasses: Optional[List[str]] = Field(default_factory=list, alias="ignored_classes")
+
+    class Config:
+        populate_by_name = True
 
 
 class CameraUpdate(BaseModel):
@@ -52,6 +58,10 @@ class CameraUpdate(BaseModel):
     resolution: Optional[str] = None
     fps: Optional[int] = None
     status: Optional[str] = None
+    ignoredClasses: Optional[List[str]] = Field(default=None, alias="ignored_classes")
+
+    class Config:
+        populate_by_name = True
 
 
 class CameraTestConnectionRequest(BaseModel):

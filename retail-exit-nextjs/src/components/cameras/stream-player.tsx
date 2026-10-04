@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 
 export interface DetectionBox {
-  box: [number, number, number, number]; // [x, y, w, h]
+  box: [number, number, number, number]; // [x, y, w, h] normalized 0..1 or pixel coords
   type: string;
   label: string;
   confidence: number;
@@ -35,7 +35,11 @@ export interface DetectionBox {
   track_id?: string | number;
   direction?: string;
   matched_employee_id?: string;
+  badge_number?: string;
   is_discrepancy?: boolean;
+  is_defect?: boolean;
+  defect_type?: string;
+  polygon?: number[][]; // [x, y] coordinates for OBB / segmentation masks
 }
 
 interface StreamPlayerProps {
@@ -219,27 +223,30 @@ export default function StreamPlayer({
   // Video Source URL (continuous stream from FastAPI)
   const videoSrc = `/api/cameras/${cameraId}/stream?raw=true&stream=${streamQuality}`;
 
-  // Helper to match the reference image's color styling
+  // Helper to match Part P.1 and CC.2 color & styling system
   const getBoxStyle = (b: DetectionBox) => {
     const rawType = (b.type || "").toUpperCase();
     const rawLabel = (b.label || "").toUpperCase();
 
-    if (b.is_discrepancy || rawType.includes("DISCREPANCY") || rawType.includes("SUSPICIOUS") || rawType.includes("HAZARD")) {
+    if (b.is_discrepancy || b.is_defect || rawType.includes("DEFECT") || rawLabel.includes("DEFECT") || rawType.includes("DISCREPANCY") || rawType.includes("SUSPICIOUS") || rawType.includes("HAZARD")) {
       return { border: "#EF4444", bg: "#EF4444", text: "#FFFFFF" }; // Red
+    }
+    if (rawType.includes("STATIC") || rawLabel.includes("STATIC ARTIFACT") || rawLabel.includes("IGNORED")) {
+      return { border: "#64748B", bg: "#1E293B", text: "#94A3B8" }; // Slate Gray for quarantined static artifacts
     }
     if (rawLabel.includes("SMARTPHONE") || rawLabel.includes("PHONE") || rawLabel.includes("LAPTOP") || rawType.includes("ELECTRONICS")) {
       return { border: "#F97316", bg: "#F97316", text: "#000000" }; // Orange
     }
-    if (rawLabel.includes("SHELF") || rawLabel.includes("BOOKCASE") || rawLabel.includes("CAR") || rawLabel.includes("VEHICLE") || rawType.includes("VEHICLE")) {
+    if (rawLabel.includes("SHELF") || rawLabel.includes("BOOKCASE") || rawLabel.includes("CAR") || rawLabel.includes("VEHICLE") || rawType.includes("VEHICLE") || rawLabel.includes("DOORWAY")) {
       return { border: "#06B6D4", bg: "#06B6D4", text: "#000000" }; // Cyan
     }
-    if (rawType.includes("MATCHED") || rawLabel.includes("KNOWN")) {
+    if (rawType.includes("MATCHED") || rawLabel.includes("AUTHORIZED") || rawLabel.includes("KNOWN")) {
       return { border: "#10B981", bg: "#10B981", text: "#FFFFFF" }; // Confirmed Match (Emerald)
     }
-    if (rawType.includes("UNMATCHED") || rawLabel.includes("UNKNOWN")) {
-      return { border: "#38BDF8", bg: "#0284C7", text: "#FFFFFF" }; // Unknown Person (Sky Blue)
+    if (rawType.includes("UNMATCHED") || rawLabel.includes("UNKNOWN") || rawLabel.includes("UNAUTHORIZED")) {
+      return { border: "#EF4444", bg: "#DC2626", text: "#FFFFFF" }; // Unknown Person (Red per CC.2)
     }
-    // Default retail item styling (Lime Green matching user's image)
+    // Default retail item styling (Lime Green matching industrial spec)
     return { border: "#84CC16", bg: "#84CC16", text: "#000000" }; // Lime Green
   };
 
@@ -308,13 +315,39 @@ export default function StreamPlayer({
           </div>
         </div>
 
-        {/* Solid Pinned Badges with Clean Single-Percentage Labels */}
+        {/* Solid Pinned Badges with CC.2 Strict Bracketed Format & Oriented Polygons */}
         <div className="absolute inset-0 pointer-events-none z-20">
+          {/* SVG layer for Oriented Bounding Boxes (OBB) & instance segmentation masks */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none">
+            {boxes.map((b, idx) => {
+              if (!b.polygon || b.polygon.length < 3) return null;
+              const style = getBoxStyle(b);
+              const pointsStr = b.polygon
+                .map(([x, y]) => {
+                  const px = x <= 1.0 ? x * 100 : (x / (resolution.includes("1920") ? 1920 : 1280)) * 100;
+                  const py = y <= 1.0 ? y * 100 : (y / (resolution.includes("1080") ? 1080 : 720)) * 100;
+                  return `${px}%,${py}%`;
+                })
+                .join(" ");
+              return (
+                <polygon
+                  key={`poly-${idx}`}
+                  points={pointsStr}
+                  fill={style.bg}
+                  fillOpacity={0.25}
+                  stroke={style.border}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
+              );
+            })}
+          </svg>
+
           {boxes.map((b, idx) => {
             const rawType = (b.type || "").toUpperCase();
             const rawLabel = (b.label || "").toUpperCase();
-            // Suppress phantom wall picture / static background frames
-            if (rawType === "WALL_PICTURE" || rawLabel.includes("WALL PICTURE") || rawType === "STATIC_IMAGE") {
+            // Suppress phantom Canny wall frames unless it's a quarantined static artifact
+            if (rawType === "WALL_PICTURE" && !rawLabel.includes("STATIC ARTIFACT")) {
               return null;
             }
 
@@ -323,7 +356,15 @@ export default function StreamPlayer({
             const topPct = `${b.box[1] * 100}%`;
             const widthPct = `${b.box[2] * 100}%`;
             const heightPct = `${b.box[3] * 100}%`;
-            const cleanLabel = (b.label || "").replace(/\s*\(\d+%\)/g, "").trim();
+
+            // Strict CC.2 Bracketed Label Construction
+            let cleanTag = (b.label || "").trim();
+            if (!cleanTag.startsWith("[")) {
+              const confPct = typeof b.confidence === "number" ? `${(b.confidence * 100).toFixed(0)}%` : "";
+              const trackId = b.track_id ? ` ID:${b.track_id}` : ` ID:${idx + 1}`;
+              const baseName = cleanTag.replace(/\s*\(\d+%\)/g, "").trim();
+              cleanTag = `[${baseName} ${confPct}${trackId}]`;
+            }
             const badgePlacement = b.box[1] < 0.08 ? "top-0 left-0" : "-top-5 left-0";
 
             return (
@@ -345,10 +386,7 @@ export default function StreamPlayer({
                     color: style.text,
                   }}
                 >
-                  <span>{cleanLabel}</span>
-                  {typeof b.confidence === "number" && (
-                    <span className="opacity-85 font-normal">{(b.confidence * 100).toFixed(0)}%</span>
-                  )}
+                  <span>{cleanTag}</span>
                 </div>
               </div>
             );

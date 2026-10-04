@@ -3,6 +3,7 @@
 import { safeFetch } from "@/lib/api-client";
 import React, { useState, useEffect } from "react";
 import StreamPlayer from "@/components/cameras/stream-player";
+import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
 import {
   Activity,
   AlertTriangle,
@@ -12,6 +13,7 @@ import {
   ArrowRight,
   CheckCircle,
   Plus,
+  FileCheck,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -19,6 +21,7 @@ export default function DashboardPage() {
   const [cameras, setCameras] = useState<any[]>([]);
   const [alerts, setAlerts] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [kpis, setKpis] = useState({
     todayThroughput: 0,
     openAlerts: 0,
@@ -150,12 +153,20 @@ export default function DashboardPage() {
           <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
             <Camera size={18} className="text-[#38BDF8]" /> Live Exit Feeds & Surveillance CV HUD
           </h2>
-          <Link
-            href="/settings/cameras"
-            className="text-xs font-mono text-[#38BDF8] hover:underline flex items-center gap-1"
-          >
-            Manage Camera Fleet <ArrowRight size={13} />
-          </Link>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowVerifyModal(true)}
+              className="px-3 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-xs font-semibold font-mono flex items-center gap-1.5 shadow-md shadow-emerald-900/30 transition-all"
+            >
+              <FileCheck size={14} /> Verify & Save (DD.3)
+            </button>
+            <Link
+              href="/settings/cameras"
+              className="text-xs font-mono text-[#38BDF8] hover:underline flex items-center gap-1"
+            >
+              Manage Camera Fleet <ArrowRight size={13} />
+            </Link>
+          </div>
         </div>
 
         {cameras.length === 0 ? (
@@ -298,6 +309,12 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <VerifyAndSaveModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+        onSuccess={() => fetchData()}
+      />
     </div>
   );
 }

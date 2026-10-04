@@ -235,3 +235,90 @@ async def edge_manifest_scan(
         res_data["sessionId"] = new_sess.session_id
 
     return res_data
+
+
+class VerifyAndSaveRequest(BaseModel):
+    sessionId: Optional[str] = None
+    laneId: Optional[str] = "LANE-01"
+    packagedBoxesCount: int = Field(default=0, alias="packaged_boxes_count")
+    bulkMaterialsCount: int = Field(default=0, alias="bulk_materials_count")
+    singleUnitsCount: int = Field(default=0, alias="single_units_count")
+    verifierEmployeeId: Optional[str] = Field(default="OPERATOR", alias="verifier_employee_id")
+    overrideReason: Optional[str] = Field(default=None, alias="override_reason")
+    notes: Optional[str] = None
+
+    class Config:
+        populate_by_name = True
+
+
+@router.post("/verify-and-save")
+async def verify_and_save_dispatch(
+    body: VerifyAndSaveRequest,
+    session: AsyncSession = Depends(get_db),
+):
+    """Part DD.3 Human 'Verify-and-Save' workflow for categorized post-session confirmation."""
+    import uuid
+    from src.db.audit import log_audit_entry
+    from src.db.models import get_utc_now
+    from src.realtime.hub import ws_hub
+
+    verification_id = f"VER-{uuid.uuid4().hex[:8].upper()}"
+    total_units = body.packagedBoxesCount + body.bulkMaterialsCount + body.singleUnitsCount
+    now = get_utc_now()
+
+    # Log audit entry
+    await log_audit_entry(
+        session=session,
+        entity_type="DISPATCH_VERIFICATION",
+        entity_id=verification_id,
+        action="HUMAN_VERIFY_AND_SAVE",
+        actor_type="USER",
+        before_state={"session_id": body.sessionId, "status": "PENDING_CONFIRMATION"},
+        after_state={
+            "verification_id": verification_id,
+            "session_id": body.sessionId,
+            "lane_id": body.laneId,
+            "packaged_boxes": body.packagedBoxesCount,
+            "bulk_materials": body.bulkMaterialsCount,
+            "single_units": body.singleUnitsCount,
+            "total_units": total_units,
+            "verifier_employee_id": body.verifierEmployeeId,
+            "override_reason": body.overrideReason,
+            "notes": body.notes,
+            "timestamp": now.isoformat(),
+        },
+    )
+
+    # If linked to an active session, complete it
+    if body.sessionId:
+        try:
+            sess_res = await session.execute(select(DispatchSession).where(DispatchSession.session_id == body.sessionId))
+            disp_sess = sess_res.scalar_one_or_none()
+            if disp_sess:
+                disp_sess.status = "VERIFIED_COMMITTED"
+                disp_sess.completed_at = now
+                disp_sess.notes = f"Verified by {body.verifierEmployeeId}. Notes: {body.notes or 'None'}"
+        except Exception:
+            pass
+
+    await session.commit()
+
+    resp_data = {
+        "status": "SUCCESS",
+        "verificationId": verification_id,
+        "sessionId": body.sessionId,
+        "laneId": body.laneId,
+        "totalUnits": total_units,
+        "breakdown": {
+            "packagedBoxes": body.packagedBoxesCount,
+            "bulkMaterials": body.bulkMaterialsCount,
+            "singleUnits": body.singleUnitsCount,
+        },
+        "verifierEmployeeId": body.verifierEmployeeId,
+        "committedAt": now.isoformat(),
+        "auditLogged": True,
+    }
+
+    await ws_hub.broadcast_event("dispatch_verified", resp_data)
+    return resp_data
+

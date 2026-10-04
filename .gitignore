@@ -74,8 +74,7 @@ Thumbs.db
 desktop.ini
 
 # IDE & Editor Settings
-.vscode/*
-!.vscode/settings.json
+.vscode/
 .idea/
 *.sublime-workspace
 *.sublime-project

@@ -1746,3 +1746,25 @@ async def ptz_get_status(
         raise HTTPException(status_code=404, detail=f"Camera {camera_id} not found")
 
     return ptz_service.get_status(cam)
+
+
+@router.patch("/{camera_id}/roi-polygon")
+async def update_camera_roi_polygon(
+    camera_id: str,
+    body: Dict[str, Any],
+    session: AsyncSession = Depends(get_db),
+):
+    """Updates the dynamic Region of Interest (ROI) polygon for a camera."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+    
+    polygon = body.get("roiPolygon") or body.get("polygon") or body.get("roi_polygon")
+    if polygon is None:
+        raise HTTPException(status_code=400, detail="Missing polygon coordinates")
+    
+    cam.roi_polygon = polygon
+    await session.commit()
+    await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
+    return {"status": "SUCCESS", "cameraId": camera_id, "roiPolygon": polygon}

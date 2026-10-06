@@ -188,7 +188,8 @@ export default function ReportsPage() {
           </div>
           <button
             onClick={() => {
-              window.open(`http://localhost:8000/api/reports/export/csv?dataset=events`, "_blank");
+              const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+              window.open(`${apiBaseUrl}/api/reports/export/csv?dataset=events`, "_blank");
             }}
             className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded text-xs font-mono flex items-center gap-1.5 transition-colors"
           >

@@ -6,6 +6,7 @@ to an in-memory TTL cache dictionary with zero external dependency requirements.
 Supports key-based and prefix/pattern-based invalidation on writes.
 """
 
+import os
 import time
 import json
 import logging
@@ -23,14 +24,20 @@ class CacheService:
     async def _get_redis(self):
         if not self._redis_checked:
             self._redis_checked = True
+            from src.core.config import settings
+            redis_url = settings.REDIS_URL or os.getenv("REDIS_URL", "")
+            if not redis_url:
+                logger.info("REDIS_URL not configured; using high-speed in-memory TTL cache.")
+                self._redis = None
+                return None
             try:
                 import redis.asyncio as aioredis  # type: ignore
-                r = aioredis.from_url("redis://localhost:6379/0", decode_responses=True)
+                r = aioredis.from_url(redis_url, decode_responses=True)
                 await r.ping()
                 self._redis = r
-                logger.info("Connected to Redis cache backend at redis://localhost:6379/0")
+                logger.info(f"Connected to Redis cache backend at {redis_url}")
             except Exception as e:
-                logger.debug(f"Redis not available ({e}); using high-speed in-memory TTL cache.")
+                logger.debug(f"Redis not reachable at {redis_url} ({e}); using high-speed in-memory TTL cache.")
                 self._redis = None
         return self._redis
 

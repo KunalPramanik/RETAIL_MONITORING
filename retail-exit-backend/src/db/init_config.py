@@ -3,6 +3,7 @@ from sqlalchemy import select
 from src.db.models import ThresholdConfig, AppUser, Store
 from src.security import get_password_hash
 import uuid
+import os
 
 async def init_baseline_configuration(session: AsyncSession):
     # 1. Ensure baseline Store exists
@@ -21,7 +22,8 @@ async def init_baseline_configuration(session: AsyncSession):
     # 2. Ensure ADMIN user exists
     result = await session.execute(select(AppUser).where(AppUser.email == "admin@secops.local"))
     if not result.scalars().first():
-        hashed_password = get_password_hash("admin123")
+        initial_pw = os.getenv("ADMIN_INITIAL_PASSWORD", "admin123")
+        hashed_password = get_password_hash(initial_pw)
         admin_user = AppUser(
             user_id=str(uuid.uuid4()),
             email="admin@secops.local",

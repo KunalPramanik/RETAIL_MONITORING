@@ -39,9 +39,10 @@ class NotificationService:
         self,
         alert: Alert,
         lane_label: str = "Unknown Lane",
-        console_base_url: str = "http://localhost:5173",
+        console_base_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Builds an enterprise Slack Block Kit message payload."""
+        base_url = (console_base_url or os.getenv("CONSOLE_BASE_URL") or "").rstrip("/")
         sev = str(alert.severity)
         sev_emoji = "🚨" if sev in ("HIGH", "CRITICAL") else "⚠️"
         alert_id = str(alert.alert_id)
@@ -75,7 +76,7 @@ class NotificationService:
                     {
                         "type": "button",
                         "text": {"type": "plain_text", "text": "Inspect Event Dossier"},
-                        "url": f"{console_base_url}/events?id={evt_id}",
+                        "url": f"{base_url}/events?id={evt_id}" if base_url else f"/events?id={evt_id}",
                         "style": "danger" if sev in ("HIGH", "CRITICAL") else "primary",
                     }
                 ],
@@ -88,9 +89,10 @@ class NotificationService:
         alert: Alert,
         chat_id: str,
         lane_label: str = "Unknown Lane",
-        console_base_url: str = "http://localhost:5173",
+        console_base_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Builds a formatted HTML message payload for the Telegram Bot API."""
+        base_url = (console_base_url or os.getenv("CONSOLE_BASE_URL") or "").rstrip("/")
         sev = str(alert.severity)
         sev_icon = "🚨" if sev in ("HIGH", "CRITICAL") else "⚠️"
         evt_id = str(alert.event_id or "N/A")

@@ -103,7 +103,8 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => {
-              window.open(`http://localhost:8000/api/reports/export/xlsx?start_date=${reportDate}&end_date=${reportDate}`, "_blank");
+              const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+              window.open(`${apiBaseUrl}/api/reports/export/xlsx?start_date=${reportDate}&end_date=${reportDate}`, "_blank");
             }}
             className="px-3.5 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all font-mono"
             title="Export Multi-Tab Audit Workbook (.xlsx)"
@@ -112,7 +113,8 @@ export default function ReportsPage() {
           </button>
           <button
             onClick={() => {
-              window.open(`http://localhost:8000/api/reports/daily?date=${reportDate}`, "_blank");
+              const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
+              window.open(`${apiBaseUrl}/api/reports/daily?date=${reportDate}`, "_blank");
             }}
             className="px-3.5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-blue-900/30 transition-all"
             title="Download Daily Compliance Digest"
@@ -258,3 +260,4 @@ export default function ReportsPage() {
     </div>
   );
 }
+

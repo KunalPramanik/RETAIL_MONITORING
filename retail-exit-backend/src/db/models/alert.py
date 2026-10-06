@@ -7,10 +7,12 @@ class AppUser(Base):
 
     user_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
     email: Any = Column(String(255), unique=True, nullable=False, index=True)
+    username: Any = Column(String(64), unique=True, nullable=True, index=True)
     password_hash: Any = Column(String(255), nullable=False)
     role: Any = Column(String(32), nullable=False)
     store_id: Any = Column(String(36), ForeignKey("store.store_id"), nullable=True)
     mfa_enabled: Any = Column(Boolean, nullable=False, default=False)
+    is_active: Any = Column(Boolean, nullable=False, default=True)
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 
     __table_args__ = (
@@ -18,6 +20,16 @@ class AppUser(Base):
     )
 
     store = relationship("Store", back_populates="users")
+
+    @property
+    def id(self) -> str:
+        """Compatibility alias for primary key user_id."""
+        return self.user_id
+
+    @property
+    def hashed_password(self) -> str:
+        """Compatibility alias for password_hash."""
+        return self.password_hash
 
 class Alert(Base):
     __tablename__ = "alert"

@@ -246,12 +246,6 @@ class VehicleDetection(Base):
     watchlist_hit: Any = Column(Boolean, nullable=False, default=False)
     event_time: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
 
-class User(Base):
-    __tablename__ = "user"
-    id: Any = Column(String(36), primary_key=True, default=generate_uuid)
-    username: Any = Column(String(64), unique=True, index=True, nullable=False)
-    hashed_password: Any = Column(String(128), nullable=False)
-    role: Any = Column(String(32), nullable=False, default="VIEWER") # SUPER_ADMIN, ADMIN, SECURITY_OPERATOR, VIEWER
-    is_active: Any = Column(Boolean, default=True)
-    created_at: Any = Column(DateTime(timezone=True), default=get_utc_now)
+# Canonical User model is AppUser in alert.py (prevents duplicate user/app_user tables)
+from .alert import AppUser as User
 

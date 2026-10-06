@@ -117,13 +117,31 @@ export default function CameraManagementPage() {
   const handleTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
+
+    // Enforce explicit camera configuration; prevent submitting unconfigured fake defaults
+    if (!formData.label.trim()) {
+      setTestResult({ success: false, errorMessage: "Camera label is required before pairing." });
+      setTesting(false);
+      return;
+    }
+    if (formData.connectionType !== "USB" && formData.connectionType !== "WIFI_HTTP" && !formData.ipAddress.trim()) {
+      setTestResult({ success: false, errorMessage: "Valid camera IP address or hostname is required." });
+      setTesting(false);
+      return;
+    }
+    if (formData.connectionType === "WIFI_HTTP" && !formData.streamUrl.trim()) {
+      setTestResult({ success: false, errorMessage: "HTTP / MJPEG Stream URL is required." });
+      setTesting(false);
+      return;
+    }
+
     try {
       const payload: any = {
-        label: formData.label || "Test Device",
-        ipAddress: formData.connectionType === "USB" ? "0" : formData.ipAddress,
-        rtspPath: formData.rtspPath,
-        streamUrl: formData.connectionType === "WIFI_HTTP" ? formData.streamUrl : undefined,
-        credentials: formData.credentials || undefined,
+        label: formData.label.trim(),
+        ipAddress: formData.connectionType === "USB" ? "0" : formData.ipAddress.trim(),
+        rtspPath: formData.rtspPath.trim() || "/live/ch0",
+        streamUrl: formData.connectionType === "WIFI_HTTP" ? formData.streamUrl.trim() : undefined,
+        credentials: formData.credentials.trim() || undefined,
         laneId: formData.laneId,
       };
 

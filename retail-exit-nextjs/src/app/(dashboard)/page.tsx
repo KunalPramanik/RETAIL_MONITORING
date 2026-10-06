@@ -1,6 +1,6 @@
 "use client";
 
-import { safeFetch } from "@/lib/api-client";
+import { safeFetch, getWsUrl } from "@/lib/api-client";
 import React, { useState, useEffect } from "react";
 import StreamPlayer from "@/components/cameras/stream-player";
 import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
@@ -76,9 +76,61 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    // Initial fetch on mount
     fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
+
+    // Real-time WebSocket subscription to /ws/live
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectWs = () => {
+      try {
+        const wsUrl = getWsUrl("/ws/live");
+        ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (
+              data.type === "new_alert" ||
+              data.type === "alert_resolved" ||
+              data.type === "exit_event" ||
+              data.type === "camera_status_changed" ||
+              data.type === "lane_status_changed" ||
+              data.type === "heartbeat"
+            ) {
+              fetchData();
+            }
+          } catch (err) {
+            console.debug("WS parse error:", err);
+          }
+        };
+
+        ws.onclose = () => {
+          reconnectTimeout = setTimeout(connectWs, 5000);
+        };
+
+        ws.onerror = () => {
+          if (ws) ws.close();
+        };
+      } catch (err) {
+        console.debug("WS connection error:", err);
+      }
+    };
+
+    connectWs();
+
+    // Resilient fallback slow poll (30s) if WebSocket disconnects
+    const fallbackInterval = setInterval(fetchData, 30000);
+
+    return () => {
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
+      }
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      clearInterval(fallbackInterval);
+    };
   }, []);
 
   return (

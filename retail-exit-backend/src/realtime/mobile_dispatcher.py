@@ -21,9 +21,9 @@ import hashlib
 import json
 import logging
 
-logger = logging.getLogger("secops.realtime.mobile")
+from src.core.config import settings
 
-DEFAULT_SECRET_KEY = "secops-enterprise-hmac-shared-key-2026"
+logger = logging.getLogger("secops.realtime.mobile")
 
 
 @dataclass
@@ -49,9 +49,10 @@ class MobileSecurityDispatcher:
     """Formats and dispatches high-consequence security alerts to mobile devices and gates."""
 
     @classmethod
-    def generate_hmac_signature(cls, payload_bytes: bytes, secret: str = DEFAULT_SECRET_KEY) -> str:
+    def generate_hmac_signature(cls, payload_bytes: bytes, secret: Optional[str] = None) -> str:
         """Generates HMAC-SHA256 signature for tamper-proof webhook verification."""
-        return hmac.new(secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+        key = (secret or settings.MOBILE_HMAC_SECRET).encode("utf-8")
+        return hmac.new(key, payload_bytes, hashlib.sha256).hexdigest()
 
     @classmethod
     def create_alert_card(
@@ -66,7 +67,7 @@ class MobileSecurityDispatcher:
         discrepancy_delta: int,
         material_name: str,
         snapshot_url: Optional[str] = None,
-        base_api_url: str = "http://localhost:8000",
+        base_api_url: Optional[str] = None,
     ) -> MobileAlertCard:
         """Creates an authenticated mobile security alert card."""
         # Enforce Zero-Speculation Rule
@@ -82,8 +83,9 @@ class MobileSecurityDispatcher:
             status = "VERIFIED_EMPLOYEE"
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        lock_url = f"{base_api_url}/api/v1/alerts/{alert_id}/gate-lock"
-        override_url = f"{base_api_url}/api/v1/alerts/{alert_id}/override"
+        api_url = (base_api_url or os.getenv("BASE_API_URL") or "").rstrip("/")
+        lock_url = f"{api_url}/api/v1/alerts/{alert_id}/gate-lock" if api_url else f"/api/v1/alerts/{alert_id}/gate-lock"
+        override_url = f"{api_url}/api/v1/alerts/{alert_id}/override" if api_url else f"/api/v1/alerts/{alert_id}/override"
 
         raw_content = f"{alert_id}:{alert_type}:{safe_carrier}:{discrepancy_delta}:{now_iso}"
         signature = cls.generate_hmac_signature(raw_content.encode("utf-8"))

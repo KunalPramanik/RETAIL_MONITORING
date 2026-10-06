@@ -25,10 +25,12 @@ async def init_baseline_configuration(session: AsyncSession):
         admin_user = AppUser(
             user_id=str(uuid.uuid4()),
             email="admin@secops.local",
+            username="admin",
             password_hash=hashed_password,
             role="ADMIN",
             store_id=store.store_id,
-            mfa_enabled=False
+            mfa_enabled=False,
+            is_active=True,
         )
         session.add(admin_user)
 

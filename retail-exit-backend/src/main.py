@@ -146,6 +146,25 @@ async def lifespan(app: FastAPI):
     logger.info("SEC-OPS platform shutdown cleanly.")
 
 
+async def get_active_edge_nodes_count() -> int:
+    """Calculates active edge ingestion nodes dynamically from camera worker & database."""
+    try:
+        active_worker_cams = len(getattr(camera_worker, "_last_frames", {}))
+        async with AsyncSessionLocal() as session:
+            res = await session.execute(
+                select(Camera).where(
+                    and_(
+                        Camera.removed_at.is_(None),
+                        Camera.status == "ONLINE",
+                    )
+                )
+            )
+            db_online = len(res.scalars().all())
+            return max(active_worker_cams, db_online)
+    except Exception:
+        return len(getattr(camera_worker, "_last_frames", {}))
+
+
 async def periodic_ws_heartbeat():
     """Background task sending periodic heartbeat pings to connected control consoles."""
     while not _is_shutting_down:
@@ -153,7 +172,8 @@ async def periodic_ws_heartbeat():
             await asyncio.sleep(settings.WS_HEARTBEAT_INTERVAL_SEC)
             if _is_shutting_down:
                 break
-            await ws_hub.broadcast_event("heartbeat", {"status": "HEALTHY", "edgeNodesOnline": 4})
+            nodes_online = await get_active_edge_nodes_count()
+            await ws_hub.broadcast_event("heartbeat", {"status": "HEALTHY", "edgeNodesOnline": nodes_online})
         except asyncio.CancelledError:
             break
         except Exception as e:
@@ -358,11 +378,13 @@ async def get_metrics():
 # Health Check
 @app.get("/health", tags=["Observability"])
 async def get_health():
-    """Standard health check endpoint."""
+    """Standard health check endpoint reporting live system status."""
+    nodes_online = await get_active_edge_nodes_count()
     return {
         "status": "HEALTHY",
         "service": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "database": "CONNECTED",
-        "edgeCluster": "4_NODES_ONLINE",
+        "edgeNodesOnline": nodes_online,
+        "edgeCluster": f"{nodes_online}_NODES_ONLINE",
     }

@@ -1,12 +1,34 @@
 """Application Configuration Module
 
-Strictly loads all variables from environment to ensure zero hardcoding.
+Strictly loads all variables from environment with zero insecure fallbacks.
+Refuses to start if mandatory secrets or database URLs are missing.
 """
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
-from typing import List
 import os
+from typing import List
+from dotenv import load_dotenv
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Load .env file if present
+load_dotenv()
+
+MANDATORY_ENV_VARS = ["DATABASE_URL", "JWT_SECRET_KEY", "MOBILE_HMAC_SECRET"]
+
+def validate_mandatory_env():
+    """Validates that all mandatory security and infrastructure environment variables exist.
+    
+    Raises RuntimeError if any required credential is missing or empty, preventing
+    the application from ever booting into a silently-weakened or insecure state.
+    """
+    missing = [var for var in MANDATORY_ENV_VARS if not os.getenv(var) or not os.getenv(var).strip()]
+    if missing:
+        raise RuntimeError(
+            f"CRITICAL CONFIGURATION ERROR: Mandatory environment variable(s) {missing} are not set or empty. "
+            f"SEC-OPS refuses to start with insecure fallback defaults."
+        )
+
+# Validate immediately upon module load
+validate_mandatory_env()
 
 class Settings(BaseSettings):
     APP_NAME: str = os.getenv("APP_NAME", "SEC-OPS Retail Exit Monitoring Platform")
@@ -14,16 +36,17 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "production")
     SECOPS_DEBUG: bool = os.getenv("SECOPS_DEBUG", "false").lower() == "true"
     
-    # Database (No Hardcoded Credentials)
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+    # Database (Mandatory - strictly loaded from environment)
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
     
     # CORS (Dynamic parsing)
     CORS_ORIGINS: List[str] = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
     
-    # Security (Strict No Hardcoding)
-    SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "test-secret")
+    # Security (Mandatory - strictly loaded from environment)
+    SECRET_KEY: str = os.getenv("JWT_SECRET_KEY", "")
     ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))
+    MOBILE_HMAC_SECRET: str = os.getenv("MOBILE_HMAC_SECRET", "")
     
     # Edge Ingestion & ML Defaults
     DEFAULT_STORE_ID: str = os.getenv("DEFAULT_STORE_ID", "")

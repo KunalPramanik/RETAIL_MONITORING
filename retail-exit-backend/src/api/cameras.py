@@ -1202,6 +1202,7 @@ async def scan_camera_now(
 
 
 @router.put("/{camera_id}", response_model=CameraResponse)
+@router.patch("/{camera_id}", response_model=CameraResponse)
 async def update_camera(
     camera_id: str,
     body: CameraUpdate,

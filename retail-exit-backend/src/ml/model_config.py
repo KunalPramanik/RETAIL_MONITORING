@@ -10,6 +10,7 @@ from typing import Dict, Set, List, Optional, Any
 import os
 import json
 import logging
+from src.core.config import settings
 
 logger = logging.getLogger("secops.ml.config")
 
@@ -18,21 +19,21 @@ CONFIG_FILE_PATH = os.path.join(os.path.dirname(__file__), "classes_config.json"
 
 @dataclass
 class VisionModelConfig:
-    # ── Confidence Floors & Gating (Two-Tier Standards) ──
-    confidence_floor: float = 0.50  # Hard floor: only detections >= 50% reach DB verdicts & live UI overlays
-    confirmed_entity_standard: float = 0.90  # Tier 2: >= 90% threshold for confirmed identity, verified presence, high-severity alerts
-    fire_confirmed_threshold: float = 0.90   # >= 90%: Confirmed fire hazard alarm dispatch
-    fire_hazard_floor: float = 0.45          # 45% - 89%: Unconfirmed flame hazard alert
-    suspicious_confirmed_threshold: float = 0.90  # >= 90%: Confirmed suspicious behavior alert
-    ppe_confirmed_threshold: float = 0.85    # >= 85%: Confirmed PPE violation
-    person_conf_threshold: float = 0.50
-    item_conf_threshold: float = 0.45
-    case_conf_threshold: float = 0.50
-    vehicle_conf_threshold: float = 0.25
+    # ── Confidence Floors & Gating (Centralized, Configurable Standards) ──
+    confidence_floor: float = field(default_factory=lambda: settings.detection.confidence_floor)
+    confirmed_entity_standard: float = field(default_factory=lambda: settings.detection.confirmed_entity_standard)
+    fire_confirmed_threshold: float = field(default_factory=lambda: settings.detection.fire_confirmed_threshold)
+    fire_hazard_floor: float = field(default_factory=lambda: settings.detection.fire_hazard_floor)
+    suspicious_confirmed_threshold: float = field(default_factory=lambda: settings.detection.suspicious_confirmed_threshold)
+    ppe_confirmed_threshold: float = field(default_factory=lambda: settings.detection.ppe_confirmed_threshold)
+    person_conf_threshold: float = field(default_factory=lambda: settings.detection.person_conf_threshold)
+    item_conf_threshold: float = field(default_factory=lambda: settings.detection.item_conf_threshold)
+    case_conf_threshold: float = field(default_factory=lambda: settings.detection.case_conf_threshold)
+    vehicle_conf_threshold: float = field(default_factory=lambda: settings.detection.vehicle_conf_threshold)
 
     # ── NMS & Clustered Item Tuning ──
-    nms_iou_threshold: float = 0.35
-    dense_shelf_nms_iou_threshold: float = 0.45
+    nms_iou_threshold: float = field(default_factory=lambda: settings.detection.nms_iou_threshold)
+    dense_shelf_nms_iou_threshold: float = field(default_factory=lambda: settings.detection.dense_shelf_nms_iou_threshold)
 
     # ── Liveness & Face Gating ──
     face_candidate_min_score: float = 0.45
@@ -53,8 +54,8 @@ class VisionModelConfig:
     face_min_height: int = 30
 
     # ── Multi-Object Tracker (ByteTrack / Sort) ──
-    tracker_max_lost_frames: int = 15
-    tracker_iou_threshold: float = 0.30
+    tracker_max_lost_frames: int = field(default_factory=lambda: settings.tracking.tracker_max_lost_frames)
+    tracker_iou_threshold: float = field(default_factory=lambda: settings.tracking.tracker_iou_threshold)
 
     # ── Dynamic Class Registry ──
     class_labels: Dict[int, str] = field(default_factory=dict)

@@ -17,6 +17,8 @@ from src.db.session import get_db
 from src.db.models import AppUser as User
 from src.security import verify_password, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from src.api.deps import get_current_user
+from src.core.config import settings
+from src.core.rate_limit import RateLimiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,6 +36,7 @@ class UserCreate(BaseModel):
 async def login_for_access_token(
     db: AsyncSession = Depends(get_db),
     form_data: OAuth2PasswordRequestForm = Depends(),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.auth_per_minute, seconds=60, scope="auth_login")),
 ):
     """Logs in an operator using either their registered email address or username handle."""
     identifier = form_data.username.strip()
@@ -61,7 +64,11 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
-async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register_user(
+    user_in: UserCreate,
+    db: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.auth_per_minute, seconds=60, scope="auth_register")),
+):
     """Registers a new user account, populating both canonical email and display username."""
     raw_identifier = (user_in.email or user_in.username or "").strip()
     if not raw_identifier:

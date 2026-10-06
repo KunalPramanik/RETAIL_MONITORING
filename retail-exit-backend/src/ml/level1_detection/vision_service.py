@@ -253,79 +253,26 @@ class VisionInferenceService:
         line_items: List[Dict[str, Any]],
         confidence_floor: float = 0.70,
     ) -> VisionInferenceResult:
-        """Processes exit lane camera detections with trajectory tracking and IoU disambiguation."""
-        detections = []
-        total_cases = 0
-        total_singles = 0
-        total_units = 0
-        conf_scores = []
-        track_id_seq = 100
-
-        for item in line_items:
-            cases = max(0, int(item.get("cases_qty", 0)))
-            singles = max(0, int(item.get("singles_qty", 0)))
-            pack_size = max(1, int(item.get("pack_size", 1)))
-            prod_id = item.get("product_id")
-            sku = item.get("sku_code", "SKU-UNKNOWN")
-
-            for c_idx in range(cases):
-                conf = round(0.9500 + (c_idx % 4) * 0.012, 4)
-                conf_scores.append(conf)
-                # track_id_seq increment removed in favor of ByteTrack
-
-                base_x = 80 + (c_idx * 160) % 520
-                base_y = 120 + ((c_idx * 70) % 360)
-
-                detections.append(
-                    DetectedBox(
-                        bbox=[base_x, base_y, 190, 160],
-                        class_label="case_full",
-                        product_id=prod_id,
-                        sku_code=sku,
-                        confidence=conf,
-                        pack_size=pack_size,
-                        track_id=track_id_seq,
-                        exit_vector=(0.0, 15.0),
-                    )
-                )
-                total_cases += 1
-                total_units += pack_size
-
-            for s_idx in range(singles):
-                conf = round(0.9100 + (s_idx % 4) * 0.015, 4)
-                conf_scores.append(conf)
-                # track_id_seq increment removed in favor of ByteTrack
-
-                base_x = 100 + ((s_idx * 90) % 480)
-                base_y = 200 + ((s_idx * 80) % 340)
-
-                detections.append(
-                    DetectedBox(
-                        bbox=[base_x, base_y, 75, 85],
-                        class_label="single_unit",
-                        product_id=prod_id,
-                        sku_code=sku,
-                        confidence=conf,
-                        pack_size=1,
-                        track_id=track_id_seq,
-                        exit_vector=(0.0, 12.5),
-                    )
-                )
-                total_singles += 1
-                total_units += 1
-
-        avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 4) if conf_scores else 0.982
-        simulated_latency = 15.40
-
+        """Processes exit lane camera detections strictly from physical frame telemetry.
+        
+        Adheres to Zero-Fake-Data / Zero-Simulation policy:
+        When invoked without physical frame bytes, never fabricates bounding boxes,
+        synthetic coordinates, or fake confidence scores. Returns NO_DETECTION state.
+        """
+        logger.warning(
+            "process_frame_batch invoked with %d line items but no physical camera frame bytes; "
+            "strictly returning zero detections in accordance with Zero-Fake-Data policy.",
+            len(line_items),
+        )
         return VisionInferenceResult(
             model_version=cls.get_model_version(),
-            vision_count=total_units,
-            cases_detected=total_cases,
-            singles_detected=total_singles,
-            vision_confidence=avg_conf,
-            detections=detections,
-            latency_ms=simulated_latency,
-            tracking_accuracy_pct=98.6,
+            vision_count=0,
+            cases_detected=0,
+            singles_detected=0,
+            vision_confidence=0.0,
+            detections=[],
+            latency_ms=0.0,
+            tracking_accuracy_pct=0.0,
         )
 
     @classmethod
@@ -353,7 +300,7 @@ class VisionInferenceService:
                     vision_confidence=0.0,
                     detections=[],
                     latency_ms=0.0,
-                    tracking_accuracy_pct=98.6,
+                    tracking_accuracy_pct=0.0,
                 ),
                 frame_bytes,
             )
@@ -792,7 +739,7 @@ class VisionInferenceService:
                 tid += 1
 
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
-        avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.95
+        avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.0
         annotated_bytes = frame_bytes
 
         return (
@@ -804,7 +751,7 @@ class VisionInferenceService:
                 vision_confidence=avg_conf,
                 detections=detections,
                 latency_ms=latency_ms,
-                tracking_accuracy_pct=98.6,
+                tracking_accuracy_pct=round(avg_conf * 100.0, 1) if conf_scores else 0.0,
                 is_ir_mode=is_ir,
             ),
             annotated_bytes,

@@ -48,6 +48,8 @@ from src.api.deps_auth import require_roles
 from pydantic import BaseModel, Field
 from src.engine.ptz_service import ptz_service, PTZNotSupportedError
 from src.engine.stream_manager import camera_stream_manager
+from src.core.config import settings
+from src.core.rate_limit import RateLimiter
 
 router = APIRouter(prefix="/cameras", tags=["Camera Fleet Management"])
 
@@ -806,6 +808,7 @@ async def test_camera_connection(
     camera_id: str,
     req: Optional[CameraTestConnectionRequest] = None,
     session: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.camera_test_per_minute, seconds=60, scope="camera_test_conn")),
 ):
     """Attempts a real/simulated RTSP stream pull from the camera via media server.
     
@@ -1631,10 +1634,13 @@ async def pair_camera_device(
     rtsp = body.rtspPath or "/live/ch0"
     label = body.label or (f"QR Camera ({body.model or 'Auto-Configured'})")
 
-    if ":8080" in rtsp or rtsp.endswith("/video") or ip.startswith("192.168."):
+    if ":8080" in rtsp or rtsp.endswith("/video"):
         stream_url = f"http://{ip}:8080/video"
+    elif rtsp.startswith("rtsp://") or rtsp.startswith("http://"):
+        stream_url = rtsp
     else:
-        stream_url = f"webrtc://edge-media-server.local:8554/{cam_id}"
+        norm_rtsp = rtsp if rtsp.startswith("/") else f"/{rtsp}"
+        stream_url = f"rtsp://{ip}{norm_rtsp}"
 
     new_cam = Camera(
         camera_id=cam_id,

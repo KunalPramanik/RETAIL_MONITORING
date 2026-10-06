@@ -16,6 +16,7 @@ Reconciles against the authorized invoice manifest and accurately attributes dis
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass, field
 import logging
+from src.core.config import settings
 
 logger = logging.getLogger("secops.engine.sensor_fusion")
 
@@ -62,17 +63,19 @@ class TriSensorFusionEngine:
     def reconcile(
         cls,
         data: TriSensorInput,
-        weight_tolerance_pct: float = 7.5,
+        weight_tolerance_pct: Optional[float] = None,
     ) -> TriSensorReconciliationResult:
         """Reconciles Vision, RFID/Barcode, and Weight against Manifest.
 
         Args:
             data: TriSensorInput containing all channels.
-            weight_tolerance_pct: Acceptable weight margin percentage (default +/- 7.5%).
+            weight_tolerance_pct: Acceptable weight margin percentage (defaults to configured fusion threshold).
 
         Returns:
             TriSensorReconciliationResult with comprehensive audit analysis.
         """
+        if weight_tolerance_pct is None:
+            weight_tolerance_pct = settings.fusion.scale_weight_tolerance_pct * 100.0
         vision_total = sum(data.vision_counts.values())
         manifest_total = sum(data.manifest_expected.values())
 

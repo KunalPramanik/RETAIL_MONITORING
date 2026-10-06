@@ -43,6 +43,8 @@ from src.engine.verdict import VerdictEngine
 from src.engine.alarm import AlarmCoordinator
 from src.realtime.hub import ws_hub
 from src.observability.metrics import metrics
+from src.api.deps_auth import require_roles
+from src.core.config import settings
 import base64
 import numpy as np
 import cv2
@@ -147,20 +149,26 @@ async def ingest_exit_event(
         face_confidence = face_result.similarity
         face_decision = face_result.decision
 
-    # 4. RFID Gate Antenna Processing
-    simulated_tags = []
-    for item in prepared_line_items:
-        sku_prefix = item["sku_code"].replace("SKU-", "")
-        count = (item["cases_qty"] * item["pack_size"]) + item["singles_qty"]
-        for i in range(count):
-            simulated_tags.append(f"{sku_prefix}-{i:03d}")
-
-    if req.simulateRfidAttenuation:
-        # Drop 15% of tags to simulate metallic shielding / blindspot
-        simulated_tags = simulated_tags[:int(len(simulated_tags) * 0.85)]
+    # 4. RFID Gate Antenna Processing (Strict Real Hardware Readings in Production)
+    if req.rfidTags is not None:
+        effective_tags = list(req.rfidTags)
+    elif settings.ENVIRONMENT != "production" or settings.SECOPS_DEBUG:
+        # Non-production test fallback only when physical RFID portal is emulated
+        simulated_tags = []
+        for item in prepared_line_items:
+            sku_prefix = item["sku_code"].replace("SKU-", "")
+            count = (item["cases_qty"] * item["pack_size"]) + item["singles_qty"]
+            for i in range(count):
+                simulated_tags.append(f"{sku_prefix}-{i:03d}")
+        if req.simulateRfidAttenuation:
+            simulated_tags = simulated_tags[:int(len(simulated_tags) * 0.85)]
+        effective_tags = simulated_tags
+    else:
+        # In strict production, if no physical RFID portal read occurred, effective tags is empty
+        effective_tags = []
 
     rfid_result = RfidService.process_reads(
-        simulated_tags,
+        effective_tags,
         antenna_id=f"ANT-{req.laneId}-01",
         expected_units=vision_result.vision_count,
     )
@@ -468,8 +476,15 @@ async def ingest_exit_event(
 async def inject_scenario(
     scenario_type: str = "CLEAN_PASS",
     session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN"])),
 ):
-    """Simulates an edge scenario dynamically utilizing currently registered lanes, products, and personnel."""
+    """Simulates an edge scenario strictly restricted to non-production environments."""
+    from src.core.config import settings
+    if settings.ENVIRONMENT == "production" and not settings.SECOPS_DEBUG:
+        raise HTTPException(
+            status_code=403,
+            detail="Simulated scenario injection is strictly forbidden in production mode.",
+        )
     # Ensure at least one lane exists
     lane_res = await session.execute(select(Lane))
     lanes = lane_res.scalars().all()

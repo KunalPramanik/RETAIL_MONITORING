@@ -16,6 +16,8 @@ from src.db.audit import log_audit_entry
 from src.schemas.invoices import InvoiceResponse, InvoiceLineItemSchema, InvoiceCreateSchema
 from src.ml.ocr.invoice_ocr_service import OcrService
 from src.realtime.hub import ws_hub
+from src.core.config import settings
+from src.core.rate_limit import RateLimiter
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
@@ -113,6 +115,7 @@ async def upload_invoice_bill(
     linkedEventId: Optional[str] = Form(None),
     lineItemsJson: Optional[str] = Form(None),
     session: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.ocr_per_minute, seconds=60, scope="invoice_ocr_upload")),
 ):
     """Uploads hard-copy bill or manifest image, runs OCR parsing, saves to database, and broadcasts live."""
     uploads_dir = os.path.join(os.getcwd(), "uploads", "invoices")

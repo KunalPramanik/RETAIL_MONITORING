@@ -247,10 +247,10 @@ class DeskManifestScanner:
                 if v > 0:
                     line_items[k] = v
 
-        conf = 0.92 if line_items and bol_match else (0.75 if line_items else 0.40)
+        conf = 0.92 if line_items and bol_match else (0.75 if line_items else 0.0)
 
         return ExtractedManifestDocument(
-            bol_number=bol_num,
+            bol_number=bol_num if bol_match else "UNKNOWN",
             carrier_name=carrier,
             line_items=line_items,
             raw_text=raw_text,
@@ -274,8 +274,32 @@ class DeskManifestScanner:
             manifest.is_deskewed = (corners is not None)
             return manifest
 
-        # Default simulated OCR parsing from warped image
-        manifest = cls.parse_manifest_text("MANIFEST #BOL-2026-9812\nCARRIER: Rajesh Kumar\nCEMENT_BAG : 40\nCARTON_BOX : 20")
+        # Execute real OCR extraction on the deskewed/warped document frame
+        extracted_text = ""
+        try:
+            from src.ml.ocr.invoice_ocr_service import OcrService
+            success, enc_bytes = cv2.imencode(".jpg", warped)
+            if success:
+                ocr_result = OcrService.extract_from_image(enc_bytes.tobytes())
+                if ocr_result.line_items and len(ocr_result.raw_ocr_text) > 0:
+                    extracted_text = ocr_result.raw_ocr_text
+        except Exception as ocr_err:
+            logger.debug("Live manifest OCR extraction unavailable or failed: %s", ocr_err)
+            extracted_text = ""
+
+        if extracted_text.strip():
+            manifest = cls.parse_manifest_text(extracted_text)
+        else:
+            manifest = ExtractedManifestDocument(
+                bol_number="UNKNOWN",
+                carrier_name=None,
+                line_items={},
+                raw_text="",
+                confidence=0.0,
+                is_deskewed=(corners is not None),
+                rectified_image=warped,
+            )
+
         manifest.rectified_image = warped
         manifest.is_deskewed = (corners is not None)
         return manifest

@@ -56,20 +56,33 @@ class AsyncModbusTCPDriver:
             logger.info("Connected to Modbus TCP gateway at %s:%d", self.host, self.port)
             return True
         except Exception as e:
-            logger.warning("Modbus gateway %s:%d unreachable (%s), activating high-fidelity simulator", self.host, self.port, e)
-            self._simulated = True
-            self._is_connected = True
-            return True
+            from src.core.config import settings
+            if settings.ENVIRONMENT != "production" or settings.SECOPS_DEBUG:
+                logger.warning("Modbus gateway %s:%d unreachable (%s); test environment activating mock relay", self.host, self.port, e)
+                self._simulated = True
+                self._is_connected = True
+                return True
+            logger.error("Modbus gateway %s:%d unreachable (%s). Industrial relay offline.", self.host, self.port, e)
+            self._simulated = False
+            self._is_connected = False
+            return False
 
     async def write_coil(self, coil_address: int, value: bool) -> bool:
         """Writes single coil state (FC05). True = 0xFF00 (Energize), False = 0x0000 (De-energize)."""
         t0 = time.perf_counter()
         reader = self._reader
         writer = self._writer
-        if self._simulated or not writer or not reader:
-            # Simulated edge relay behavior with sub-1ms response
+        if self._simulated:
+            from src.core.config import settings
+            if settings.ENVIRONMENT == "production" and not settings.SECOPS_DEBUG:
+                logger.error("Simulation prohibited in production: refusing mock coil actuation.")
+                return False
             await asyncio.sleep(0.001)
             return True
+
+        if not self._is_connected or not writer or not reader:
+            logger.error("Cannot actuate coil %d: Modbus gateway %s:%d is disconnected.", coil_address, self.host, self.port)
+            return False
 
         self._trans_id = (self._trans_id + 1) & 0xFFFF
         coil_val = 0xFF00 if value else 0x0000

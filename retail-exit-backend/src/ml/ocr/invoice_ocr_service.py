@@ -293,45 +293,38 @@ class OcrService:
                     )
                 )
 
-        # Populate from catalog if provided and no text lines could be recognized
-        if not line_items:
-            if catalog_products:
-                for idx, p in enumerate(catalog_products[:3], 1):
-                    pack = max(1, int(p.get("pack_size", 12)))
-                    line_items.append(
-                        ExtractedLineItem(
-                            sku_code=str(p.get("sku_code", "SKU-DEFAULT")),
-                            description=str(p.get("name", "Retail Item")),
-                            cases_declared=idx,
-                            units_per_case=pack,
-                            total_units=idx * pack,
-                            confidence=0.9250,
-                            status="MATCHED",
-                        )
-                    )
-
+        # In strict adherence to Zero-Fake-Data policy:
+        # If no physical text was recognized by OCR, never fabricate line items from catalog!
         total_units_sum = sum(item.total_units for item in line_items)
-        avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 4) if conf_scores else (0.9250 if line_items else 0.0)
+        avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 4) if conf_scores else 0.0
 
         # Build raw OCR text transcript
-        inv_num = detected_invoice or default_invoice_num or "BOL-UNSPECIFIED"
-        carrier_str = detected_carrier or default_carrier or "Unassigned Carrier"
-        dest_str = detected_dest or "Store Exit Lane"
+        if len(extracted_lines) == 0:
+            raw_lines = [
+                f"=== {cls.MODEL_VERSION} EXTRACTION REPORT ===",
+                "STATUS: NO_TEXT_DETECTED",
+                "RECOGNIZED LINES: 0",
+                "MEAN OCR CONFIDENCE: 0.00%",
+            ]
+        else:
+            inv_num = detected_invoice or default_invoice_num or "BOL-UNSPECIFIED"
+            carrier_str = detected_carrier or default_carrier or "UNKNOWN"
+            dest_str = detected_dest or "Store Exit Lane"
 
-        raw_lines = [
-            f"=== {cls.MODEL_VERSION} EXTRACTION REPORT ===",
-            f"BILL OF LADING / MANIFEST: {inv_num}",
-            f"CARRIER: {carrier_str}",
-            f"DESTINATION: {dest_str}",
-            f"RECOGNIZED LINES: {len(extracted_lines)}",
-            "--- PARSED LINE ITEMS ---",
-        ]
-        for idx, item in enumerate(line_items, 1):
-            raw_lines.append(
-                f"[LINE {idx}] {item.sku_code} | {item.description} | {item.cases_declared} CS @ {item.units_per_case}/CS = {item.total_units} EA ({item.confidence*100:.1f}%)"
-            )
-        raw_lines.append(f"TOTAL DECLARED UNITS: {total_units_sum}")
-        raw_lines.append(f"MEAN OCR CONFIDENCE: {avg_conf * 100:.2f}%")
+            raw_lines = [
+                f"=== {cls.MODEL_VERSION} EXTRACTION REPORT ===",
+                f"BILL OF LADING / MANIFEST: {inv_num}",
+                f"CARRIER: {carrier_str}",
+                f"DESTINATION: {dest_str}",
+                f"RECOGNIZED LINES: {len(extracted_lines)}",
+                "--- PARSED LINE ITEMS ---",
+            ]
+            for idx, item in enumerate(line_items, 1):
+                raw_lines.append(
+                    f"[LINE {idx}] {item.sku_code} | {item.description} | {item.cases_declared} CS @ {item.units_per_case}/CS = {item.total_units} EA ({item.confidence*100:.1f}%)"
+                )
+            raw_lines.append(f"TOTAL DECLARED UNITS: {total_units_sum}")
+            raw_lines.append(f"MEAN OCR CONFIDENCE: {avg_conf * 100:.2f}%")
 
         return OcrExtractionResult(
             model_version=cls.MODEL_VERSION,

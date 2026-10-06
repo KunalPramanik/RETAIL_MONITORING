@@ -20,6 +20,7 @@ from src.db.models import (
     Alert,
     get_utc_now,
 )
+from src.core.config import settings
 
 logger = logging.getLogger("secops.engine.tripwire")
 
@@ -47,10 +48,10 @@ class TripwireEngine:
 
     # Anti-duplicate crossing locks: (tripwire_id, track_id) -> {"direction": direction, "ts": timestamp}
     _crossing_locks: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    LOCK_COOLDOWN_SEC: float = 3.5
+    LOCK_COOLDOWN_SEC: float = settings.tripwire.lock_cooldown_sec
 
-    # Anti-tailgating temporal threshold (1.2 seconds between unauthorized successive entries)
-    TAILGATING_WINDOW_SEC: float = 1.2
+    # Anti-tailgating temporal threshold (seconds between unauthorized successive entries)
+    TAILGATING_WINDOW_SEC: float = settings.tripwire.tailgating_window_sec
 
     @classmethod
     def should_allow_crossing(cls, tripwire_id: str, track_id: str, direction: str) -> bool:

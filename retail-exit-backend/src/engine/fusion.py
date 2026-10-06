@@ -14,6 +14,7 @@ Enhancements:
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 import math
+from src.core.config import settings
 
 
 @dataclass
@@ -39,11 +40,11 @@ class FusionResult:
 class MultiSensorFusionEngine:
     METHOD_VERSION = "weighted_vote_v2.2+adaptive-bayesian"
 
-    # Baseline nominal channel weights (sum = 1.00)
+    # Baseline nominal channel weights (centralized, configurable via environment)
     DEFAULT_WEIGHTS = {
-        "vision": 0.50,
-        "rfid": 0.30,
-        "scale": 0.20,
+        "vision": settings.fusion.baseline_vision_weight,
+        "rfid": settings.fusion.baseline_rfid_weight,
+        "scale": settings.fusion.baseline_scale_weight,
     }
 
     @classmethod

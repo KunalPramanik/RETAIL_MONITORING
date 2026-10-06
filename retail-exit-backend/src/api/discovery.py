@@ -113,8 +113,17 @@ async def trigger_scan_now():
 
 
 @router.post("/simulate")
-async def simulate_discovery(req: SimulateDiscoveryRequest):
-    """Simulation helper for automated tests and dev setups."""
+async def simulate_discovery(
+    req: SimulateDiscoveryRequest,
+    _role: str = Depends(require_roles(["ADMIN"])),
+):
+    """Simulation helper strictly restricted to test/dev setups. Forbidden in production."""
+    from src.core.config import settings
+    if settings.ENVIRONMENT == "production" and not settings.SECOPS_DEBUG:
+        raise HTTPException(
+            status_code=403,
+            detail="Hardware simulation endpoints are strictly forbidden in production mode.",
+        )
     if req.deviceType == "USB":
         dev = usb_service.simulate_usb_event(
             action="ATTACH",

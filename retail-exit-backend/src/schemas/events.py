@@ -86,6 +86,8 @@ class IngestEventRequest(BaseModel):
     declaredUnits: Optional[int] = None
     simulateRfidAttenuation: bool = False
     rawScaleWeightKg: Optional[float] = None
+    rfidTags: Optional[List[str]] = None
+    rawVisionDetections: Optional[List[Dict[str, Any]]] = None
     clothingTopColor: Optional[str] = None
     clothingBottomColor: Optional[str] = None
     buildCategory: Optional[str] = None

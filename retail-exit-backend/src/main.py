@@ -121,6 +121,7 @@ async def lifespan(app: FastAPI):
     logger.info("Database schema initialized with clean baseline configuration.")
 
     # Start background tasks
+    await ws_hub.start()
     heartbeat_task = asyncio.create_task(periodic_ws_heartbeat())
     camera_monitor_task = asyncio.create_task(periodic_camera_monitor())
     camera_worker.start()
@@ -138,6 +139,7 @@ async def lifespan(app: FastAPI):
     await camera_worker.stop()
     await discovery_service.stop()
     await usb_service.stop()
+    await ws_hub.stop()
 
     await asyncio.gather(heartbeat_task, camera_monitor_task, return_exceptions=True)
 

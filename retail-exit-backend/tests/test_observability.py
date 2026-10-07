@@ -1,10 +1,10 @@
-"""Phase 7 Automated Verification Suite: Observability, Metrics, and Tracing
+"""Observability, Prometheus Metrics, and Tracing Test Suite
 
-Verifies:
-1. Health endpoint exposes operational telemetry (F13).
-2. Prometheus metrics exporter formats compliant text-based time series (F13).
-3. End-to-end correlation ID middleware propagation and preservation (F13).
-4. Standardized structured error handling contracts (F14).
+Covers:
+- Health endpoint operational telemetry contract
+- Prometheus plain-text metrics exposition format
+- End-to-end correlation ID middleware propagation and preservation
+- Standardized structured error handling contracts
 """
 
 import pytest

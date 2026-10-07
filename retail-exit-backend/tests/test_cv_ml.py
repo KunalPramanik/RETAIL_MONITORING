@@ -1,7 +1,7 @@
-"""Phase 5 CV / ML Pipeline Correctness & Anti-Hallucination Test Suite
+"""Computer Vision, ByteTrack, and ML Inference Verification Test Suite
 
 Covers:
-- Zero fabrication on blank, black, or corrupted frames
+- Robustness on blank, black, or corrupted frames
 - Strict typed zero-state returns (vision_confidence=0.0, detections=[])
 - ByteTrack track lifecycle and lost-track pruning
 - Face recognition rejection of blank/faceless frames without matching roster

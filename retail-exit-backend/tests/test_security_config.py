@@ -1,13 +1,13 @@
-"""Phase 2 Automated Verification Suite: Security, Rate Limiting, and Config Centralization
+"""Security, Rate Limiting, and Centralized Configuration Test Suite
 
-Verifies:
-1. Centralized configuration hierarchy with environment variable overrides (F11).
-2. Sliding-window rate limiter enforcement on sensitive routes (F10).
-3. Motion detection configuration and dynamic debounce (F7).
-4. Camera fleet input validation and SSRF blocking (F9).
-5. VerdictEngine dynamic threshold configuration (F11).
-6. Distributed WebSocket hub resilience and in-memory fallback.
-7. Authentic camera stream URL construction (zero fictitious WebRTC URLs).
+Covers:
+- Centralized configuration hierarchy with environment variable overrides.
+- Sliding-window rate limiter enforcement on sensitive endpoints.
+- Motion detection configuration and dynamic debounce windows.
+- Camera fleet input validation and SSRF defenses.
+- VerdictEngine dynamic threshold configuration.
+- Distributed WebSocket hub resilience and in-memory fallback.
+- Authentic camera stream URL construction.
 """
 
 import pytest

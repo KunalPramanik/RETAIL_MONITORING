@@ -1,8 +1,8 @@
-"""Phase 3 Resilience & High-Availability Verification Test Suite
+"""Camera Fleet Resilience & Fault Tolerance Test Suite
 
 Covers:
-- F2: Multi-camera batch transaction isolation (isolated sessions preventing rollback contagion)
-- F8: Inference watchdog timeout and 3-state circuit breaker protection against model stalls
+- Multi-camera batch transaction isolation (isolated sessions preventing rollback contagion)
+- Inference watchdog timeout and 3-state circuit breaker protection against model stalls
 """
 
 import asyncio

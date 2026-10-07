@@ -1,82 +1,101 @@
-﻿# SEC-OPS 2.0: Retail Exit Monitoring Platform
+# SEC-OPS 2.0: Retail Exit Monitoring Platform
 
 An enterprise-grade, AI-powered video analytics and loss prevention platform designed for high-throughput retail exit lanes.
 
-## Enterprise Architecture (V8)
-The system has been completely overhauled for 100% production readiness:
-*   Frontend: Migrated from React/Vite to a secure, server-rendered Next.js (App Router) framework.
-*   Database: Replaced single-file SQLite with a fully concurrent PostgreSQL database managed by Alembic migrations.
-*   Security: APIs are no longer open. Implemented strict JWT Authentication and Role-Based Access Control (RBAC) via bcrypt.
-*   Tracking: Integrated ByteTrack (Hungarian matching + IoU) to solve occlusion and double-counting defects.
-*   Infrastructure: Fully dynamic configuration (.env driven) with zero hardcoding. Ready for deployment via docker-compose.
+## Enterprise Architecture
+
+The system has been built for 100% production readiness:
+* **Frontend:** Secure, server-rendered Next.js (App Router) dashboard with real-time WebSocket telemetry.
+* **Database:** Fully concurrent PostgreSQL database managed by Alembic migrations with connection pooling.
+* **Security:** Strict JWT Authentication and Role-Based Access Control (RBAC) with bcrypt password hashing and sliding-window rate limiting.
+* **Computer Vision & Tracking:** ByteTrack (Hungarian matching + IoU) with multi-sensor fusion, eliminating occlusion and double-counting defects.
+* **Infrastructure:** 100% dynamic environment configuration (`.env` driven) ready for deployment via Docker Compose and Nginx reverse proxy.
 
 ---
 
-## How to Run the Full System (100% Production Ready)
+## Getting Started
 
-This system is decoupled into an API backend and a Next.js frontend, orchestrated via Docker. Follow these exact steps to launch the stack on a fresh machine.
+The platform is decoupled into a FastAPI backend and a Next.js frontend, orchestrated via Docker. Follow these steps to launch the stack.
 
 ### Prerequisites
-*   Docker & Docker Compose
-*   Node.js (v18+)
-*   Python (3.10+) with uv package manager installed (pip install uv)
+* Docker & Docker Compose
+* Node.js (v18+)
+* Python (3.10+) with `uv` package manager (`pip install uv`)
 
 ### Step 1: Clone and Configure Environment
-`ash
+```bash
 git clone https://github.com/KunalPramanik/RETAIL_MONITORING.git
-cd RETAIL_MONITORING/retail-exit-backend
+cd RETAIL_MONITORING
 
 # Copy the dynamic environment template
 cp .env.example .env
-`
-*Note: In production, edit the .env file to set your own secure JWT_SECRET_KEY.*
+```
+*Note: In production, edit the `.env` file to set your own secure secrets (e.g. `JWT_SECRET_KEY`, database credentials).*
 
 ### Step 2: Launch Infrastructure (PostgreSQL & Redis)
-The backend relies on PostgreSQL for persistent state and Redis for Celery queues/WebSockets.
-`ash
-cd ..
+The backend relies on PostgreSQL for persistent state and Redis for Celery queues and WebSocket pub/sub.
+```bash
 docker-compose up -d db redis
-`
-*Wait 10 seconds for the databases to initialize.*
+```
+*Wait a few seconds for the databases to complete initialization.*
 
 ### Step 3: Run Database Migrations
-We use Alembic to ensure the PostgreSQL schema is properly built.
-`ash
+Run Alembic migrations to build the schema:
+```bash
 cd retail-exit-backend
 uv pip install -r pyproject.toml
 uv run alembic upgrade head
-`
-*On the first run, this will dynamically provision a SUPER_ADMIN account.*
+```
 
 ### Step 4: Boot the FastAPI Backend
-`ash
+```bash
 uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
-`
-*The backend is now live at http://localhost:8000. API Docs are at http://localhost:8000/docs.*
+```
+*The backend is live at http://localhost:8000. Interactive API documentation is available at http://localhost:8000/docs.*
 
 ### Step 5: Boot the Next.js Dashboard
 In a new terminal window, launch the frontend:
-`ash
+```bash
 cd retail-exit-nextjs
 npm install
 npm run dev
-`
-*The dashboard is now live at http://localhost:3000.*
+```
+*The dashboard is live at http://localhost:3000.*
 
 ---
 
-## Initial Login Credentials
-Because the API is secured by JWT, you must log in to the Dashboard to view camera feeds and analytics.
+## Initial Credentials
+Because the API is secured by JWT, you must log in to the dashboard to view camera feeds and analytics.
 
-*   **Username:** admin
-*   **Password:** admin123
+* **Username:** `admin`
+* **Password:** `admin123`
 
-*(You will be prompted to change this password in a production environment).*
+*(Change this default password immediately in production settings).*
 
-## System Architecture
+---
 
-*   Edge Layer: IP Camera RTSP -> H.264 IngestWorker
-*   Core AI Engine: Decoded Frames -> VisionService -> ObjectDetection (YOLOX-Tiny) & BiometricEngine (InsightFace)
-*   Tracking: Bounding Boxes -> ByteTrack (IoU + Hungarian) -> DispatchEngine
-*   Backend Services: DispatchEngine -> FastAPI (JWT Secured) -> PostgreSQL & Redis Queue
-*   Presentation: FastAPI -> WebSockets / HTTP -> Next.js Dashboard
+## Core Architecture Pipeline
+
+```
+Edge Layer (RTSP Streams)
+       │
+       ▼
+Vision Inference (YOLOX-Tiny & Biometrics)
+       │
+       ▼
+Multi-Object Tracking (ByteTrack Hungarian + IoU)
+       │
+       ▼
+Tri-Sensor Fusion & Dispatch Engine
+       │
+       ▼
+FastAPI Services (JWT, PostgreSQL, Redis)
+       │
+       ▼
+Next.js Operations Dashboard (WebSockets & Telemetry)
+```
+
+For detailed architectural, deployment, and security specifications, see:
+* [Architecture Guide](docs/ARCHITECTURE.md)
+* [Deployment Guide](docs/DEPLOYMENT.md)
+* [Security Specification](docs/SECURITY.md)

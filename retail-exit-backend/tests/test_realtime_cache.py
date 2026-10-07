@@ -1,8 +1,8 @@
-"""Phase 4 Realtime Gateway & Cache Optimization Test Suite
+"""Real-Time WebSocket Gateway & Distributed Cache Invalidation Test Suite
 
 Covers:
-- F4: WebSocket gateway resilience (dead-connection pruning, send timeout, heartbeat keep-alive, ping-pong, token authentication)
-- F6: Non-blocking cache invalidation (SCAN / UNLINK cursor pagination replacing blocking KEYS, async flushdb)
+- WebSocket gateway resilience (dead-connection pruning, send timeout, heartbeat keep-alive, ping-pong, token authentication)
+- Non-blocking cache invalidation (SCAN / UNLINK cursor pagination replacing blocking KEYS, async flushdb)
 """
 
 import asyncio

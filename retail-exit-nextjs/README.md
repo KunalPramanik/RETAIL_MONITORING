@@ -1,4 +1,4 @@
-# SEC-OPS 2.0 â€” Retail Exit Monitoring & Inventory Intelligence Console
+# SEC-OPS 2.0 — Retail Exit Monitoring & Intelligence Console
 
 Modern, high-performance web dashboard for real-time retail exit monitoring, multi-sensor consensus fusion, and loss prevention auditing. Powered by **Next.js 16 (App Router)**, **TypeScript**, **Tailwind CSS**, and real-time WebSocket telemetry.
 
@@ -69,22 +69,20 @@ npm run start
 
 ```
 retail-exit-nextjs/
-â”œâ”€â”€ src/
-â”‚   â”œâ”€â”€ app/
-â”‚   â”‚   â”œâ”€â”€ (dashboard)/
-â”‚   â”‚   â”‚   â”œâ”€â”€ alerts/           # Alert management, triage & turnstile unlock
-â”‚   â”‚   â”‚   â”œâ”€â”€ analytics/        # Shrinkage trends & sensor health KPIs
-â”‚   â”‚   â”‚   â”œâ”€â”€ cameras/          # Live CCTV camera grid & single stream forensic
-â”‚   â”‚   â”‚   â”œâ”€â”€ employees/        # Carrier identity roster & facial vectors
-â”‚   â”‚   â”‚   â”œâ”€â”€ events/           # Exit event logs & forensic evidence artifacts
-â”‚   â”‚   â”‚   â”œâ”€â”€ materials/        # SKU catalog & weight tolerance definitions
-â”‚   â”‚   â”‚   â”œâ”€â”€ reports/          # Daily loss prevention audit digest & Excel export
-â”‚   â”‚   â”‚   â”œâ”€â”€ settings/         # Camera registration, thresholds & USB fleet
-â”‚   â”‚   â”‚   â”œâ”€â”€ wall/             # Smart Wall multi-monitor command center
-â”‚   â”‚   â”‚   â””â”€â”€ layout.tsx        # Dashboard shell with nav & live status
-â”‚   â”‚   â””â”€â”€ page.tsx              # Main overview command center
-â”‚   â”œâ”€â”€ components/              # Modular UI components (modals, players, charts)
-â”‚   â”œâ”€â”€ hooks/                   # React hooks (useWebSocket, useDebounce)
-â”‚   â””â”€â”€ lib/                     # API client & utility functions
-â””â”€â”€ package.json
+├── src/
+│   ├── app/
+│   │   ├── (dashboard)/
+│   │   │   ├── alerts/           # Alert management, triage & turnstile unlock
+│   │   │   ├── cameras/          # Live CCTV camera grid & single stream forensic
+│   │   │   ├── employees/        # Carrier identity roster & facial vectors
+│   │   │   ├── events/           # Exit event logs & forensic evidence artifacts
+│   │   │   ├── invoices/         # Invoice ingestion & verification
+│   │   │   ├── products/         # Product catalog & SKU definitions
+│   │   │   ├── reports/          # Daily loss prevention audit digest & Excel export
+│   │   │   ├── settings/         # Camera registration, thresholds & USB fleet
+│   │   │   └── layout.tsx        # Dashboard shell with nav & live status
+│   │   └── page.tsx              # Main overview command center
+│   ├── components/               # Modular UI components (modals, players, charts)
+│   └── lib/                      # API client & utility functions
+└── package.json
 ```

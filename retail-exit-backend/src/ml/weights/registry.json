@@ -30,7 +30,7 @@
     "yolox-retail-finetuned-v1.2.0": {
       "model_version": "yolox-retail-finetuned-v1.2.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-164C1B60)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.2.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.2.0.onnx",
       "status": "archived",
       "created_at": "2026-09-22T09:11:14.543939+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -54,7 +54,7 @@
     "yolox-retail-finetuned-v1.13.0": {
       "model_version": "yolox-retail-finetuned-v1.13.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-147CF751)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.13.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.13.0.onnx",
       "status": "archived",
       "created_at": "2026-09-25T06:59:50.133525+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -78,7 +78,7 @@
     "yolox-retail-finetuned-v1.14.0": {
       "model_version": "yolox-retail-finetuned-v1.14.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-1D044752)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.14.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.14.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T07:18:26.009898+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -102,7 +102,7 @@
     "yolox-retail-finetuned-v1.15.0": {
       "model_version": "yolox-retail-finetuned-v1.15.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-F98C97CA)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.15.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.15.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T07:18:26.607660+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -126,7 +126,7 @@
     "yolox-retail-finetuned-v1.16.0": {
       "model_version": "yolox-retail-finetuned-v1.16.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-BB48748C)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.16.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.16.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T07:21:29.618686+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -150,7 +150,7 @@
     "yolox-retail-finetuned-v1.17.0": {
       "model_version": "yolox-retail-finetuned-v1.17.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-387BDE61)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.17.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.17.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T07:21:29.989486+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -174,7 +174,7 @@
     "yolox-retail-finetuned-v1.18.0": {
       "model_version": "yolox-retail-finetuned-v1.18.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-3F15E828)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.18.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.18.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T07:23:59.153598+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -198,7 +198,7 @@
     "yolox-retail-finetuned-v1.19.0": {
       "model_version": "yolox-retail-finetuned-v1.19.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-904ADF67)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.19.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.19.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T07:23:59.536803+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -222,7 +222,7 @@
     "yolox-retail-finetuned-v1.20.0": {
       "model_version": "yolox-retail-finetuned-v1.20.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-878366DB)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.20.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.20.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T07:27:59.449954+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -246,7 +246,7 @@
     "yolox-retail-finetuned-v1.21.0": {
       "model_version": "yolox-retail-finetuned-v1.21.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-55AA91A8)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.21.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.21.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T07:27:59.829223+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -270,7 +270,7 @@
     "yolox-retail-finetuned-v1.22.0": {
       "model_version": "yolox-retail-finetuned-v1.22.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-AD92BB3E)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.22.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.22.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T08:03:21.206524+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -294,7 +294,7 @@
     "yolox-retail-finetuned-v1.23.0": {
       "model_version": "yolox-retail-finetuned-v1.23.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-51ABD10B)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.23.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.23.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T08:03:21.894494+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -318,7 +318,7 @@
     "yolox-retail-finetuned-v1.24.0": {
       "model_version": "yolox-retail-finetuned-v1.24.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-DA204C98)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.24.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.24.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T08:04:12.222388+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -342,7 +342,7 @@
     "yolox-retail-finetuned-v1.25.0": {
       "model_version": "yolox-retail-finetuned-v1.25.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-7CA72647)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.25.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.25.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T08:04:12.656780+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -366,7 +366,7 @@
     "yolox-retail-finetuned-v1.26.0": {
       "model_version": "yolox-retail-finetuned-v1.26.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-109C888C)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.26.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.26.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T09:20:38.119498+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -390,7 +390,7 @@
     "yolox-retail-finetuned-v1.27.0": {
       "model_version": "yolox-retail-finetuned-v1.27.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-C205EC52)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.27.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.27.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T09:20:38.530019+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -414,7 +414,7 @@
     "yolox-retail-finetuned-v1.28.0": {
       "model_version": "yolox-retail-finetuned-v1.28.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-85EC92AF)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.28.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.28.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-25T09:28:15.302155+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -438,7 +438,7 @@
     "yolox-retail-finetuned-v1.29.0": {
       "model_version": "yolox-retail-finetuned-v1.29.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-D59D2C77)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.29.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.29.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-25T09:28:15.701850+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -462,7 +462,7 @@
     "yolox-retail-finetuned-v1.30.0": {
       "model_version": "yolox-retail-finetuned-v1.30.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-C9546232)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.30.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.30.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-30T08:17:22.692556+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -486,7 +486,7 @@
     "yolox-retail-finetuned-v1.31.0": {
       "model_version": "yolox-retail-finetuned-v1.31.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-F222994D)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.31.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.31.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-30T08:17:23.074222+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -510,7 +510,7 @@
     "yolox-retail-finetuned-v1.32.0": {
       "model_version": "yolox-retail-finetuned-v1.32.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-CD5A39C5)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.32.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.32.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-30T08:31:52.583021+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -534,7 +534,7 @@
     "yolox-retail-finetuned-v1.33.0": {
       "model_version": "yolox-retail-finetuned-v1.33.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-42CB21FA)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\src\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.33.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.33.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-30T08:31:52.974560+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -558,7 +558,7 @@
     "yolox-retail-finetuned-v1.34.0": {
       "model_version": "yolox-retail-finetuned-v1.34.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-19BA09C4)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.34.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.34.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-30T10:32:35.172841+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -582,7 +582,7 @@
     "yolox-retail-finetuned-v1.35.0": {
       "model_version": "yolox-retail-finetuned-v1.35.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-34A9591F)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.35.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.35.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-30T10:32:35.563757+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -606,7 +606,7 @@
     "yolox-retail-finetuned-v1.36.0": {
       "model_version": "yolox-retail-finetuned-v1.36.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-EE6FDEB9)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.36.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.36.0.onnx",
       "status": "candidate",
       "created_at": "2026-09-30T10:41:26.396851+00:00",
       "base_model": "megvii-yolox-tiny",
@@ -630,7 +630,7 @@
     "yolox-retail-finetuned-v1.37.0": {
       "model_version": "yolox-retail-finetuned-v1.37.0",
       "model_name": "YOLOX-Retail Fine-Tuned (Run TRN-43F8F144)",
-      "weights_path": "C:\\Users\\DELL\\.gemini\\antigravity\\scratch\\N\\retail-exit-backend\\ml\\weights\\checkpoints\\yolox-retail-finetuned-v1.37.0.onnx",
+      "weights_path": "src/ml/weights/checkpoints/yolox-retail-finetuned-v1.37.0.onnx",
       "status": "shadow",
       "created_at": "2026-09-30T10:41:26.791642+00:00",
       "base_model": "megvii-yolox-tiny",

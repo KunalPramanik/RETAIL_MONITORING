@@ -100,6 +100,18 @@ class FaceRecognitionService:
         is_ir_mode: bool = False,
     ) -> FaceMatchResult:
         """Runs 1:N cosine similarity search with multi-frame temporal voting across active roster."""
+        from src.core.config import settings
+        if not getattr(settings.biometric, "enabled", False):
+            return FaceMatchResult(
+                matched_employee_id=None,
+                employee_name=None,
+                similarity=0.0,
+                decision="DISABLED",
+                model_version=cls.MODEL_VERSION,
+                unauthorized_alert_needed=False,
+                frames_evaluated=0,
+            )
+
         threshold = match_threshold or cls.MATCH_THRESHOLD
 
         if not probe_embedding or not enrolled_employees:
@@ -223,6 +235,9 @@ class FaceRecognitionService:
                 frames_evaluated=len(frames),
             )
 
+    # Convenience alias for match_carrier
+    match_face = match_carrier
+
     @classmethod
     def detect_and_match_faces(
         cls,
@@ -238,6 +253,24 @@ class FaceRecognitionService:
         container_boxes: Optional[List[List[int]]] = None,
     ) -> Tuple[FaceMatchResult, Optional[bytes], List[List[int]]]:
         """Detects faces using InsightFace SCRFD and verifies liveness before ArcFace 512-d extraction."""
+        from src.core.config import settings
+        if not getattr(settings.biometric, "enabled", False):
+            return (
+                FaceMatchResult(
+                    matched_employee_id=None,
+                    employee_name=None,
+                    similarity=0.0,
+                    decision="DISABLED",
+                    model_version=cls.MODEL_VERSION,
+                    unauthorized_alert_needed=False,
+                    frames_evaluated=0,
+                    liveness_score=0.0,
+                    liveness_decision="DISABLED",
+                ),
+                None,
+                [],
+            )
+
         nparr = np.frombuffer(frame_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 

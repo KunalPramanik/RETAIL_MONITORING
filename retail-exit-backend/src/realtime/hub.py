@@ -52,6 +52,20 @@ class ConnectionManager:
     async def stop(self):
         """Cleanly terminates cluster listeners and disposes connections."""
         self._is_running = False
+
+        # Gracefully close all active client WebSocket connections with code 1001 (Going Away)
+        if self.active_connections:
+            conns = list(self.active_connections)
+            self.active_connections.clear()
+            for ws in conns:
+                try:
+                    await asyncio.wait_for(
+                        ws.close(code=1001, reason="Server shutting down"),
+                        timeout=1.0,
+                    )
+                except Exception as close_err:
+                    logger.debug("Error closing WebSocket during shutdown: %s", close_err)
+
         if self._redis_sub_task:
             self._redis_sub_task.cancel()
             try:

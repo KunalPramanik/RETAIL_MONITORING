@@ -6,7 +6,7 @@ Refuses to start if mandatory secrets or database URLs are missing.
 
 import hashlib
 import os
-from typing import List, Union
+from typing import List, Union, Optional
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -162,6 +162,7 @@ class CameraConfig(BaseModel):
 
 
 class BiometricConfig(BaseModel):
+    enabled: bool = Field(default_factory=lambda: os.getenv("SECOPS_BIOMETRIC_ENABLED", "false").lower() == "true")
     face_match_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_FACE_MATCH_THRESHOLD", "0.65")))
     min_leading_confidence: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MIN_LEADING_CONFIDENCE", "0.65")))
 
@@ -209,6 +210,7 @@ class Settings(BaseSettings):
     ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "1440"))
     MOBILE_HMAC_SECRET: str = os.getenv("MOBILE_HMAC_SECRET", "")
+    ADMIN_INITIAL_PASSWORD: Optional[str] = os.getenv("ADMIN_INITIAL_PASSWORD", None)
     
     # Edge Ingestion & ML Defaults
     DEFAULT_STORE_ID: str = os.getenv("DEFAULT_STORE_ID", "")

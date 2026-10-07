@@ -64,13 +64,16 @@ npm run dev
 
 ---
 
-## Initial Credentials
-Because the API is secured by JWT, you must log in to the dashboard to view camera feeds and analytics.
+## Initial Administrative Account Setup
+The API is secured by JWT authentication and Role-Based Access Control (RBAC). 
+Before initial startup, configure your secure administrative password in `.env`:
 
-* **Username:** `admin`
-* **Password:** `admin123`
+```bash
+ADMIN_INITIAL_PASSWORD="your-strong-random-password-here"
+```
 
-*(Change this default password immediately in production settings).*
+* **Default Admin Username:** `admin`
+* **Initial Password:** Configured via `ADMIN_INITIAL_PASSWORD` in `.env`. On non-production initial bootstrap without this variable set, a secure one-time secret is generated upon first database initialization. Always rotate credentials regularly.
 
 ---
 

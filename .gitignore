@@ -84,3 +84,9 @@ desktop.ini
 .agents/
 .gemini/
 .gsd/
+
+# Test Suites & Offline Training (excluded from production repository)
+retail-exit-backend/tests/
+retail-exit-backend/ml/
+retail-exit-backend/src/ml/weights/checkpoints/*.onnx
+!retail-exit-backend/src/ml/weights/checkpoints/.gitkeep

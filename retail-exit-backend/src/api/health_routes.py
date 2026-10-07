@@ -39,4 +39,5 @@ async def get_camera_health(
 @router.get("")
 async def get_system_health():
     """General health check endpoint for frontend status checks."""
-    return {"status": "HEALTHY", "version": "2.0.0"}
+    from src.core.config import settings
+    return {"status": "HEALTHY", "version": settings.APP_VERSION, "service": settings.APP_NAME}

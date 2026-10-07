@@ -20,4 +20,7 @@ env
 .env.local
 .DS_Store
 Thumbs.db
+tests/
+retail-exit-backend/tests/
+retail-exit-backend/ml/
 

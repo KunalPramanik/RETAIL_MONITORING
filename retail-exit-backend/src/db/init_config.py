@@ -22,7 +22,21 @@ async def init_baseline_configuration(session: AsyncSession):
     # 2. Ensure ADMIN user exists
     result = await session.execute(select(AppUser).where(AppUser.email == "admin@secops.local"))
     if not result.scalars().first():
-        initial_pw = os.getenv("ADMIN_INITIAL_PASSWORD", "admin123")
+        initial_pw = os.getenv("ADMIN_INITIAL_PASSWORD")
+        if not initial_pw:
+            env = os.getenv("ENVIRONMENT", "development").lower()
+            if env == "production":
+                raise RuntimeError(
+                    "FATAL: ADMIN_INITIAL_PASSWORD environment variable must be configured "
+                    "in environment or secret manager before first-run database bootstrap in production."
+                )
+            import secrets
+            import sys
+            initial_pw = secrets.token_urlsafe(18)
+            sys.stderr.write(
+                f"\n[BOOTSTRAP] Initial admin user provisioned. One-time setup password: {initial_pw}\n"
+            )
+
         hashed_password = get_password_hash(initial_pw)
         admin_user = AppUser(
             user_id=str(uuid.uuid4()),

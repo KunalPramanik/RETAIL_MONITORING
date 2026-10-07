@@ -205,13 +205,21 @@ async def periodic_camera_monitor():
                 now = get_utc_now()
                 cutoff = now - timedelta(seconds=offline_after_sec)
 
-                # Find ONLINE or DEGRADED cameras with expired heartbeats
+                # Find ONLINE or DEGRADED cameras with expired heartbeats or missing heartbeat past registration
                 stmt = select(Camera).where(
                     and_(
                         Camera.removed_at.is_(None),
                         Camera.status.in_(["ONLINE", "DEGRADED"]),
-                        Camera.last_heartbeat_at.isnot(None),
-                        Camera.last_heartbeat_at < cutoff,
+                        or_(
+                            and_(
+                                Camera.last_heartbeat_at.isnot(None),
+                                Camera.last_heartbeat_at < cutoff,
+                            ),
+                            and_(
+                                Camera.last_heartbeat_at.is_(None),
+                                Camera.created_at < cutoff,
+                            ),
+                        ),
                     )
                 )
                 res = await session.execute(stmt)
@@ -271,14 +279,22 @@ async def periodic_camera_monitor():
                 except Exception as retry_err:
                     logger.debug(f"Alarm retry pass error: {retry_err}")
 
-                # Silent Lane Watchdog Check (>15 min silence on ONLINE lanes)
+                # Silent Lane Watchdog Check (>15 min silence on ONLINE lanes or uninitialized past cutoff)
                 try:
                     lane_cutoff = now - timedelta(minutes=15)
                     silent_stmt = select(Lane).where(
                         and_(
                             Lane.status == "ONLINE",
-                            Lane.last_heartbeat_at.isnot(None),
-                            Lane.last_heartbeat_at < lane_cutoff,
+                            or_(
+                                and_(
+                                    Lane.last_heartbeat_at.isnot(None),
+                                    Lane.last_heartbeat_at < lane_cutoff,
+                                ),
+                                and_(
+                                    Lane.last_heartbeat_at.is_(None),
+                                    Lane.created_at < lane_cutoff,
+                                ),
+                            ),
                         )
                     )
                     silent_res = await session.execute(silent_stmt)
@@ -347,8 +363,6 @@ app.add_middleware(
 
 # Mount REST API
 app.include_router(api_router)
-from src.api.material_flow import router as material_flow_router
-app.include_router(material_flow_router, prefix="/api/v1")
 
 # Mount Static Uploads for hard-copy bill documents & CCTV evidence
 uploads_dir = os.path.join(os.getcwd(), "uploads")

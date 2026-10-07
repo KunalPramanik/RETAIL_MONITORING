@@ -54,17 +54,18 @@ class CacheService:
                 logger.warning(f"Redis get failed ({err}), falling back to memory store")
 
         entry = self._memory_store.get(key)
-        if not entry:
+        if not entry or not isinstance(entry, dict):
             return None
 
-        if time.monotonic() > entry["expires_at"]:
-            del self._memory_store[key]
+        expires_at = entry.get("expires_at", 0)
+        if time.monotonic() > expires_at:
+            self._memory_store.pop(key, None)
             return None
 
-        return entry["value"]
+        return entry.get("value")
 
     async def set(self, key: str, value: Any, ttl_seconds: int = 300) -> None:
-        """Stores a JSON-serializable value with TTL in seconds."""
+        """Stores a JSON-serializable value with TTL in seconds, enforcing bounded memory limits."""
         r = await self._get_redis()
         if r:
             try:
@@ -72,6 +73,23 @@ class CacheService:
                 return
             except Exception as err:
                 logger.warning(f"Redis set failed ({err}), falling back to memory store")
+
+        # Enforce bounded capacity to prevent unbounded memory growth
+        MAX_CACHE_ENTRIES = 2048
+        if len(self._memory_store) >= MAX_CACHE_ENTRIES:
+            now = time.monotonic()
+            expired_keys = [k for k, v in self._memory_store.items() if now > v.get("expires_at", 0)]
+            for k in expired_keys:
+                self._memory_store.pop(k, None)
+
+            # If still saturated, prune oldest 10%
+            if len(self._memory_store) >= MAX_CACHE_ENTRIES:
+                oldest_keys = sorted(
+                    self._memory_store.keys(),
+                    key=lambda k: self._memory_store[k].get("expires_at", 0)
+                )[:200]
+                for k in oldest_keys:
+                    self._memory_store.pop(k, None)
 
         self._memory_store[key] = {
             "value": value,

@@ -78,3 +78,9 @@ desktop.ini
 .idea/
 *.sublime-workspace
 *.sublime-project
+
+# Agent & Tool Runtime Metadata
+.agent/
+.agents/
+.gemini/
+.gsd/

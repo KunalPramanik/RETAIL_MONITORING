@@ -37,13 +37,13 @@ class VerdictEngine:
         cls,
         consensus_units: int,
         declared_units: Optional[int] = None,
-        unit_tolerance: int = 0,
-        pct_tolerance: float = 0.0,
-        low_severity_threshold: int = 1,
-        med_severity_threshold: int = 3,
-        high_severity_threshold: int = 6,
+        unit_tolerance: Optional[int] = None,
+        pct_tolerance: Optional[float] = None,
+        low_severity_threshold: Optional[int] = None,
+        med_severity_threshold: Optional[int] = None,
+        high_severity_threshold: Optional[int] = None,
         employee_30d_mismatches: int = 0,
-        repeat_offender_count_trigger: int = 3,
+        repeat_offender_count_trigger: Optional[int] = None,
         live_source_verified: bool = True,
         sensor_disagreement: bool = False,
         occluded_stack: bool = False,
@@ -59,6 +59,20 @@ class VerdictEngine:
         **kwargs: Any,
     ) -> VerdictResult:
         """Pure evaluation function computing verdict, severity, and standardized reason code."""
+        from src.core.config import settings
+
+        if unit_tolerance is None:
+            unit_tolerance = settings.verdict.unit_tolerance
+        if pct_tolerance is None:
+            pct_tolerance = settings.verdict.pct_tolerance
+        if low_severity_threshold is None:
+            low_severity_threshold = settings.verdict.low_severity_threshold
+        if med_severity_threshold is None:
+            med_severity_threshold = settings.verdict.med_severity_threshold
+        if high_severity_threshold is None:
+            high_severity_threshold = settings.verdict.high_severity_threshold
+        if repeat_offender_count_trigger is None:
+            repeat_offender_count_trigger = settings.verdict.repeat_offender_count_trigger
         if is_live_source_verified is not None:
             live_source_verified = is_live_source_verified
         if has_occluded_stack is not None:

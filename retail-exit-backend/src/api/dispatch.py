@@ -6,7 +6,7 @@ Provides session management, manifest reconciliation, and material stack audit e
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 
@@ -247,8 +247,7 @@ class VerifyAndSaveRequest(BaseModel):
     overrideReason: Optional[str] = Field(default=None, alias="override_reason")
     notes: Optional[str] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 @router.post("/verify-and-save")

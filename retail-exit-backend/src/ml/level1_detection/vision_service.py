@@ -22,6 +22,7 @@ from src.ml.level5_tracking.tracker import SimpleByteTrack
 from datetime import datetime, timezone
 
 from src.ml.model_config import get_vision_config
+from src.core.config import settings
 
 logger = logging.getLogger("secops.ml.vision")
 
@@ -729,7 +730,10 @@ class VisionInferenceService:
         
         if camera_id:
             if camera_id not in cls._trackers:
-                cls._trackers[camera_id] = SimpleByteTrack(track_buffer=30)
+                cls._trackers[camera_id] = SimpleByteTrack(
+                    track_buffer=settings.tracking.tracker_max_lost_frames,
+                    match_thresh=1.0 - settings.tracking.tracker_iou_threshold,
+                )
             detections = cls._trackers[camera_id].update(detections)
         else:
             # Fallback sequential IDs

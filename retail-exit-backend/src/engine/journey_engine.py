@@ -69,7 +69,8 @@ class CrossCameraJourneyEngine:
         ts = timestamp or datetime.now(timezone.utc)
 
         # Enforce Zero-Speculation Identity Rule
-        if face_confidence < 0.65 or not person_name or person_name.strip() in ("", "UNKNOWN", "UNKNOWN_PERSON"):
+        from src.core.config import settings
+        if face_confidence < settings.biometric.face_match_threshold or not person_name or person_name.strip() in ("", "UNKNOWN", "UNKNOWN_PERSON"):
             carrier_id = "UNKNOWN_PERSON"
             person_key = f"anon_{uuid.uuid4().hex[:6]}"
         else:

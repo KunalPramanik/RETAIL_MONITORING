@@ -10,6 +10,7 @@ from fastapi import WebSocket
 import logging
 import asyncio
 import json
+import time
 
 from src.core.config import settings
 from src.realtime.events import WebSocketEnvelope
@@ -26,7 +27,7 @@ class ConnectionManager:
         self.active_connections: Set[WebSocket] = set()
         self._redis_client = None
         self._redis_sub_task: Optional[asyncio.Task] = None
-        self._is_running: bool = False
+        self._is_running: bool = True
 
     async def start(self):
         """Initializes cluster communication backend (Redis Pub/Sub if configured)."""
@@ -106,21 +107,55 @@ class ConnectionManager:
             self.active_connections.remove(websocket)
             logger.info(f"WebSocket client disconnected. Remaining: {len(self.active_connections)}")
 
+    async def _send_to_connection(self, conn: WebSocket, payload_json: str) -> Optional[WebSocket]:
+        """Sends payload to a single connection with timeout protection; returns connection if dead."""
+        try:
+            await asyncio.wait_for(
+                conn.send_text(payload_json),
+                timeout=settings.websocket.send_timeout_sec,
+            )
+            return None
+        except Exception as e:
+            logger.debug(f"Failed to send to client ({e}); queue or socket dead.")
+            return conn
+
     async def _broadcast_local_raw(self, payload_json: str):
-        """Directly sends a serialized JSON string to all currently connected local WebSockets."""
+        """Sends a serialized JSON string to all local WebSockets in parallel with timeout enforcement."""
         if not self.active_connections:
             return
 
-        dead_connections = set()
-        for conn in list(self.active_connections):
-            try:
-                await conn.send_text(payload_json)
-            except Exception as e:
-                logger.debug(f"Failed to send message to client: {e}")
-                dead_connections.add(conn)
+        conns = list(self.active_connections)
+        results = await asyncio.gather(
+            *(self._send_to_connection(c, payload_json) for c in conns),
+            return_exceptions=True,
+        )
+        for res in results:
+            if res in self.active_connections:
+                self.disconnect(res)
 
-        for dead in dead_connections:
-            self.disconnect(dead)
+    async def heartbeat_pinger(self, websocket: WebSocket):
+        """Sends periodic keep-alive heartbeats to client to maintain telemetry and detect silent drops."""
+        try:
+            while self._is_running and websocket in self.active_connections:
+                await asyncio.sleep(settings.websocket.ping_interval_sec)
+                if websocket not in self.active_connections:
+                    break
+                envelope = WebSocketEnvelope(
+                    type=cast(Any, "heartbeat"),
+                    payload={"status": "HEALTHY", "serverTime": time.time()},
+                )
+                try:
+                    await asyncio.wait_for(
+                        websocket.send_text(envelope.model_dump_json()),
+                        timeout=settings.websocket.send_timeout_sec,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    logger.debug(f"Heartbeat send failed: {e}")
+                    break
+        except asyncio.CancelledError:
+            raise
 
     async def broadcast(self, envelope: WebSocketEnvelope):
         """Broadcasts a typed message envelope across the cluster or locally."""

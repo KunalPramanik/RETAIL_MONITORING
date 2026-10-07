@@ -20,7 +20,9 @@ import cv2
 import numpy as np
 from sqlalchemy import select, and_
 
-from src.db.session import AsyncSessionLocal
+from src.core.config import settings
+from src.engine.circuit_breaker import InferenceCircuitBreaker, CircuitBreakerOpenException
+import src.db.session as db_session
 from src.db.models import (
     Camera,
     Lane,
@@ -57,6 +59,7 @@ from src.realtime.hub import ws_hub
 from src.ml.model_config import get_vision_config
 from src.ml.level5_tracking.tracker_service import intra_camera_tracker
 from src.ml.level3_liveness.static_image_service import quarantine_enclosed_visual_content
+from src.engine.motion_detector import MotionDetector, motion_detector
 
 
 logger = logging.getLogger("secops.camera_worker")
@@ -69,8 +72,9 @@ class CameraIngestionWorker:
         self.poll_interval_sec = poll_interval_sec
         self.is_running = False
         self._task: Optional[asyncio.Task] = None
-        self._last_frames: Dict[str, np.ndarray] = {}
-        self._last_event_time: Dict[str, float] = {}
+        self.motion_detector = MotionDetector()
+        self._last_frames: Dict[str, np.ndarray] = self.motion_detector._last_frames
+        self._last_event_time: Dict[str, float] = self.motion_detector._last_event_time
         self._last_detections: Dict[str, Dict[str, Any]] = {}
         self._camera_logs: Dict[str, deque] = {}
         self._active_transactions: Dict[str, Dict[str, Any]] = {}
@@ -82,6 +86,16 @@ class CameraIngestionWorker:
         self._last_raw_frames: Dict[str, bytes] = {}
         self._last_annotated_frames: Dict[str, bytes] = {}
         self._last_hazard_alert_ts: Dict[Tuple[str, str], float] = {}
+        self._circuit_breakers: Dict[str, InferenceCircuitBreaker] = {}
+
+    def _get_circuit_breaker(self, camera_id: str) -> InferenceCircuitBreaker:
+        """Retrieves or creates the inference circuit breaker for this camera."""
+        if camera_id not in self._circuit_breakers:
+            self._circuit_breakers[camera_id] = InferenceCircuitBreaker(
+                failure_threshold=settings.detection.circuit_breaker_failure_threshold,
+                recovery_cooldown_sec=settings.detection.circuit_breaker_cooldown_sec,
+            )
+        return self._circuit_breakers[camera_id]
 
     def register_camera(self, camera_record: Any) -> None:
         """Registers a newly discovered or confirmed camera into the ingestion fleet."""
@@ -131,11 +145,12 @@ class CameraIngestionWorker:
                     break
 
     async def poll_all_cameras(self):
-        """Polls frames from each registered camera."""
+        """Polls frames from each registered camera with isolated per-camera transactions."""
         if not self.is_running:
             return
         try:
-            async with AsyncSessionLocal() as session:
+            # 1. Fetch registered cameras in an isolated read transaction
+            async with db_session.AsyncSessionLocal() as session:
                 stmt = select(Camera).where(
                     and_(
                         Camera.removed_at.is_(None),
@@ -143,12 +158,20 @@ class CameraIngestionWorker:
                     )
                 )
                 res = await session.execute(stmt)
-                cameras = res.scalars().all()
+                cameras = list(res.scalars().all())
 
-                for cam in cameras:
-                    if not self.is_running:
-                        break
-                    await self.poll_single_camera(cam, session)
+            # 2. Process each camera with its own independent transaction (F2 transaction isolation)
+            for cam in cameras:
+                if not self.is_running:
+                    break
+                try:
+                    async with db_session.AsyncSessionLocal() as cam_session:
+                        cam_in_session = await cam_session.get(Camera, cam.camera_id)
+                        if cam_in_session and not cam_in_session.removed_at:
+                            await self.poll_single_camera(cam_in_session, cam_session)
+                            await cam_session.commit()
+                except Exception as cam_err:
+                    logger.error("Isolated camera loop error on %s: %s", cam.camera_id, cam_err)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -211,7 +234,7 @@ class CameraIngestionWorker:
     async def _get_cached_catalog_and_roster(self, session) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """Retrieves or refreshes cached product catalog and employee face roster."""
         now_epoch = time.time()
-        if not self._cached_catalog or (now_epoch - self._cached_catalog_ts > 15.0):
+        if not self._cached_catalog or (now_epoch - self._cached_catalog_ts > settings.camera.catalog_ttl_sec):
             prod_res = await session.execute(select(Product))
             self._cached_catalog = [
                 {"product_id": p.product_id, "sku_code": p.sku_code, "pack_size": p.pack_size}
@@ -219,7 +242,7 @@ class CameraIngestionWorker:
             ]
             self._cached_catalog_ts = now_epoch
 
-        if not self._cached_roster or (now_epoch - self._cached_roster_ts > 15.0):
+        if not self._cached_roster or (now_epoch - self._cached_roster_ts > settings.camera.roster_ttl_sec):
             emp_res = await session.execute(select(Employee).where(Employee.active_flag == True))
             self._cached_roster = [
                 {
@@ -296,38 +319,55 @@ class CameraIngestionWorker:
         catalog: List[Dict[str, Any]],
         roster: List[Dict[str, Any]],
     ) -> Tuple[Any, Any, bytes, List[Any], List[Any]]:
-        """Executes YOLOX object detection and facial recognition."""
-        vis_res, obj_bytes = await asyncio.to_thread(
-            VisionInferenceService.analyze_frame_bytes,
-            frame_bytes,
-            catalog_products=catalog,
-            roi_polygon=cam.roi_polygon,
-            ignored_classes=cam.ignored_classes,
-            camera_id=cam.camera_id,
-        )
+        """Executes YOLOX object detection and facial recognition under circuit breaker and timeout protection."""
+        breaker = self._get_circuit_breaker(cam.camera_id)
+        if not breaker.can_execute():
+            raise CircuitBreakerOpenException(
+                f"Inference circuit breaker is OPEN for camera {cam.camera_id} (failure threshold exceeded)."
+            )
 
-        display_containers = []
-        for d in vis_res.detections:
-            label_lower = (d.specific_label or d.class_label or "").lower()
-            if any(k in label_lower for k in ("picture", "poster", "screen", "monitor", "display", "tv", "cell phone", "phone", "smartphone")):
-                display_containers.append(d.bbox)
+        try:
+            vis_res, obj_bytes = await asyncio.wait_for(
+                asyncio.to_thread(
+                    VisionInferenceService.analyze_frame_bytes,
+                    frame_bytes,
+                    catalog_products=catalog,
+                    roi_polygon=cam.roi_polygon,
+                    ignored_classes=cam.ignored_classes,
+                    camera_id=cam.camera_id,
+                ),
+                timeout=settings.detection.inference_timeout_sec,
+            )
 
-        face_res, final_bytes, face_boxes = await asyncio.to_thread(
-            FaceRecognitionService.detect_and_match_faces,
-            frame_bytes=obj_bytes or frame_bytes,
-            enrolled_employees=roster,
-            prior_detections_count=len(vis_res.detections),
-            cases_detected=vis_res.cases_detected,
-            units_detected=vis_res.vision_count,
-            raw_frame_bytes=frame_bytes,
-            camera_id=cam.camera_id,
-            container_boxes=display_containers,
-        )
+            display_containers = []
+            for d in vis_res.detections:
+                label_lower = (d.specific_label or d.class_label or "").lower()
+                if any(k in label_lower for k in ("picture", "poster", "screen", "monitor", "display", "tv", "cell phone", "phone", "smartphone")):
+                    display_containers.append(d.bbox)
 
-        annotated_bytes = self._render_cv_annotated_frame(
-            frame_bytes, vis_res, face_boxes, final_bytes or obj_bytes
-        )
-        return vis_res, face_res, annotated_bytes, face_boxes, display_containers
+            face_res, final_bytes, face_boxes = await asyncio.wait_for(
+                asyncio.to_thread(
+                    FaceRecognitionService.detect_and_match_faces,
+                    frame_bytes=obj_bytes or frame_bytes,
+                    enrolled_employees=roster,
+                    prior_detections_count=len(vis_res.detections),
+                    cases_detected=vis_res.cases_detected,
+                    units_detected=vis_res.vision_count,
+                    raw_frame_bytes=frame_bytes,
+                    camera_id=cam.camera_id,
+                    container_boxes=display_containers,
+                ),
+                timeout=settings.detection.inference_timeout_sec,
+            )
+
+            annotated_bytes = self._render_cv_annotated_frame(
+                frame_bytes, vis_res, face_boxes, final_bytes or obj_bytes
+            )
+            breaker.record_success()
+            return vis_res, face_res, annotated_bytes, face_boxes, display_containers
+        except Exception as inf_err:
+            breaker.record_failure(inf_err)
+            raise
 
     @staticmethod
     def _determine_box_style(
@@ -1228,6 +1268,7 @@ class CameraIngestionWorker:
             "timestamp": now.isoformat(),
         }
 
+        inference_succeeded = False
         try:
             catalog, roster = await self._get_cached_catalog_and_roster(session)
             vis_res, face_res, annotated_bytes, face_boxes, display_containers = (
@@ -1272,12 +1313,33 @@ class CameraIngestionWorker:
                 vis_res, face_res, carrier_label, active_carriers, detection_data,
                 cam_logs, now, session, frame_w, frame_h
             )
+            inference_succeeded = True
 
+        except CircuitBreakerOpenException as cbe:
+            cam.status = "DEGRADED"
+            logger.warning("Camera %s inference circuit breaker OPEN: %s", cam.camera_id, cbe)
+            detection_data.update({
+                "operationalStatus": "MODEL_UNAVAILABLE",
+                "circuitBreaker": "OPEN",
+                "error": str(cbe),
+            })
+            self._last_detections[cam.camera_id] = detection_data
+            await ws_hub.broadcast_event("detection_update", detection_data)
+        except (asyncio.TimeoutError, TimeoutError) as te:
+            cam.status = "DEGRADED"
+            logger.warning("Camera %s inference TIMEOUT (exceeded %.1fs)", cam.camera_id, settings.detection.inference_timeout_sec)
+            detection_data.update({
+                "operationalStatus": "INFERENCE_TIMEOUT",
+                "circuitBreaker": self._get_circuit_breaker(cam.camera_id).state.value,
+                "error": f"Inference exceeded {settings.detection.inference_timeout_sec}s",
+            })
+            self._last_detections[cam.camera_id] = detection_data
+            await ws_hub.broadcast_event("detection_update", detection_data)
         except Exception as e:
             logger.warning("Preview CV annotation error on %s: %s", cam.camera_id, e)
 
-        # Motion detection to automatically generate exit events
-        if self._check_motion(cam.camera_id, frame_bytes):
+        # Motion detection to automatically generate exit events (only when inference is healthy)
+        if inference_succeeded and self._check_motion(cam.camera_id, frame_bytes):
             await self.process_camera_frame(
                 cam=cam,
                 frame_bytes=frame_bytes,
@@ -1307,39 +1369,28 @@ class CameraIngestionWorker:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
 
-    def _check_motion(self, camera_id: str, frame_bytes: bytes) -> bool:
+    def _check_motion(
+        self,
+        camera_id: str,
+        frame_bytes: bytes,
+        resize_width: Optional[int] = None,
+        resize_height: Optional[int] = None,
+        blur_kernel_size: Optional[int] = None,
+        diff_threshold: Optional[int] = None,
+        pixel_threshold: Optional[int] = None,
+        debounce_seconds: Optional[float] = None,
+    ) -> bool:
         """Determines if significant motion / traversal occurred between consecutive frames."""
-        try:
-            nparr = np.frombuffer(frame_bytes, np.uint8)
-            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            if img is None:
-                return False
-
-            small = cv2.resize(img, (320, 180))
-            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-            gray = cv2.GaussianBlur(gray, (21, 21), 0)
-
-            prev = self._last_frames.get(camera_id)
-            self._last_frames[camera_id] = gray
-
-            if prev is None:
-                return False
-
-            delta = cv2.absdiff(prev, gray)
-            thresh = cv2.threshold(delta, 25, 255, cv2.THRESH_BINARY)[1]
-            motion_pixels = cv2.countNonZero(thresh)
-
-            # Throttle events to at most once per 6 seconds per camera
-            now_ts = time.time()
-            last_event = self._last_event_time.get(camera_id, 0)
-            if motion_pixels > 3500 and (now_ts - last_event) > 6.0:
-                self._last_event_time[camera_id] = now_ts
-                logger.info("Significant motion detected on %s (%d px). Triggering exit event.", camera_id, motion_pixels)
-                return True
-        except Exception as e:
-            logger.warning("Motion check error on %s: %s", camera_id, e)
-
-        return False
+        return self.motion_detector.check_motion(
+            camera_id=camera_id,
+            frame_bytes=frame_bytes,
+            resize_width=resize_width,
+            resize_height=resize_height,
+            blur_kernel_size=blur_kernel_size,
+            diff_threshold=diff_threshold,
+            pixel_threshold=pixel_threshold,
+            debounce_seconds=debounce_seconds,
+        )
 
     async def process_camera_frame(
         self,
@@ -1369,25 +1420,44 @@ class CameraIngestionWorker:
             for e in employees
         ]
 
-        # 2. Run Real OpenCV Object Detection
-        vision_result, annotated_bytes = VisionInferenceService.analyze_frame_bytes(
-            frame_bytes=frame_bytes,
-            catalog_products=catalog,
-            roi_polygon=cam.roi_polygon,
-            ignored_classes=cam.ignored_classes,
-                camera_id=cam.camera_id
-        )
+        breaker = self._get_circuit_breaker(cam.camera_id)
+        if not breaker.can_execute():
+            raise CircuitBreakerOpenException(
+                f"Inference circuit breaker is OPEN for camera {cam.camera_id} (failure threshold exceeded)."
+            )
 
-        # 3. Run Real OpenCV Face Recognition on the annotated frame with Anti-Spoofing Liveness
-        face_result, final_annotated_bytes, face_boxes = FaceRecognitionService.detect_and_match_faces(
-            frame_bytes=annotated_bytes,
-            enrolled_employees=roster,
-            prior_detections_count=len(vision_result.detections),
-            cases_detected=vision_result.cases_detected,
-            units_detected=vision_result.vision_count,
-            raw_frame_bytes=frame_bytes,
-            camera_id=cam.camera_id,
-        )
+        try:
+            # 2. Run Real OpenCV Object Detection
+            vision_result, annotated_bytes = await asyncio.wait_for(
+                asyncio.to_thread(
+                    VisionInferenceService.analyze_frame_bytes,
+                    frame_bytes=frame_bytes,
+                    catalog_products=catalog,
+                    roi_polygon=cam.roi_polygon,
+                    ignored_classes=cam.ignored_classes,
+                    camera_id=cam.camera_id,
+                ),
+                timeout=settings.detection.inference_timeout_sec,
+            )
+
+            # 3. Run Real OpenCV Face Recognition on the annotated frame with Anti-Spoofing Liveness
+            face_result, final_annotated_bytes, face_boxes = await asyncio.wait_for(
+                asyncio.to_thread(
+                    FaceRecognitionService.detect_and_match_faces,
+                    frame_bytes=annotated_bytes,
+                    enrolled_employees=roster,
+                    prior_detections_count=len(vision_result.detections),
+                    cases_detected=vision_result.cases_detected,
+                    units_detected=vision_result.vision_count,
+                    raw_frame_bytes=frame_bytes,
+                    camera_id=cam.camera_id,
+                ),
+                timeout=settings.detection.inference_timeout_sec,
+            )
+            breaker.record_success()
+        except Exception as inf_err:
+            breaker.record_failure(inf_err)
+            raise
 
         # 4. Multi-Sensor Consensus Fusion (Degrades cleanly to Vision count when RFID/Scale absent)
         fusion_result = MultiSensorFusionEngine.fuse(
@@ -1425,11 +1495,11 @@ class CameraIngestionWorker:
 
         snapshot_url = f"/snapshots/{snapshot_filename}"
 
-        # 7. Write ExitEvent Row (Identity confidence floor: >= 0.65 and decision == MATCHED)
+        # 7. Write ExitEvent Row (Identity confidence floor from settings.biometric.face_match_threshold)
         is_verified_employee = (
             face_result.decision == "MATCHED"
             and face_result.matched_employee_id is not None
-            and float(face_result.similarity or 0.0) >= 0.65
+            and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold
         )
         resolved_emp_id = face_result.matched_employee_id if is_verified_employee else None
         resolved_emp_conf = face_result.similarity if is_verified_employee else None
@@ -1477,7 +1547,7 @@ class CameraIngestionWorker:
         # 8b. Real Store Material Counting & ExitEventLineItem Attribution
         carrier_name = (
             face_result.employee_name
-            if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= 0.65)
+            if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold)
             else "UNKNOWN_PERSON"
         )
         event_line_items = []
@@ -1542,7 +1612,7 @@ class CameraIngestionWorker:
                             })
 
                     dir_tag = "EXIT" if "EXIT" in trigger_reason.upper() else "ENTRY"
-                    carrier_name = face_result.employee_name if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= 0.65) else "UNKNOWN_PERSON"
+                    carrier_name = face_result.employee_name if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold) else "UNKNOWN_PERSON"
                     mat_desc = ", ".join([f"{c}x {n}" for n, c in mat_seg_res.counts_by_class.items()])
                     event.notes = f"[{dir_tag}] Carrier: {carrier_name}. Handled: {mat_desc}. Trigger: {trigger_reason}."
         except Exception as _mat_err:
@@ -1649,4 +1719,12 @@ class CameraIngestionWorker:
 
 # Global worker singleton
 camera_worker = CameraIngestionWorker(poll_interval_sec=3.0)
+
+__all__ = [
+    "CameraIngestionWorker",
+    "camera_worker",
+    "MotionDetector",
+    "motion_detector",
+    "InferenceCircuitBreaker",
+]
 

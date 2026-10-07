@@ -1,7 +1,7 @@
 """Forensic Search & Evidence API Endpoints"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 
@@ -9,6 +9,8 @@ from src.db.session import get_db
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.engine.forensics_engine import ForensicSearchEngine
 from src.api.deps_auth import require_roles
+from src.core.rate_limit import RateLimiter
+from src.core.config import settings
 
 router = APIRouter(prefix="/forensics", tags=["V8 Unified Forensics"])
 
@@ -23,7 +25,7 @@ class SearchRequest(BaseModel):
     clothing_top_color: Optional[str] = None
     clothing_bottom_color: Optional[str] = None
     target_embedding: Optional[List[float]] = None
-    similarity_threshold: float = 0.65
+    similarity_threshold: float = Field(default_factory=lambda: settings.biometric.face_match_threshold)
     limit: int = Query(100, le=500)
     offset: int = 0
 
@@ -31,7 +33,8 @@ class SearchRequest(BaseModel):
 async def search_incidents(
     req: SearchRequest,
     session: AsyncSession = Depends(get_db),
-    user=Depends(require_roles(["SUPER_ADMIN", "INVESTIGATOR", "SECURITY_SUPERVISOR"]))
+    user=Depends(require_roles(["SUPER_ADMIN", "INVESTIGATOR", "SECURITY_SUPERVISOR"])),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.face_search_per_minute, seconds=60, scope="forensic_face_search")),
 ):
     """
     Execute a semantic and structured forensic search across the incident graph.

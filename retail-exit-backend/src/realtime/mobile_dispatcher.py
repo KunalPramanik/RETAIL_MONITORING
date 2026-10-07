@@ -71,8 +71,9 @@ class MobileSecurityDispatcher:
     ) -> MobileAlertCard:
         """Creates an authenticated mobile security alert card."""
         # Enforce Zero-Speculation Rule
+        from src.core.config import settings
         if (
-            carrier_confidence < 0.65
+            carrier_confidence < settings.biometric.face_match_threshold
             or not carrier_name
             or carrier_name.strip() in ("", "UNKNOWN", "UNKNOWN_PERSON")
         ):

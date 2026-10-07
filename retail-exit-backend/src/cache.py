@@ -79,38 +79,53 @@ class CacheService:
         }
 
     async def invalidate(self, key_or_prefix: str) -> None:
-        """Invalidates keys matching an exact key or prefix string."""
+        """Invalidates keys matching an exact key or prefix string non-blockingly."""
         r = await self._get_redis()
         if r:
             try:
-                if "*" in key_or_prefix:
-                    keys = await r.keys(key_or_prefix)
-                    if keys:
-                        await r.delete(*keys)
-                else:
-                    await r.delete(key_or_prefix)
-                    prefix_keys = await r.keys(f"{key_or_prefix}*")
-                    if prefix_keys:
-                        await r.delete(*prefix_keys)
-            except Exception as err:
-                logger.warning(f"Redis invalidate failed: {err}")
+                # 1. Direct delete of exact key if not wildcard
+                if "*" not in key_or_prefix:
+                    try:
+                        await r.unlink(key_or_prefix)
+                    except Exception:
+                        await r.delete(key_or_prefix)
 
-        # Invalidate in-memory store
+                # 2. Incremental non-blocking SCAN iteration to avoid O(N) Redis freeze
+                pattern = key_or_prefix if "*" in key_or_prefix else f"{key_or_prefix}*"
+                batch = []
+                async for k in r.scan_iter(match=pattern, count=100):
+                    batch.append(k)
+                    if len(batch) >= 100:
+                        try:
+                            await r.unlink(*batch)
+                        except Exception:
+                            await r.delete(*batch)
+                        batch.clear()
+
+                if batch:
+                    try:
+                        await r.unlink(*batch)
+                    except Exception:
+                        await r.delete(*batch)
+            except Exception as err:
+                logger.warning(f"Redis non-blocking invalidate failed: {err}")
+
+        # Invalidate in-memory fallback store
         clean_prefix = key_or_prefix.rstrip("*")
         keys_to_delete = [
-            k for k in self._memory_store if k == key_or_prefix or k.startswith(clean_prefix)
+            k for k in list(self._memory_store.keys()) if k == key_or_prefix or k.startswith(clean_prefix)
         ]
         for k in keys_to_delete:
             self._memory_store.pop(k, None)
 
     async def clear(self) -> None:
-        """Clears all cached entries."""
+        """Clears all cached entries asynchronously."""
         r = await self._get_redis()
         if r:
             try:
-                await r.flushdb()
+                await r.flushdb(asynchronous=True)
             except Exception as err:
-                logger.warning(f"Redis clear failed: {err}")
+                logger.warning(f"Redis async clear failed: {err}")
         self._memory_store.clear()
 
 

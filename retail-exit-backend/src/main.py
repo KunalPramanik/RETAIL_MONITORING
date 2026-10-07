@@ -7,10 +7,12 @@ Provides RESTful APIs, real-time WebSocket streams, telemetry metrics, and edge 
 import os
 import uuid
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Response, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Response, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from typing import Dict, Any, Optional
+import json
+import time
 from sqlalchemy import select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
@@ -149,20 +151,24 @@ async def lifespan(app: FastAPI):
 
 
 async def get_active_edge_nodes_count() -> int:
-    """Calculates active edge ingestion nodes dynamically from camera worker & database."""
+    """Calculates active edge ingestion nodes dynamically from camera health records within freshness limit."""
     try:
-        active_worker_cams = len(getattr(camera_worker, "_last_frames", {}))
+        now = get_utc_now()
+        freshness_cutoff = now - timedelta(seconds=60)
         async with AsyncSessionLocal() as session:
             res = await session.execute(
                 select(Camera).where(
                     and_(
                         Camera.removed_at.is_(None),
                         Camera.status == "ONLINE",
+                        Camera.last_heartbeat_at.isnot(None),
+                        Camera.last_heartbeat_at >= freshness_cutoff,
                     )
                 )
             )
-            db_online = len(res.scalars().all())
-            return max(active_worker_cams, db_online)
+            fresh_cams = len(res.scalars().all())
+            active_worker_cams = len(getattr(camera_worker, "_last_frames", {}))
+            return max(fresh_cams, active_worker_cams)
     except Exception:
         return len(getattr(camera_worker, "_last_frames", {}))
 
@@ -357,16 +363,58 @@ app.mount("/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
 
 # Real-time WebSocket Gateway
 @app.websocket("/ws/live")
-async def websocket_live_gateway(websocket: WebSocket):
+async def websocket_live_gateway(
+    websocket: WebSocket,
+    token: Optional[str] = Query(None),
+):
     """Real-time WebSocket connection endpoint for control room consoles."""
+    # Optional token verification if token provided or mandatory if configured
+    if settings.websocket.require_token_auth or token is not None:
+        if not token:
+            await websocket.close(code=4001, reason="Authentication token required")
+            return
+        try:
+            from jose import jwt
+            jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        except Exception as auth_err:
+            logger.warning(f"WebSocket token authentication rejected: {auth_err}")
+            await websocket.close(code=4003, reason="Invalid or expired token")
+            return
+
     await ws_hub.connect(websocket)
+    heartbeat_task = asyncio.create_task(ws_hub.heartbeat_pinger(websocket))
     try:
         while True:
-            data = await websocket.receive_text()
+            # Idle timeout watchdog: terminate connection if no client frames received
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=settings.websocket.heartbeat_timeout_sec,
+                )
+            except asyncio.TimeoutError:
+                logger.info("WebSocket idle timeout exceeded without heartbeat. Terminating dead connection.")
+                break
+
+            # Handle client-initiated ping / pong
+            if data == "ping":
+                await websocket.send_text("pong")
+            else:
+                try:
+                    parsed = json.loads(data)
+                    if parsed.get("type") == "ping":
+                        await websocket.send_text(json.dumps({"type": "pong", "timestamp": time.time()}))
+                except Exception:
+                    pass
     except WebSocketDisconnect:
-        ws_hub.disconnect(websocket)
+        pass
     except Exception as e:
         logger.warning(f"WebSocket client connection closed: {e}")
+    finally:
+        heartbeat_task.cancel()
+        try:
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
         ws_hub.disconnect(websocket)
 
 

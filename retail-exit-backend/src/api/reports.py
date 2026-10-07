@@ -12,6 +12,8 @@ from reportlab.pdfgen import canvas
 
 from src.db.session import get_db
 from src.db.models import ExitEvent, Alert, Product, Lane
+from src.core.rate_limit import RateLimiter
+from src.core.config import settings
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
 
@@ -158,6 +160,7 @@ async def export_excel_report(
     severity: Optional[str] = Query(None),
     actor_id: Optional[str] = Query("OPERATOR"),
     session: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.export_per_minute, seconds=60, scope="reports_export")),
 ):
     """Streams a comprehensive multi-tab .xlsx workbook of all exit telemetry and logs."""
     from src.engine.export_engine import AuditExportEngine
@@ -186,6 +189,7 @@ async def export_csv_report(
     severity: Optional[str] = Query(None),
     actor_id: Optional[str] = Query("OPERATOR"),
     session: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.export_per_minute, seconds=60, scope="reports_export")),
 ):
     """Streams a flat CSV dataset export with audit trail tracking."""
     from src.engine.export_engine import AuditExportEngine

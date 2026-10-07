@@ -397,10 +397,27 @@ class CameraStreamSession:
 class CameraStreamManager:
     """Singleton stream coordinator managing live video streams across the fleet."""
 
+    _instance: Optional["CameraStreamManager"] = None
+
     def __init__(self):
         self._streams: Dict[str, CameraStreamSession] = {}
         self._lock = threading.Lock()
         self._cleanup_task: Optional[asyncio.Task] = None
+        CameraStreamManager._instance = self
+
+    @classmethod
+    def get_instance(cls) -> "CameraStreamManager":
+        if cls._instance is None:
+            cls._instance = CameraStreamManager()
+        return cls._instance
+
+    @property
+    def lock(self) -> threading.Lock:
+        return self._lock
+
+    @property
+    def sessions(self) -> Dict[str, CameraStreamSession]:
+        return self._streams
 
     def _resolve_source(
         self, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None

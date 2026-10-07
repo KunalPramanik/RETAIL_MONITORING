@@ -20,6 +20,7 @@ async_engine = create_async_engine(
     future=True,
     poolclass=NullPool,
 )
+engine = async_engine
 
 AsyncSessionLocal = async_sessionmaker(
     bind=async_engine,
@@ -67,6 +68,16 @@ def _sync_upgrade_sqlite_schema(sync_conn):
         mat_cols = [row[1] for row in res.fetchall()]
         if mat_cols and "counting_tier" not in mat_cols:
             sync_conn.execute(text("ALTER TABLE material ADD COLUMN counting_tier VARCHAR(32) DEFAULT 'SINGLE_UNIT'"))
+
+        res = sync_conn.execute(text("PRAGMA table_info(app_user)"))
+        user_cols = [row[1] for row in res.fetchall()]
+        if user_cols:
+            if "username" not in user_cols:
+                sync_conn.execute(text("ALTER TABLE app_user ADD COLUMN username VARCHAR(64)"))
+                sync_conn.execute(text("UPDATE app_user SET username = 'admin' WHERE email = 'admin@secops.local'"))
+            if "is_active" not in user_cols:
+                sync_conn.execute(text("ALTER TABLE app_user ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+                sync_conn.execute(text("UPDATE app_user SET is_active = 1 WHERE is_active IS NULL"))
     except Exception:
         pass
 

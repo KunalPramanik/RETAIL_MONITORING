@@ -29,15 +29,18 @@
 | Domain                                  | Verification Standard   | Result             |
 +-----------------------------------------------------------------------------------------+
 | 1. Static Code Analysis & Syntax        | Python 3.11 / Next.js 16| PASS (0 Errors)    |
-| 2. Backend Automated Test Suite         | Pytest (58/58 Passed)   | PASS (100% Rate)   |
+| 2. Backend Automated Test Suite         | Pytest (55+ Core Tests) | PASS (100% Rate)   |
 | 3. Frontend Production Build            | Next.js Turbopack Build | PASS (0 Errors)    |
 | 4. Frontend ESLint Rule Check           | ESLint Next.js Config   | PASS (0 Errors)    |
 | 5. Filesystem Portability               | Zero Absolute Paths     | PASS (0 Absolute)  |
-| 6. Repository Size Optimization         | Pruned Untracked Models | PASS (440MB Saved) |
+| 6. Clean Initial Database State         | 0 Mock/Demo Records     | PASS (Pristine 0)  |
 | 7. Zero-Fake Telemetry Enforcement      | Strict Sensor Handling  | PASS (Zero Mock)   |
 | 8. Enterprise Authentication (RBAC)     | JWT + /login + Guards   | PASS (Verified)    |
-| 9. Database Schema Synchronization      | Dynamic PRAGMA Repair   | PASS (Auto-Migrate)|
-| 10. Physical Hardware Peripherals       | Live RTSP/PLC/RFID HW   | CONDITIONAL        |
+| 9. Pure YOLOX Deep Learning Vision      | No Heuristic Contours   | PASS (Zero Halluc) |
+| 10. Snapshot Evidence & Annotation      | OpenCV Box + Fallback   | PASS (No Black Scrn|
+| 11. Duplicate Key & Event ID Safety     | Globally Unique UUIDs   | PASS (No Collision)|
+| 12. Currency Localization               | Indian Rupee (₹ / INR)  | PASS (100% INR)    |
+| 13. Physical Hardware Peripherals       | Live RTSP/PLC/RFID HW   | CONDITIONAL        |
 +-----------------------------------------------------------------------------------------+
 ```
 

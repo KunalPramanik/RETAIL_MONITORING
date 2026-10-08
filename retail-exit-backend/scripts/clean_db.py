@@ -42,6 +42,7 @@ from src.db.models import (
     Lane,
     Employee,
     Product,
+    InitialStockVerification,
     AuditLog,
 )
 
@@ -75,6 +76,7 @@ async def clean_database():
             Camera,
             Lane,
             Employee,
+            InitialStockVerification,
             Product,
             AuditLog,
         ]

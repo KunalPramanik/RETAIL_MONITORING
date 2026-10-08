@@ -131,7 +131,7 @@ export default function ReportsPage() {
             <CheckCircle size={13} className="text-[#4FD1B3]" /> VERIFIED DISPATCH VALUE
           </span>
           <h3 className="text-2xl font-bold font-mono text-[#4FD1B3]">
-            {loading ? "..." : `$${(metrics?.totalDispatchedValue || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            {loading ? "..." : `₹${(metrics?.totalDispatchedValue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </h3>
           <p className="text-[11px] text-[var(--text-secondary)]">
             Across {metrics?.totalThroughputUnits || 0} reconciled merchandise units
@@ -143,7 +143,7 @@ export default function ReportsPage() {
             <ShieldAlert size={13} className="text-[#E8A33D]" /> PREVENTED SHRINKAGE VALUE
           </span>
           <h3 className="text-2xl font-bold font-mono text-[#E8A33D]">
-            {loading ? "..." : `$${(metrics?.estimatedShrinkageValue || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            {loading ? "..." : `₹${(metrics?.estimatedShrinkageValue || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </h3>
           <p className="text-[11px] text-[var(--text-secondary)]">
             {metrics?.totalDiscrepancyUnits || 0} discrepancy unit(s) intercepted

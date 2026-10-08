@@ -129,6 +129,8 @@ To prevent credential stuffing and brute-force attacks against authentication en
 | **Token Invalidation** | Secure client clearance & server logout audit | End-to-end logout workflow | **VERIFIED** |
 | **SQL Injection** | 100% Parameterized SQLAlchemy 2.0 | Static code grep & AST inspection | **VERIFIED** |
 | **Zero Mock Policy** | No synthetic matching or fake camera signals in prod | Pytest `test_zero_fake_policy.py` | **VERIFIED** |
+| **Role Spoofing Defense** | Client role headers ignored; roles derived strictly from signed JWT claims and DB | Inspected `src/api/deps_auth.py` | **VERIFIED** |
+| **Bootstrap Password** | No default production passwords; uses `ADMIN_INITIAL_PASSWORD` or `secrets.token_urlsafe` | Inspected `src/db/init_config.py` | **VERIFIED** |
 
 ---
 

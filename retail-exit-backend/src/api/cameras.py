@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 logger = logging.getLogger("secops.api.cameras")
 
 from src.db.session import get_db
-from src.db.models import Camera, CameraPairingToken, CameraHeartbeat, Lane, Store, Alert, StaticImageDetection, ExitEvent, VisionDetection, VirtualTripwireConfig, get_utc_now
+from src.db.models import Camera, CameraPairingToken, CameraHeartbeat, Lane, Store, Alert, StaticImageDetection, ExitEvent, VisionDetection, VirtualTripwireConfig, Employee, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.cameras import (
     CameraResponse,
@@ -177,8 +177,10 @@ async def get_live_detections_table(
     Enforces Section 2 & 18 of the V8 Master Prompt Addendum.
     """
     det_stmt = (
-        select(VisionDetection, Camera)
+        select(VisionDetection, Camera, Employee)
         .outerjoin(Camera, VisionDetection.camera_id == Camera.camera_id)
+        .outerjoin(ExitEvent, VisionDetection.event_id == ExitEvent.event_id)
+        .outerjoin(Employee, ExitEvent.employee_id == Employee.employee_id)
         .order_by(desc(VisionDetection.frame_ts))
         .limit(limit)
     )
@@ -186,9 +188,16 @@ async def get_live_detections_table(
     raw_dets = det_res.all()
 
     records = []
-    for det, cam in raw_dets:
+    for det, cam, emp in raw_dets:
         cam_label = cam.label if cam else (f"Camera-{det.camera_id[:4]}" if det.camera_id else "Camera-01")
         is_person = "person" in (det.class_label or "").lower()
+        if emp and emp.name:
+            person_identity = emp.name
+        elif is_person:
+            person_identity = "UNKNOWN"
+        else:
+            person_identity = "None"
+
         records.append({
             "detectionId": det.detection_id,
             "cameraId": det.camera_id or (cam.camera_id if cam else "CAM-01"),
@@ -198,7 +207,7 @@ async def get_live_detections_table(
             "objectClass": det.class_label.replace("_", " ").title(),
             "quantity": 1,
             "confidence": round(float(det.confidence), 2),
-            "personIdentity": "Person (Verified)" if is_person else "Authorized Handler",
+            "personIdentity": person_identity,
             "status": "APPROVED" if float(det.confidence) >= 0.85 else "REQUIRES_REVIEW",
             "snapshotUrl": f"/snapshots/preview_{det.camera_id or 'CAM-01'}.jpg",
         })
@@ -834,10 +843,10 @@ async def get_camera_history(
                     "cameraLabel": cam.label,
                     "timestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
                     "eventType": "EXIT_TRAVERSAL",
-                    "objectClass": "person_and_cart",
+                    "objectClass": "Exit Traversal",
                     "quantity": ev.units_detected or 1,
                     "confidence": round(float(ev.vision_confidence or 0.95), 4),
-                    "bbox": [100, 150, 400, 500],
+                    "bbox": None,
                     "direction": "EXIT",
                     "personIdentity": f"KNOWN: {ev.employee_id}" if ev.employee_id else "UNKNOWN",
                     "verificationStatus": "APPROVED" if ev.verdict == "PASS" else "REQUIRES_REVIEW",

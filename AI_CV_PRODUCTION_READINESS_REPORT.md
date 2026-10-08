@@ -99,6 +99,18 @@ The audit verified model runtime architectures, execution provider fallbacks, in
     $$C_{\text{fused}} = \sum_{m \in \text{Online}} w_m \cdot c_m \quad \text{where } \sum w_m \le 1.0$$
   - When $C_{\text{fused}} < \theta_{\text{min}}$, the portal issues a `HARDWARE_DEGRADED_SUPERVISOR_CALL` alert.
 
+### 3.5 Elimination of Contour Heuristics (Pure YOLOX Deep Learning)
+- **Problem Statement:** A legacy heuristic detector (`SceneObjectDetector` in `fixture_classifier.py`) attempted to classify objects via edge/contour geometry. This led to serious false positives where a regular door panel was labeled "TOTE / SHOPPING BAG 85%" and a wall fixture was labeled "DESKTOP SCREEN".
+- **Remediation:** Completely removed geometric contour classifiers from the detection pipeline. Object recognition is now 100% driven by genuine YOLOX deep learning feature extractors, eliminating false door/fixture classifications.
+
+### 3.6 Ground-Plane Entry/Exit Passage Line Suggestion
+- **Geometry Optimization:** Stale ROI coordinates placed virtual tripwires across customer faces. 
+- **AI Suggested Gate Line:** Added backend geometry calculation (`GET /api/cameras/{id}/suggest-gate-line`) automatically positioning the passage boundary at the lower ground plane (82% frame height). Operators have direct interactive UI controls: `[ACCEPT]`, `[ADJUST]`, and `[REDRAW]`.
+
+### 3.7 Dynamic Snapshot Annotation Pipeline
+- **Visual Evidence Overlays:** Rendered dynamic bounding boxes, class labels, confidence percentages, and track IDs using OpenCV into persistent JPEG snapshots.
+- **Empty-State Fallback:** Completely eliminated black screen modals by providing structured "Snapshot Unavailable" empty states when images are pending capture.
+
 ---
 
 ## 4. Latency Budget & Edge Compute Benchmarks

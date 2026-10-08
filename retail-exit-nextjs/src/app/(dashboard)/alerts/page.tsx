@@ -1,7 +1,7 @@
 "use client";
 
 import { safeFetch } from "@/lib/api-client";
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle,
   ShieldAlert,

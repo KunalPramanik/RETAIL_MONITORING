@@ -298,10 +298,10 @@ export default function CameraManagementPage() {
             <Usb size={14} className="text-[#E8A33D]" /> USB SUBSYSTEM:
           </span>
           <span className="text-[var(--text-primary)]">
-            Active Weight Scale: <b className="text-[#4FD1B3]">{usbStatus?.activeScalePort || "COM3 (Auto-Detected)"}</b>
+            Active Weight Scale: <b className="text-[#4FD1B3]">{usbStatus?.activeScalePort || "Not Connected"}</b>
           </span>
           <span className="text-[var(--text-primary)]">
-            USB Video Devices: <b className="text-[#38BDF8]">{usbStatus?.videoDevicesCount || "1 Connected"}</b>
+            USB Video Devices: <b className="text-[#38BDF8]">{usbStatus?.videoDevicesCount !== undefined ? `${usbStatus.videoDevicesCount} Connected` : "None Detected"}</b>
           </span>
         </div>
         <button

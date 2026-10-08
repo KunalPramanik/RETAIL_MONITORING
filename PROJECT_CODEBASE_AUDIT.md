@@ -81,6 +81,32 @@ The following table summarizes all critical audit findings, root causes, and ver
 | **F-09** | Medium | `src/api/auth.py` | Missing formal audit logging on user session invalidation (`/api/auth/logout`). | **RESOLVED** |
 | **F-10** | Medium | `src/engine/alarm_coordinator.py` | Alarm coordinator lacked timeout resilience during PLC/relay physical hardware communication drops. | **RESOLVED** |
 | **F-11** | Medium | `retail-exit-backend/tests/` | Pylance and IDE type checker reported missing engine attributes in `tests/conftest.py`. | **RESOLVED** |
+| **F-12** | High | `src/api/events.py` & Ingest | Duplicate React keys (`MOV-EVT-2026`) caused by truncating timestamp IDs to 8 characters. | **RESOLVED** |
+| **F-13** | Critical | `vision_service.py` | Geometric contour heuristic (`SceneObjectDetector`) hallucinated door panels as tote bags and walls as monitors. | **RESOLVED** |
+| **F-14** | High | `src/api/cameras.py` & StreamPlayer | Snapshot viewer rendered black/blank screen when frame capture was in standby or offline. | **RESOLVED** |
+| **F-15** | High | Database / Ingest | Auto-seeding fallback loops injected fake proposals and dummy rows when database was empty. | **RESOLVED** |
+| **F-16** | Medium | UI / Reports / Catalog | Currency display defaulted to USD ($) instead of required Indian Rupee (₹ / INR). | **RESOLVED** |
+| **F-17** | Medium | `cameras.py` & `StreamPlayer` | Obstructing virtual tripwire cut across faces; lacked AI-suggested ground passage threshold. | **RESOLVED** |
+
+---
+
+## 4. In-Depth Root Cause Analysis (Addendum)
+
+### 4.4 F-12: Duplicate React Event Key Collisions
+- **Root Cause:** In `src/api/events.py`, the endpoint formatted event IDs with `f"MOV-{ev.event_id[:8]}"`. Since database event IDs commenced with `EVT-2026-XXXX`, slicing to 8 characters yielded `MOV-EVT-2026` for every event generated in the same year, causing React list render collisions.
+- **Fix:** Retained the full globally unique UUID in formatted keys (`f"MOV-{ev.event_id}"`), ensured database enforces `UNIQUE(event_id)`, and bound React keys strictly to persistent database IDs.
+
+### 4.5 F-13: Contour Heuristic False Detections
+- **Root Cause:** A legacy `SceneObjectDetector` class performed Canny edge detection and Hough contour filtering over raw images, classifying static vertical geometries (door cutouts) as "TOTE / SHOPPING BAG 85%" and wall fixtures as "DESKTOP SCREEN".
+- **Fix:** Removed all heuristic contour classifiers from the detection pipeline in `vision_service.py`. Inference is now strictly driven by deep learning YOLOX ONNX weights.
+
+### 4.6 F-14: Black Screen Snapshot Viewer
+- **Root Cause:** Snapshot modal rendered an empty `<img src={...} />` inside a black background container. If the file was unavailable, `onError` had no fallback text, displaying a solid black rectangle.
+- **Fix:** Replaced blank screens with structured "Snapshot Unavailable" empty-state cards, and integrated OpenCV bounding box and track ID drawing into persistent JPEG snapshots.
+
+### 4.7 F-15: Database Clean Zero-State & Currency Enforcement
+- **Root Cause:** Fallback loops in `inventory_routes.py` and `cameras.py` auto-populated dummy rows if tables were empty.
+- **Fix:** Purged all fake seed loops. All operational tables start at 0 rows. The UI gracefully displays true empty states ("No detections available", "No snapshots available", etc.). All monetary figures across products, invoices, and loss-prevention reports are formatted in Indian Rupees (₹ / INR).
 
 ---
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { safeFetch } from "@/lib/api-client";
+import { safeFetch, getWsUrl } from "@/lib/api-client";
 import React, { useState, useEffect, useRef } from "react";
 import RoiCanvas, { NormalizedPoint } from "./roi-canvas";
 import {
@@ -23,6 +23,14 @@ import {
   ZoomOut,
   Square,
   X,
+  History,
+  Image as ImageIcon,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Download,
+  AlertCircle,
+  Check,
 } from "lucide-react";
 
 export interface DetectionBox {
@@ -52,6 +60,23 @@ interface StreamPlayerProps {
   onAlertTriggered?: (alert: any) => void;
 }
 
+interface DetectionHistoryItem {
+  detectionId: string;
+  eventId?: string;
+  cameraId: string;
+  cameraLabel?: string;
+  timestamp: string;
+  eventType: string;
+  objectClass: string;
+  quantity: number;
+  confidence: number;
+  bbox?: number[];
+  direction: string;
+  personIdentity: string;
+  verificationStatus: string;
+  snapshotUrl?: string;
+}
+
 export default function StreamPlayer({
   cameraId,
   cameraName = "Exit Lane Camera",
@@ -78,22 +103,137 @@ export default function StreamPlayer({
   const [footfallOut, setFootfallOut] = useState(0);
   const [occupancy, setOccupancy] = useState(0);
   const [casesDetected, setCasesDetected] = useState(0);
-  const [unitsDetected, setUnitsDetected] = useState(1);
+  const [unitsDetected, setUnitsDetected] = useState(0);
   const [knownCount, setKnownCount] = useState(0);
   const [unknownCount, setUnknownCount] = useState(0);
+
+  // Snapshot & History State
+  const [latestSnapshotUrl, setLatestSnapshotUrl] = useState<string | null>(null);
+  const [showSnapshotModal, setShowSnapshotModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyItems, setHistoryItems] = useState<DetectionHistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [snapshotKey, setSnapshotKey] = useState(Date.now());
 
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  // WebSocket Telemetry Connection to FastAPI Backend
+  // 1. Fetch Dynamic Camera Stats from Database/Worker API
+  const fetchCameraStats = async () => {
+    try {
+      const res = await safeFetch(`/api/cameras/${cameraId}/stats`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.footfallIn !== undefined) setFootfallIn(data.footfallIn);
+        if (data.footfallOut !== undefined) setFootfallOut(data.footfallOut);
+        if (data.occupancy !== undefined) setOccupancy(data.occupancy);
+        if (data.casesDetected !== undefined) setCasesDetected(data.casesDetected);
+        if (data.unitsDetected !== undefined) setUnitsDetected(data.unitsDetected);
+        if (data.knownCount !== undefined) setKnownCount(data.knownCount);
+        if (data.unknownCount !== undefined) setUnknownCount(data.unknownCount);
+        if (data.roiPolygon && Array.isArray(data.roiPolygon) && data.roiPolygon.length > 0) {
+          setRoiPolygon(data.roiPolygon);
+        }
+        if (data.latestSnapshotUrl) {
+          setLatestSnapshotUrl(data.latestSnapshotUrl);
+        }
+      }
+    } catch (err) {
+      console.debug("Failed to fetch camera stats:", err);
+    }
+  };
+
+  // 2. Fetch Camera Detection History from DB
+  const fetchCameraHistory = async () => {
+    try {
+      setHistoryLoading(true);
+      const res = await safeFetch(`/api/cameras/${cameraId}/history?limit=30`);
+      if (res.ok) {
+        const data = await res.json();
+        setHistoryItems(data);
+      }
+    } catch (err) {
+      console.warn("Failed to load camera history:", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // 3. Operator Detection Verification Action
+  const handleVerifyDetection = async (
+    detectionId: string,
+    status: "APPROVED" | "REJECTED" | "CORRECT"
+  ) => {
+    try {
+      const res = await safeFetch(`/api/cameras/detections/${detectionId}/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ verificationStatus: status }),
+      });
+      if (res.ok) {
+        setHistoryItems((prev) =>
+          prev.map((item) =>
+            item.detectionId === detectionId
+              ? { ...item, verificationStatus: status }
+              : item
+          )
+        );
+      }
+    } catch (err) {
+      console.warn("Verification failed:", err);
+    }
+  };
+
+  // 4. Manual Scan Now Trigger
+  const handleScanNow = async () => {
+    try {
+      setIsScanning(true);
+      setScanMessage("Triggering AI frame scan...");
+      const res = await safeFetch(`/api/cameras/${cameraId}/scan-now`, { method: "POST" });
+      if (res.ok) {
+        const data = await res.json();
+        setScanMessage(`Scan complete: ${data.verdict || "INSPECTED"}`);
+        setSnapshotKey(Date.now());
+        await fetchCameraStats();
+        setTimeout(() => setScanMessage(null), 3500);
+      } else {
+        setScanMessage("Scan failed - edge stream unreachable");
+        setTimeout(() => setScanMessage(null), 3000);
+      }
+    } catch (err) {
+      setScanMessage("Scan request failed");
+      setTimeout(() => setScanMessage(null), 3000);
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // 5. Initial stats fetch and periodic polling fallback
+  useEffect(() => {
+    fetchCameraStats();
+    const statsTimer = setInterval(fetchCameraStats, 10000);
+    return () => clearInterval(statsTimer);
+  }, [cameraId]);
+
+  // 6. WebSocket Telemetry Connection to FastAPI Backend
   useEffect(() => {
     let ws: WebSocket;
     let reconnectTimer: NodeJS.Timeout;
+    let pingTimer: NodeJS.Timeout;
 
     const connectWebSocket = () => {
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const host = window.location.hostname || "localhost";
-      const wsUrl = `${protocol}//${host}:8000/ws/live`;
+      let wsUrl = getWsUrl("/ws/live");
+      try {
+        const token =
+          typeof window !== "undefined"
+            ? localStorage.getItem("secops_token") || sessionStorage.getItem("secops_token")
+            : null;
+        if (token) {
+          wsUrl += `?token=${encodeURIComponent(token)}`;
+        }
+      } catch (_) {}
 
       try {
         ws = new WebSocket(wsUrl);
@@ -101,11 +241,20 @@ export default function StreamPlayer({
 
         ws.onopen = () => {
           setIsConnected(true);
+          // Keepalive ping every 10s to satisfy backend idle timeout watchdog
+          pingTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            }
+          }, 10000);
         };
 
         ws.onmessage = (event) => {
           try {
+            if (event.data === "pong") return;
             const data = JSON.parse(event.data);
+            if (data.type === "pong") return;
+
             if (data.type === "detection_update") {
               const payload = data.payload;
               if (!payload.cameraId || payload.cameraId === cameraId) {
@@ -137,14 +286,15 @@ export default function StreamPlayer({
 
         ws.onclose = () => {
           setIsConnected(false);
-          reconnectTimer = setTimeout(connectWebSocket, 3000);
+          clearInterval(pingTimer);
+          reconnectTimer = setTimeout(connectWebSocket, 4000);
         };
 
         ws.onerror = () => {
           setIsConnected(false);
         };
       } catch (err) {
-        reconnectTimer = setTimeout(connectWebSocket, 3000);
+        reconnectTimer = setTimeout(connectWebSocket, 4000);
       }
     };
 
@@ -153,6 +303,7 @@ export default function StreamPlayer({
     return () => {
       if (wsRef.current) wsRef.current.close();
       clearTimeout(reconnectTimer);
+      clearInterval(pingTimer);
     };
   }, [cameraId, onAlertTriggered]);
 
@@ -166,6 +317,7 @@ export default function StreamPlayer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roiPolygon: points }),
       });
+      await fetchCameraStats();
     } catch (err) {
       console.warn("ROI sync warning:", err);
     }
@@ -180,6 +332,7 @@ export default function StreamPlayer({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ roiPolygon: [] }),
       });
+      await fetchCameraStats();
     } catch (err) {
       // offline fallback
     }
@@ -222,32 +375,65 @@ export default function StreamPlayer({
 
   // Video Source URL (continuous stream from FastAPI)
   const videoSrc = `/api/cameras/${cameraId}/stream?raw=true&stream=${streamQuality}`;
+  const currentSnapshotUrl = `/api/cameras/${cameraId}/snapshot?t=${snapshotKey}`;
 
   // Helper to match Part P.1 and CC.2 color & styling system
   const getBoxStyle = (b: DetectionBox) => {
     const rawType = (b.type || "").toUpperCase();
     const rawLabel = (b.label || "").toUpperCase();
 
-    if (b.is_discrepancy || b.is_defect || rawType.includes("DEFECT") || rawLabel.includes("DEFECT") || rawType.includes("DISCREPANCY") || rawType.includes("SUSPICIOUS") || rawType.includes("HAZARD")) {
+    if (
+      b.is_discrepancy ||
+      b.is_defect ||
+      rawType.includes("DEFECT") ||
+      rawLabel.includes("DEFECT") ||
+      rawType.includes("DISCREPANCY") ||
+      rawType.includes("SUSPICIOUS") ||
+      rawType.includes("HAZARD")
+    ) {
       return { border: "#EF4444", bg: "#EF4444", text: "#FFFFFF" }; // Red
     }
-    if (rawType.includes("STATIC") || rawLabel.includes("STATIC ARTIFACT") || rawLabel.includes("IGNORED")) {
-      return { border: "#64748B", bg: "#1E293B", text: "#94A3B8" }; // Slate Gray for quarantined static artifacts
+    if (
+      rawType.includes("STATIC") ||
+      rawLabel.includes("STATIC ARTIFACT") ||
+      rawLabel.includes("IGNORED")
+    ) {
+      return { border: "#64748B", bg: "#1E293B", text: "#94A3B8" }; // Slate Gray
     }
-    if (rawLabel.includes("SMARTPHONE") || rawLabel.includes("PHONE") || rawLabel.includes("LAPTOP") || rawType.includes("ELECTRONICS")) {
+    if (
+      rawLabel.includes("SMARTPHONE") ||
+      rawLabel.includes("PHONE") ||
+      rawLabel.includes("LAPTOP") ||
+      rawType.includes("ELECTRONICS")
+    ) {
       return { border: "#F97316", bg: "#F97316", text: "#000000" }; // Orange
     }
-    if (rawLabel.includes("SHELF") || rawLabel.includes("BOOKCASE") || rawLabel.includes("CAR") || rawLabel.includes("VEHICLE") || rawType.includes("VEHICLE") || rawLabel.includes("DOORWAY")) {
+    if (
+      rawLabel.includes("SHELF") ||
+      rawLabel.includes("BOOKCASE") ||
+      rawLabel.includes("CAR") ||
+      rawLabel.includes("VEHICLE") ||
+      rawType.includes("VEHICLE") ||
+      rawLabel.includes("DOORWAY")
+    ) {
       return { border: "#06B6D4", bg: "#06B6D4", text: "#000000" }; // Cyan
     }
-    if (rawType.includes("MATCHED") || rawLabel.includes("AUTHORIZED") || rawLabel.includes("KNOWN")) {
+    if (
+      rawType.includes("MATCHED") ||
+      rawLabel.includes("AUTHORIZED") ||
+      rawLabel.includes("KNOWN")
+    ) {
       return { border: "#10B981", bg: "#10B981", text: "#FFFFFF" }; // Confirmed Match (Emerald)
     }
-    if (rawType.includes("UNMATCHED") || rawLabel.includes("UNKNOWN") || rawLabel.includes("UNAUTHORIZED")) {
-      return { border: "#EF4444", bg: "#DC2626", text: "#FFFFFF" }; // Unknown Person (Red per CC.2)
+    if (
+      rawType.includes("UNMATCHED") ||
+      rawLabel.includes("UNKNOWN") ||
+      rawLabel.includes("UNAUTHORIZED")
+    ) {
+      return { border: "#EF4444", bg: "#DC2626", text: "#FFFFFF" }; // Unknown Person
     }
     // Default retail item styling (Lime Green matching industrial spec)
-    return { border: "#84CC16", bg: "#84CC16", text: "#000000" }; // Lime Green
+    return { border: "#84CC16", bg: "#84CC16", text: "#000000" };
   };
 
   return (
@@ -257,11 +443,17 @@ export default function StreamPlayer({
         <div className="flex items-center gap-3">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
-              isConnected ? "bg-[var(--status-ok)] shadow-[0_0_8px_var(--status-ok)]" : "bg-[var(--status-high)]"
+              isConnected
+                ? "bg-[var(--status-ok)] shadow-[0_0_8px_var(--status-ok)]"
+                : "bg-[var(--status-high)]"
             }`}
           />
-          <span className="font-bold font-mono text-[var(--text-primary)] tracking-wider">{cameraId}</span>
-          <span className="text-[var(--text-muted)] font-sans text-xs hidden sm:inline">{cameraName}</span>
+          <span className="font-bold font-mono text-[var(--text-primary)] tracking-wider">
+            {cameraId}
+          </span>
+          <span className="text-[var(--text-muted)] font-sans text-xs hidden sm:inline">
+            {cameraName}
+          </span>
           <span className="bg-[var(--bg-canvas)] text-[var(--data-mono-text)] px-2 py-0.5 rounded font-mono text-[11px] border border-[var(--border-hairline)]">
             {laneId}
           </span>
@@ -288,7 +480,10 @@ export default function StreamPlayer({
       </div>
 
       {/* 2. Main Video Feed & Surveillance CV HUD Area */}
-      <div ref={containerRef} className="relative aspect-video bg-black w-full overflow-hidden select-none">
+      <div
+        ref={containerRef}
+        className="relative aspect-video bg-black w-full overflow-hidden select-none"
+      >
         {/* Continuous Stream Feed or Real-time Fallback */}
         {isStreaming ? (
           <img
@@ -301,31 +496,47 @@ export default function StreamPlayer({
           <div className="w-full h-full flex flex-col items-center justify-center bg-[#12151A] text-[#8B93A1] font-mono text-xs">
             <Video size={40} className="mb-2 text-[#2C323D] animate-pulse" />
             <span className="tracking-widest text-[#B8E3D6]">RTSP STREAM MONITOR</span>
-            <span className="text-[#8B93A1] text-[10px] mt-1">{cameraIp} (PORT 554)</span>
+            <span className="text-[#8B93A1] text-[10px] mt-1">
+              {cameraIp} (PORT 554)
+            </span>
           </div>
         )}
 
-        {/* SURVEILLANCE CV TOP BANNER (Sleek, Non-Obstructive) */}
+        {/* SURVEILLANCE CV TOP BANNER */}
         <div className="absolute top-2 left-2 z-30 pointer-events-none">
           <div className="bg-black/75 backdrop-blur-sm px-2.5 py-0.5 rounded border border-yellow-500/30 shadow-lg font-mono text-[10px] font-bold text-[#FACC15] tracking-wider flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
             <span>
-              SURVEILLANCE CV // ACTIVE // DETECTIONS: {boxes.length} (CASES: {casesDetected} UNITS: {unitsDetected})
+              SURVEILLANCE CV // ACTIVE // DETECTIONS: {boxes.length} (CASES: {casesDetected} UNITS:{" "}
+              {unitsDetected})
             </span>
           </div>
         </div>
 
+        {/* Temporary Scan Message Toast */}
+        {scanMessage && (
+          <div className="absolute top-2 right-2 z-40 bg-black/85 backdrop-blur-md px-3 py-1.5 rounded-lg border border-[#38BDF8] text-[#38BDF8] font-mono text-xs flex items-center gap-2 shadow-xl animate-fade-in">
+            <RefreshCw size={13} className="animate-spin text-[#38BDF8]" />
+            <span>{scanMessage}</span>
+          </div>
+        )}
+
         {/* Solid Pinned Badges with CC.2 Strict Bracketed Format & Oriented Polygons */}
         <div className="absolute inset-0 pointer-events-none z-20">
-          {/* SVG layer for Oriented Bounding Boxes (OBB) & instance segmentation masks */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none">
             {boxes.map((b, idx) => {
               if (!b.polygon || b.polygon.length < 3) return null;
               const style = getBoxStyle(b);
               const pointsStr = b.polygon
                 .map(([x, y]) => {
-                  const px = x <= 1.0 ? x * 100 : (x / (resolution.includes("1920") ? 1920 : 1280)) * 100;
-                  const py = y <= 1.0 ? y * 100 : (y / (resolution.includes("1080") ? 1080 : 720)) * 100;
+                  const px =
+                    x <= 1.0
+                      ? x * 100
+                      : (x / (resolution.includes("1920") ? 1920 : 1280)) * 100;
+                  const py =
+                    y <= 1.0
+                      ? y * 100
+                      : (y / (resolution.includes("1080") ? 1080 : 720)) * 100;
                   return `${px}%,${py}%`;
                 })
                 .join(" ");
@@ -346,7 +557,6 @@ export default function StreamPlayer({
           {boxes.map((b, idx) => {
             const rawType = (b.type || "").toUpperCase();
             const rawLabel = (b.label || "").toUpperCase();
-            // Suppress phantom Canny wall frames unless it's a quarantined static artifact
             if (rawType === "WALL_PICTURE" && !rawLabel.includes("STATIC ARTIFACT")) {
               return null;
             }
@@ -357,10 +567,12 @@ export default function StreamPlayer({
             const widthPct = `${b.box[2] * 100}%`;
             const heightPct = `${b.box[3] * 100}%`;
 
-            // Strict CC.2 Bracketed Label Construction
             let cleanTag = (b.label || "").trim();
             if (!cleanTag.startsWith("[")) {
-              const confPct = typeof b.confidence === "number" ? `${(b.confidence * 100).toFixed(0)}%` : "";
+              const confPct =
+                typeof b.confidence === "number"
+                  ? `${(b.confidence * 100).toFixed(0)}%`
+                  : "";
               const trackId = b.track_id ? ` ID:${b.track_id}` : ` ID:${idx + 1}`;
               const baseName = cleanTag.replace(/\s*\(\d+%\)/g, "").trim();
               cleanTag = `[${baseName} ${confPct}${trackId}]`;
@@ -408,7 +620,10 @@ export default function StreamPlayer({
               <span className="font-bold flex items-center gap-1 text-[#38BDF8]">
                 <Compass size={12} /> PTZ CONTROLLER
               </span>
-              <button onClick={() => setShowPtz(false)} className="text-[#8B93A1] hover:text-white">
+              <button
+                onClick={() => setShowPtz(false)}
+                className="text-[#8B93A1] hover:text-white"
+              >
                 <X size={12} />
               </button>
             </div>
@@ -496,10 +711,17 @@ export default function StreamPlayer({
         )}
       </div>
 
-      {/* 4. Live Sensor Verification Strip */}
+      {/* 3. Live Sensor Verification Strip (Dynamic DB & WebSocket Driven) */}
       <div className="p-2.5 bg-[var(--bg-panel)] grid grid-cols-2 md:grid-cols-4 gap-2 text-xs transition-colors">
         {/* Footfall Counters */}
-        <div className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden transition-colors">
+        <div
+          onClick={() => {
+            fetchCameraHistory();
+            setShowHistoryModal(true);
+          }}
+          className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden cursor-pointer hover:border-[#38BDF8] transition-colors"
+          title="Click to view full traversal history"
+        >
           <div className="text-[10px] text-[var(--text-muted)] font-mono flex items-center gap-1 truncate">
             <Users size={12} className="text-[#38BDF8] shrink-0" />
             <span className="truncate">FOOTFALL (IN/OUT)</span>
@@ -512,7 +734,14 @@ export default function StreamPlayer({
         </div>
 
         {/* Live Detected Count */}
-        <div className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden transition-colors">
+        <div
+          onClick={() => {
+            fetchCameraHistory();
+            setShowHistoryModal(true);
+          }}
+          className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden cursor-pointer hover:border-[var(--signal-amber)] transition-colors"
+          title="Click to view detected items history"
+        >
           <div className="text-[10px] text-[var(--text-muted)] font-mono flex items-center gap-1 truncate">
             <Package size={12} className="text-[var(--signal-amber)] shrink-0" />
             <span className="truncate">CASES / UNITS</span>
@@ -525,27 +754,44 @@ export default function StreamPlayer({
         </div>
 
         {/* Identity Recognition */}
-        <div className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden transition-colors">
+        <div
+          onClick={() => {
+            fetchCameraHistory();
+            setShowHistoryModal(true);
+          }}
+          className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden cursor-pointer hover:border-[#10B981] transition-colors"
+          title="Click to view biometric match log"
+        >
           <div className="text-[10px] text-[var(--text-muted)] font-mono flex items-center gap-1 truncate">
             <ShieldCheck size={12} className="text-[var(--status-ok)] shrink-0" />
             <span className="truncate">BIOMETRIC MATCH</span>
           </div>
           <div className="text-xs sm:text-sm font-bold font-mono mt-0.5 flex items-center gap-1 truncate">
-            <span className="text-[var(--status-ok)] whitespace-nowrap">{knownCount} Known</span>
+            <span className="text-[var(--status-ok)] whitespace-nowrap">
+              {knownCount} Known
+            </span>
             <span className="text-[var(--border-hairline)]">|</span>
-            <span className="text-[#38BDF8] whitespace-nowrap">{unknownCount} Guest</span>
+            <span className="text-[#38BDF8] whitespace-nowrap">
+              {unknownCount} Guest
+            </span>
           </div>
         </div>
 
         {/* Tripwire Status */}
-        <div className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden transition-colors">
+        <div
+          onClick={() => setIsDrawingRoi(true)}
+          className="bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)] flex flex-col justify-between min-w-0 overflow-hidden cursor-pointer hover:border-[#A78BFA] transition-colors"
+          title="Click to configure Virtual Tripwire ROI"
+        >
           <div className="text-[10px] text-[var(--text-muted)] font-mono flex items-center gap-1 truncate">
             <Sliders size={12} className="text-[#A78BFA] shrink-0" />
             <span className="truncate">VIRTUAL TRIPWIRE</span>
           </div>
           <div className="text-xs sm:text-sm font-bold font-mono mt-0.5 truncate">
             {roiPolygon && roiPolygon.length > 0 ? (
-              <span className="text-[#A78BFA] truncate">ACTIVE ({roiPolygon.length} PTS)</span>
+              <span className="text-[#A78BFA] truncate">
+                ACTIVE ({roiPolygon.length} PTS)
+              </span>
             ) : (
               <span className="text-[var(--text-muted)] truncate">UNCONFIGURED</span>
             )}
@@ -553,10 +799,10 @@ export default function StreamPlayer({
         </div>
       </div>
 
-      {/* 5. Bottom Action Controls Bar */}
+      {/* 4. Bottom Action Controls Bar (All Buttons Operational) */}
       <div className="px-4 py-2 bg-[var(--bg-panel-raised)] border-t border-[var(--border-hairline)] flex flex-wrap justify-between items-center gap-2 transition-colors">
         {/* Left: ROI / Tripwire Editing Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {isDrawingRoi ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-[var(--signal-amber)] font-mono animate-pulse">
@@ -570,7 +816,7 @@ export default function StreamPlayer({
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => setIsDrawingRoi(true)}
                 className="px-3 py-1 text-xs bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded font-medium flex items-center gap-1.5 shadow transition-colors"
@@ -597,6 +843,37 @@ export default function StreamPlayer({
                   <Trash2 size={13} /> Clear ROI
                 </button>
               )}
+
+              {/* View Snapshot Button */}
+              <button
+                onClick={() => {
+                  setSnapshotKey(Date.now());
+                  setShowSnapshotModal(true);
+                }}
+                className="px-3 py-1 text-xs bg-[var(--bg-panel)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded font-medium flex items-center gap-1.5 transition-colors"
+              >
+                <CameraIcon size={13} className="text-[#38BDF8]" /> View Snapshot
+              </button>
+
+              {/* View History Button */}
+              <button
+                onClick={() => {
+                  fetchCameraHistory();
+                  setShowHistoryModal(true);
+                }}
+                className="px-3 py-1 text-xs bg-[var(--bg-panel)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded font-medium flex items-center gap-1.5 transition-colors"
+              >
+                <History size={13} className="text-[#E8A33D]" /> Detection History
+              </button>
+
+              {/* Scan Now Edge Trigger */}
+              <button
+                onClick={handleScanNow}
+                disabled={isScanning}
+                className="px-3 py-1 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded font-medium flex items-center gap-1.5 transition-colors shadow"
+              >
+                <Eye size={13} /> {isScanning ? "Scanning..." : "Scan Now"}
+              </button>
             </div>
           )}
         </div>
@@ -607,7 +884,9 @@ export default function StreamPlayer({
             <button
               onClick={() => setStreamQuality("main")}
               className={`px-2 py-0.5 rounded transition-colors ${
-                streamQuality === "main" ? "bg-[#2563EB] text-white font-bold" : "text-[var(--text-muted)]"
+                streamQuality === "main"
+                  ? "bg-[#2563EB] text-white font-bold"
+                  : "text-[var(--text-muted)]"
               }`}
             >
               MAIN (1080p)
@@ -615,7 +894,9 @@ export default function StreamPlayer({
             <button
               onClick={() => setStreamQuality("sub")}
               className={`px-2 py-0.5 rounded transition-colors ${
-                streamQuality === "sub" ? "bg-[#2563EB] text-white font-bold" : "text-[var(--text-muted)]"
+                streamQuality === "sub"
+                  ? "bg-[#2563EB] text-white font-bold"
+                  : "text-[var(--text-muted)]"
               }`}
             >
               SUB (480p)
@@ -639,6 +920,203 @@ export default function StreamPlayer({
           </button>
         </div>
       </div>
+
+      {/* Snapshot Modal */}
+      {showSnapshotModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-3xl w-full p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div className="flex items-center gap-2 font-mono text-sm font-bold text-[var(--text-primary)]">
+                <CameraIcon size={18} className="text-[#38BDF8]" />
+                <span>
+                  Camera Snapshot — {cameraId} ({cameraName})
+                </span>
+              </div>
+              <button
+                onClick={() => setShowSnapshotModal(false)}
+                className="p-1 text-[var(--text-secondary)] hover:text-white rounded"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-[var(--border-hairline)]">
+              <img
+                src={currentSnapshotUrl}
+                alt={`Snapshot from ${cameraId}`}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = videoSrc;
+                }}
+              />
+            </div>
+
+            <div className="flex flex-wrap justify-between items-center gap-3 pt-2 text-xs font-mono text-[var(--text-secondary)]">
+              <div>
+                IP: <span className="text-[var(--text-primary)]">{cameraIp}</span> |
+                Status: <span className="text-[var(--status-ok)]">ONLINE</span> | Lane:{" "}
+                <span className="text-[#38BDF8]">{laneId}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setSnapshotKey(Date.now())}
+                  className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg flex items-center gap-1.5 transition-colors"
+                >
+                  <RefreshCw size={13} /> Refresh Frame
+                </button>
+                <a
+                  href={`/api/cameras/${cameraId}/snapshot?download=1`}
+                  download={`snapshot_${cameraId}.jpg`}
+                  className="px-3 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg flex items-center gap-1.5 shadow transition-colors"
+                >
+                  <Download size={13} /> Download JPEG
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Detection History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div className="flex items-center gap-2 font-mono text-base font-bold text-[var(--text-primary)]">
+                <History size={20} className="text-[#E8A33D]" />
+                <span>Camera Detection & Traversal History — {cameraId}</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={fetchCameraHistory}
+                  disabled={historyLoading}
+                  className="p-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-white rounded border border-[var(--border-hairline)] transition-colors"
+                  title="Refresh History"
+                >
+                  <RefreshCw size={14} className={historyLoading ? "animate-spin" : ""} />
+                </button>
+                <button
+                  onClick={() => setShowHistoryModal(false)}
+                  className="p-1 text-[var(--text-secondary)] hover:text-white rounded"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+              {historyLoading && historyItems.length === 0 ? (
+                <div className="py-12 text-center text-xs font-mono text-[var(--text-secondary)] flex flex-col items-center gap-2">
+                  <RefreshCw size={24} className="animate-spin text-[#38BDF8]" />
+                  <span>Loading detection history from database...</span>
+                </div>
+              ) : historyItems.length === 0 ? (
+                <div className="py-12 text-center text-xs font-mono text-[var(--text-secondary)]">
+                  No detection records found for this camera today.
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
+                    <tr>
+                      <th className="p-2.5">TIMESTAMP</th>
+                      <th className="p-2.5">EVENT</th>
+                      <th className="p-2.5">ITEM / DETECTED OBJECT</th>
+                      <th className="p-2.5">DIR</th>
+                      <th className="p-2.5">IDENTITY</th>
+                      <th className="p-2.5">CONF</th>
+                      <th className="p-2.5">STATUS</th>
+                      <th className="p-2.5 text-right">OPERATOR VERIFY</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
+                    {historyItems.map((item) => (
+                      <tr
+                        key={item.detectionId}
+                        className="hover:bg-[var(--bg-panel-raised)] transition-colors"
+                      >
+                        <td className="p-2.5 text-[var(--text-secondary)] whitespace-nowrap">
+                          {new Date(item.timestamp).toLocaleTimeString()}
+                        </td>
+                        <td className="p-2.5 font-bold text-[#38BDF8]">
+                          {item.eventType}
+                        </td>
+                        <td className="p-2.5">
+                          <span className="font-semibold text-[var(--text-primary)]">
+                            {item.objectClass}
+                          </span>
+                          <span className="text-[var(--text-secondary)] ml-1">
+                            (x{item.quantity})
+                          </span>
+                        </td>
+                        <td className="p-2.5">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              item.direction === "EXIT"
+                                ? "bg-rose-950 text-rose-300 border border-rose-800"
+                                : "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                            }`}
+                          >
+                            {item.direction}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-[var(--text-secondary)]">
+                          {item.personIdentity}
+                        </td>
+                        <td className="p-2.5 text-[#E8A33D]">
+                          {(item.confidence * 100).toFixed(1)}%
+                        </td>
+                        <td className="p-2.5">
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                              item.verificationStatus === "APPROVED" ||
+                              item.verificationStatus === "CORRECT"
+                                ? "bg-emerald-900/60 text-emerald-300 border border-emerald-700"
+                                : "bg-amber-900/60 text-amber-300 border border-amber-700"
+                            }`}
+                          >
+                            {item.verificationStatus}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() =>
+                                handleVerifyDetection(item.detectionId, "APPROVED")
+                              }
+                              className="p-1 bg-emerald-900/50 hover:bg-emerald-800 text-emerald-300 rounded border border-emerald-700 transition-colors"
+                              title="Approve / Mark Correct"
+                            >
+                              <Check size={12} />
+                            </button>
+                            <button
+                              onClick={() =>
+                                handleVerifyDetection(item.detectionId, "REJECTED")
+                              }
+                              className="p-1 bg-rose-900/50 hover:bg-rose-800 text-rose-300 rounded border border-rose-700 transition-colors"
+                              title="Reject / Disagree"
+                            >
+                              <X size={12} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-[var(--border-hairline)]">
+              <button
+                onClick={() => setShowHistoryModal(false)}
+                className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-semibold"
+              >
+                Close History
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

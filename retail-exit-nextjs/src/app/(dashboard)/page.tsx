@@ -249,6 +249,7 @@ export default function DashboardPage() {
                 cameraIp={cam.ipAddress}
                 streamUrl={cam.streamUrl}
                 laneId={cam.laneId}
+                initialRoi={cam.roiPolygon || null}
               />
             ))}
           </div>

@@ -1560,38 +1560,14 @@ class CameraIngestionWorker:
                     existing_prods = {p.name.lower(): p for p in products}
                     existing_by_sku = {p.sku_code.upper(): p for p in products}
 
-                    sku_map = {
-                        "Cement Bag (50kg)": ("MAT-CEM-50KG", "Building Materials", 1, 9.50, 95.00),
-                        "Bundled Iron Rods / Rebar": ("MAT-ROD-REBAR", "Building Materials", 1, 24.00, 240.00),
-                        "Brick Stack / Paver Pallet": ("MAT-BRK-RED", "Building Materials", 1, 0.85, 425.00),
-                        "Heavy Corrugated Master Carton": ("MAT-BOX-HEAVY", "Packaging", 1, 4.20, 42.00),
-                        "Industrial Wooden Pallet": ("MAT-PLT-WOOD", "Logistics", 1, 18.50, 185.00),
-                        "Ceramic Tiles / Tile Box": ("MAT-TIL-CERAMIC", "Building Materials", 1, 15.00, 150.00),
-                        "Corrugated Aluminum Sheets & Tin Panels": ("MAT-ALU-TIN", "Building Materials", 1, 28.00, 280.00),
-                    }
-
                     for mat_name, count in mat_seg_res.counts_by_class.items():
                         target_prod = existing_prods.get(mat_name.lower())
                         if not target_prod:
-                            sku_info = sku_map.get(mat_name)
-                            if sku_info:
-                                sku_code, category, pack_size, u_price, c_price = sku_info
-                                target_prod = existing_by_sku.get(sku_code)
-                                if not target_prod:
-                                    target_prod = Product(
-                                        product_id=str(uuid.uuid4()),
-                                        sku_code=sku_code,
-                                        name=mat_name,
-                                        category=category,
-                                        pack_size=pack_size,
-                                        unit_price=u_price,
-                                        case_price=c_price,
-                                        created_at=now,
-                                    )
-                                    session.add(target_prod)
-                                    await session.flush()
-                                    existing_by_sku[sku_code] = target_prod
-                                    existing_prods[mat_name.lower()] = target_prod
+                            # Search partial or category match in registered database catalog
+                            for p in products:
+                                if p.name.lower() in mat_name.lower() or mat_name.lower() in p.name.lower():
+                                    target_prod = p
+                                    break
 
                         if target_prod:
                             line_item = ExitEventLineItem(

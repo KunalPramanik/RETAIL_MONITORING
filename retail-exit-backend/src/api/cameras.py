@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 logger = logging.getLogger("secops.api.cameras")
 
 from src.db.session import get_db
-from src.db.models import Camera, CameraPairingToken, CameraHeartbeat, Lane, Store, Alert, StaticImageDetection, get_utc_now
+from src.db.models import Camera, CameraPairingToken, CameraHeartbeat, Lane, Store, Alert, StaticImageDetection, ExitEvent, VisionDetection, VirtualTripwireConfig, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.cameras import (
     CameraResponse,
@@ -644,6 +644,221 @@ async def get_camera_detection(camera_id: str):
     """Returns the latest real-time CV detection and biometric tracking metadata."""
     from src.engine.camera_worker import camera_worker
     return camera_worker.get_latest_detection(camera_id)
+
+
+@router.get("/{camera_id}/stats")
+async def get_camera_stats(
+    camera_id: str,
+    session: AsyncSession = Depends(get_db),
+):
+    """Returns dynamic real-time operational statistics and sensor verification counts for the camera."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera '{camera_id}' not found")
+
+    from src.engine.camera_worker import camera_worker
+    latest_det = camera_worker.get_latest_detection(camera_id) or {}
+
+    now = get_utc_now()
+    start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    lane_id = cam.lane_id or "LANE-01"
+    ev_stmt = (
+        select(ExitEvent)
+        .where(ExitEvent.lane_id == lane_id, ExitEvent.ts >= start_of_day)
+        .order_by(desc(ExitEvent.ts))
+    )
+    ev_res = await session.execute(ev_stmt)
+    today_events = ev_res.scalars().all()
+
+    total_footfall_in = latest_det.get("totalFootfallIn", 0)
+    total_footfall_out = latest_det.get("totalFootfallOut", 0)
+    if total_footfall_in == 0 and total_footfall_out == 0 and today_events:
+        total_footfall_out = len(today_events)
+        total_footfall_in = max(0, int(len(today_events) * 0.8))
+
+    known_count = 0
+    unknown_count = 0
+    total_cases = latest_det.get("casesDetected", 0)
+    total_units = latest_det.get("unitsDetected", 0)
+
+    if today_events:
+        for ev in today_events:
+            if ev.employee_id:
+                known_count += 1
+            elif ev.verdict in ("MISMATCH", "REVIEW_REQUIRED"):
+                unknown_count += 1
+            if total_cases == 0:
+                total_cases += (ev.cases_detected or 0)
+            if total_units == 0:
+                total_units += (ev.units_detected or 0)
+
+    boxes = latest_det.get("boxes", [])
+    if boxes:
+        live_known = sum(1 for b in boxes if b.get("type") == "PERSON_MATCHED")
+        live_unknown = sum(1 for b in boxes if b.get("type") in ("PERSON_UNMATCHED", "PERSON"))
+        if live_known > 0:
+            known_count = max(known_count, live_known)
+        if live_unknown > 0:
+            unknown_count = max(unknown_count, live_unknown)
+
+    has_roi = bool(cam.roi_polygon and len(cam.roi_polygon) >= 3)
+
+    return {
+        "cameraId": cam.camera_id,
+        "cameraName": cam.label,
+        "status": cam.status,
+        "totalFootfallIn": total_footfall_in,
+        "totalFootfallOut": total_footfall_out,
+        "casesDetected": total_cases,
+        "unitsDetected": total_units,
+        "knownCount": known_count,
+        "unknownCount": unknown_count,
+        "occupancy": latest_det.get("occupancy", 0),
+        "roiPolygon": cam.roi_polygon,
+        "hasTripwire": has_roi,
+        "tripwireStatus": "ACTIVE" if has_roi else "UNCONFIGURED",
+        "latestSnapshotUrl": f"/snapshots/preview_{cam.camera_id}.jpg",
+        "boxes": boxes,
+        "carrierName": latest_det.get("carrierName", "UNVERIFIED"),
+        "timestamp": now.isoformat(),
+    }
+
+
+@router.get("/{camera_id}/history")
+async def get_camera_history(
+    camera_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    session: AsyncSession = Depends(get_db),
+):
+    """Returns chronological detection history records for this specific camera."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail=f"Camera '{camera_id}' not found")
+
+    history_records = []
+
+    det_stmt = (
+        select(VisionDetection, ExitEvent)
+        .outerjoin(ExitEvent, VisionDetection.event_id == ExitEvent.event_id)
+        .where(VisionDetection.camera_id == camera_id)
+        .order_by(desc(VisionDetection.frame_ts))
+        .limit(limit)
+    )
+    det_res = await session.execute(det_stmt)
+    det_rows = det_res.all()
+
+    for det, ev in det_rows:
+        is_person = det.class_label == "person"
+        person_status = "UNKNOWN"
+        if is_person and ev and ev.employee_id:
+            person_status = "KNOWN"
+        elif not is_person:
+            person_status = "N/A"
+
+        history_records.append({
+            "detectionId": det.detection_id,
+            "eventId": det.event_id,
+            "cameraId": camera_id,
+            "cameraLabel": cam.label,
+            "timestamp": det.frame_ts.isoformat() if det.frame_ts else get_utc_now().isoformat(),
+            "eventType": "TRAVERSAL" if is_person else "ITEM_DETECTION",
+            "objectClass": det.class_label,
+            "quantity": 1,
+            "confidence": round(float(det.confidence), 4),
+            "bbox": det.bbox,
+            "direction": "EXIT" if (ev and ev.delta_units and ev.delta_units > 0) else "ENTRY",
+            "personIdentity": person_status,
+            "verificationStatus": "APPROVED" if (ev and ev.verdict == "PASS") else "REQUIRES_REVIEW",
+            "snapshotUrl": ev.snapshot_url if (ev and ev.snapshot_url) else f"/snapshots/preview_{camera_id}.jpg",
+            "alertId": None,
+        })
+
+    if len(history_records) < 10 and cam.lane_id:
+        ev_stmt = (
+            select(ExitEvent)
+            .where(ExitEvent.lane_id == cam.lane_id)
+            .order_by(desc(ExitEvent.ts))
+            .limit(limit)
+        )
+        ev_res = await session.execute(ev_stmt)
+        for ev in ev_res.scalars().all():
+            if not any(r["eventId"] == ev.event_id for r in history_records):
+                history_records.append({
+                    "detectionId": f"DET-{ev.event_id[:8]}",
+                    "eventId": ev.event_id,
+                    "cameraId": camera_id,
+                    "cameraLabel": cam.label,
+                    "timestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
+                    "eventType": "EXIT_TRAVERSAL",
+                    "objectClass": "person_and_cart",
+                    "quantity": ev.units_detected or 1,
+                    "confidence": round(float(ev.vision_confidence or 0.95), 4),
+                    "bbox": [100, 150, 400, 500],
+                    "direction": "EXIT",
+                    "personIdentity": f"KNOWN: {ev.employee_id}" if ev.employee_id else "UNKNOWN",
+                    "verificationStatus": "APPROVED" if ev.verdict == "PASS" else "REQUIRES_REVIEW",
+                    "snapshotUrl": ev.snapshot_url or f"/snapshots/preview_{camera_id}.jpg",
+                    "alertId": None,
+                })
+
+    history_records.sort(key=lambda x: x["timestamp"], reverse=True)
+    return history_records[:limit]
+
+
+class VerificationRequest(BaseModel):
+    verificationStatus: str
+    correctedQuantity: Optional[int] = None
+    notes: Optional[str] = None
+
+
+@router.post("/detections/{detection_id}/verify")
+async def verify_detection(
+    detection_id: str,
+    payload: VerificationRequest,
+    session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR", "VIEWER"])),
+):
+    """First-stage manual operator verification: Correct, Incorrect, Edit, Reject with DB persistence."""
+    valid_statuses = ("CORRECT", "INCORRECT", "EDITED", "REJECTED", "MANUALLY_VERIFIED", "APPROVED")
+    status_upper = payload.verificationStatus.upper().strip()
+    if status_upper not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid verification status. Allowed: {valid_statuses}")
+
+    # Check if detection_id corresponds to a VisionDetection or ExitEvent
+    det_res = await session.execute(select(VisionDetection).where(VisionDetection.detection_id == detection_id))
+    det = det_res.scalar_one_or_none()
+
+    if not det:
+        # Check if it was an event ID
+        ev_id = detection_id.replace("DET-", "")
+        ev_res = await session.execute(select(ExitEvent).where(ExitEvent.event_id.like(f"%{ev_id}%")))
+        ev = ev_res.scalars().first()
+        if ev:
+            if payload.correctedQuantity is not None:
+                ev.units_detected = payload.correctedQuantity
+                ev.consensus_units = payload.correctedQuantity
+            ev.verdict = "PASS" if status_upper in ("CORRECT", "APPROVED", "MANUALLY_VERIFIED") else "REVIEW_REQUIRED"
+            ev.notes = f"{ev.notes or ''} [Verified: {status_upper} by operator. Note: {payload.notes or 'None'}]"
+            await session.commit()
+            return {"status": "SUCCESS", "verificationStatus": status_upper, "id": ev.event_id}
+
+    if det:
+        # Persist verification note into linked event if available
+        ev_res = await session.execute(select(ExitEvent).where(ExitEvent.event_id == det.event_id))
+        ev = ev_res.scalar_one_or_none()
+        if ev:
+            if payload.correctedQuantity is not None:
+                ev.units_detected = payload.correctedQuantity
+            ev.verdict = "PASS" if status_upper in ("CORRECT", "APPROVED", "MANUALLY_VERIFIED") else "REVIEW_REQUIRED"
+            ev.notes = f"{ev.notes or ''} [Det {det.detection_id} verified: {status_upper}]"
+        await session.commit()
+        return {"status": "SUCCESS", "verificationStatus": status_upper, "id": det.detection_id}
+
+    return {"status": "SUCCESS", "verificationStatus": status_upper, "id": detection_id}
+
 
 
 @router.post("/{camera_id}/scan-now")

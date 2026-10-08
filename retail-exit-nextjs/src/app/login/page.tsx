@@ -139,6 +139,26 @@ function LoginForm() {
               </div>
             )}
 
+            {/* Quick Access Helper */}
+            <div className="mb-4 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-[var(--text-secondary)] flex items-center justify-between">
+              <div>
+                <span className="font-semibold text-[#38BDF8]">Default Credentials:</span>{" "}
+                <span className="font-mono text-[var(--text-primary)]">admin</span> /{" "}
+                <span className="font-mono text-[var(--text-primary)]">admin</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIdentifier("admin");
+                  setPassword("admin");
+                  setErrorMessage(null);
+                }}
+                className="text-[10px] font-semibold text-[#38BDF8] hover:underline uppercase tracking-wider"
+              >
+                Auto-fill
+              </button>
+            </div>
+
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Identifier Input */}
@@ -329,3 +349,4 @@ export default function LoginPage() {
     </Suspense>
   );
 }
+

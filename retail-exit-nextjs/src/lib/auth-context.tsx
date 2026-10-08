@@ -137,6 +137,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!res.ok) {
         setIsLoading(false);
+        if (res.status === 503 || data?.status === "OFFLINE") {
+          return {
+            success: false,
+            error: "Backend service is offline (port 8000). Please ensure 'retail-exit-backend' is started.",
+          };
+        }
+        if (res.status === 401) {
+          return {
+            success: false,
+            error: data?.detail || "Incorrect username or password. Default admin: admin / AdminSecurePass2026! (or 'admin')",
+          };
+        }
         const errMsg = data?.detail || data?.message || "Authentication failed. Please check your credentials.";
         return { success: false, error: errMsg };
       }

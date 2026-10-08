@@ -214,7 +214,7 @@ async def get_live_detections_table(
         ev_res = await session.execute(ev_stmt)
         for ev, lane in ev_res.all():
             records.append({
-                "detectionId": f"DET-{ev.event_id[:8]}",
+                "detectionId": f"DET-{ev.event_id}",
                 "cameraId": ev.lane_id,
                 "cameraLabel": lane.label if lane else (ev.lane_id or "Main Exit Portal 1"),
                 "timestamp": ev.ts.strftime("%H:%M:%S") if ev.ts else get_utc_now().strftime("%H:%M:%S"),
@@ -852,7 +852,7 @@ async def get_camera_history(
         for ev in ev_res.scalars().all():
             if not any(r["eventId"] == ev.event_id for r in history_records):
                 history_records.append({
-                    "detectionId": f"DET-{ev.event_id[:8]}",
+                    "detectionId": f"DET-{ev.event_id}",
                     "eventId": ev.event_id,
                     "cameraId": camera_id,
                     "cameraLabel": cam.label,

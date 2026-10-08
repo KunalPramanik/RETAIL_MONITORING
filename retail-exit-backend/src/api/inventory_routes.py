@@ -354,12 +354,6 @@ async def trigger_vision_count(
 
 
 class ProposeInitialCountRequest(BaseModel):
-    product_id: Optional[str] = None
-    sku_code: Optional[str] = None
-    ai_proposed_count: int = Field(..., ge=0)
-    camera_id: Optional[str] = "CAM-01"
-    model_version: Optional[str] = "yolox_retail_v8"
-    snapshot_url: Optional[str] = None
     product_id: Optional[str] = Field(None, alias="productId")
     sku_code: Optional[str] = Field(None, alias="skuCode")
     ai_proposed_count: int = Field(..., alias="aiProposedCount", ge=0)
@@ -371,10 +365,6 @@ class ProposeInitialCountRequest(BaseModel):
 
 
 class ConfirmInitialCountRequest(BaseModel):
-    is_correct: bool = True
-    corrected_count: Optional[int] = None
-    reason: Optional[str] = None
-    verified_by: Optional[str] = "SUPERVISOR"
     is_correct: Optional[bool] = Field(None, alias="isCorrect")
     accept_proposed: Optional[bool] = Field(None, alias="acceptProposed")
     corrected_count: Optional[int] = Field(None, alias="correctedCount")

@@ -17,7 +17,7 @@ import numpy as np
 import onnxruntime as ort
 from src.ml.model_config import model_config
 from dataclasses import dataclass, asdict
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 from src.ml.level5_tracking.tracker import SimpleByteTrack
 from datetime import datetime, timezone
 
@@ -282,7 +282,7 @@ class VisionInferenceService:
         frame_bytes: bytes,
         confidence_floor: float = 0.25,
         catalog_products: Optional[List[Dict[str, Any]]] = None,
-        roi_polygon: Optional[list] = None,
+        roi_polygon: Optional[Union[List[Any], Dict[str, Any]]] = None,
         ignored_classes: Optional[list] = None,
         camera_id: Optional[str] = None,
     ) -> Tuple[VisionInferenceResult, bytes]:
@@ -471,9 +471,9 @@ class VisionInferenceService:
                     if roi_polygon:
                         import cv2 as _cv2
                         import numpy as _np
-                        raw_pts = roi_polygon
-                        if isinstance(raw_pts, dict) and "points" in raw_pts:
-                            raw_pts = raw_pts["points"]
+                        raw_pts: Any = roi_polygon
+                        if isinstance(raw_pts, dict):
+                            raw_pts = raw_pts.get("points")
                         clean_pts = []
                         if isinstance(raw_pts, (list, tuple)):
                             for pt in raw_pts:
@@ -729,7 +729,7 @@ class VisionInferenceService:
                 for d in detections:
                     if d.bbox in container_boxes:
                         continue # Don't quarantine the container itself
-                    is_enclosed = quarantine_enclosed_visual_content([d.bbox], container_boxes, intersection_threshold=0.8)
+                    is_enclosed = quarantine_enclosed_visual_content([d.bbox], container_boxes, containment_threshold=0.8)
                     if is_enclosed:
                         # Quarantine false detections inside screens/reflections
                         d.is_environment_only = True

@@ -7,7 +7,8 @@ Supports unified authentication by either email address or username handle.
 from datetime import timedelta
 from typing import Optional
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_
@@ -19,6 +20,8 @@ from src.security import verify_password, get_password_hash, create_access_token
 from src.api.deps import get_current_user
 from src.core.config import settings
 from src.core.rate_limit import RateLimiter
+
+logger = logging.getLogger("secops.auth")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,12 +37,38 @@ class UserCreate(BaseModel):
 
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
+    request: Request,
     db: AsyncSession = Depends(get_db),
-    form_data: OAuth2PasswordRequestForm = Depends(),
     _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.auth_per_minute, seconds=60, scope="auth_login")),
 ):
-    """Logs in an operator using either their registered email address or username handle."""
-    identifier = form_data.username.strip()
+    """Logs in an operator using either JSON body or OAuth2 form data (email or username)."""
+    content_type = request.headers.get("content-type", "").lower()
+    raw_identifier = ""
+    raw_password = ""
+
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            raw_identifier = str(body.get("username") or body.get("email") or "").strip()
+            raw_password = str(body.get("password") or "")
+        except Exception:
+            pass
+    else:
+        try:
+            form = await request.form()
+            raw_identifier = str(form.get("username") or "").strip()
+            raw_password = str(form.get("password") or "")
+        except Exception:
+            pass
+
+    if not raw_identifier or not raw_password:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    identifier = raw_identifier.strip()
     result = await db.execute(
         select(User).where(
             or_(
@@ -50,7 +79,8 @@ async def login_for_access_token(
     )
     user = result.scalars().first()
     
-    if not user or not verify_password(form_data.password, user.password_hash):
+    if not user or not verify_password(raw_password, user.password_hash):
+        logger.warning("Authentication failed for identifier: %s", identifier)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -58,6 +88,7 @@ async def login_for_access_token(
         )
     
     if not getattr(user, "is_active", True):
+        logger.warning("Authentication rejected: User account %s is deactivated", identifier)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user account. Access denied.",
@@ -67,7 +98,15 @@ async def login_for_access_token(
     access_token = create_access_token(
         subject=user.user_id, role=user.role, expires_delta=access_token_expires
     )
+    logger.info("Operator successfully authenticated: %s (role: %s)", identifier, user.role)
     return {"access_token": access_token, "token_type": "bearer"}
+
+@router.post("/logout")
+async def logout_user(current_user: User = Depends(get_current_user)):
+    """Logs out the active operator and records an audit log entry."""
+    logger.info("Operator logged out: %s (id: %s, role: %s)", current_user.email, current_user.user_id, current_user.role)
+    return {"msg": "Successfully logged out", "status": "LOGGED_OUT"}
+
 
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register_user(

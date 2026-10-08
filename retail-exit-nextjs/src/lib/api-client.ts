@@ -20,15 +20,34 @@ export async function safeFetch(path: string, options: RequestInit = {}): Promis
   const isAbsolute = path.startsWith("http://") || path.startsWith("https://");
   const url = isAbsolute ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
 
+  const authHeader: Record<string, string> = {};
+  if (typeof window !== "undefined") {
+    try {
+      const token = localStorage.getItem("secops_token") || sessionStorage.getItem("secops_token");
+      if (token) {
+        authHeader["Authorization"] = `Bearer ${token}`;
+      }
+    } catch (_) {}
+  }
+
   try {
     const res = await fetch(url, {
       ...options,
       headers: {
         "Accept": "application/json",
         ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
+        ...authHeader,
         ...options.headers,
       },
     });
+
+    if (res.status === 401 && typeof window !== "undefined") {
+      // If 401 on an authenticated endpoint (not the login endpoint itself), notify auth provider
+      if (!path.includes("/auth/login") && !path.includes("/auth/register")) {
+        window.dispatchEvent(new CustomEvent("secops:unauthorized"));
+      }
+    }
+
     return res;
   } catch (error) {
     console.warn(`[SEC-OPS API] safeFetch network exception on ${url}:`, error);

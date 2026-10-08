@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme-provider";
+import { AuthProvider } from "@/lib/auth-context";
 
 export const metadata: Metadata = {
   title: "SEC-OPS V8 Control Center",
@@ -42,7 +43,9 @@ export default function RootLayout({
       </head>
       <body className="bg-[var(--bg-canvas)] text-[var(--text-primary)] min-h-screen antialiased selection:bg-[#4FD1B3]/20 selection:text-[#4FD1B3] transition-colors duration-200">
         <ThemeProvider>
-          {children}
+          <AuthProvider>
+            {children}
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -3,7 +3,8 @@
 import { safeFetch } from "@/lib/api-client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth-context";
 import { ThemeToggle } from "@/lib/theme-provider";
 import {
   Activity,
@@ -17,6 +18,8 @@ import {
   Layers,
   CheckCircle,
   FileSpreadsheet,
+  LogOut,
+  Loader2,
 } from "lucide-react";
 
 export default function DashboardLayout({
@@ -25,8 +28,17 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [currentTime, setCurrentTime] = useState("");
   const [apiOnline, setApiOnline] = useState(true);
+
+  // Authentication guard
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+    }
+  }, [isLoading, isAuthenticated, pathname, router]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -61,6 +73,31 @@ export default function DashboardLayout({
     { label: "Reports & PDF", href: "/reports", icon: FileSpreadsheet },
     { label: "Settings & Sensors", href: "/settings", icon: Settings },
   ];
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-[var(--bg-canvas)] text-[var(--text-primary)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-xl animate-pulse">
+            <ShieldAlert size={32} />
+          </div>
+          <div className="text-sm font-bold tracking-tight">SEC-OPS V8 CONTROL CONSOLE</div>
+          <div className="text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
+            <Loader2 size={14} className="animate-spin text-[#38BDF8]" />
+            Verifying operator credentials...
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  const userInitial = (user?.username?.[0] || user?.email?.[0] || "O").toUpperCase();
+  const displayName = user?.username || user?.email?.split("@")[0] || "Operator";
+  const userRole = user?.role || "OPERATOR";
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] select-none transition-colors duration-200">
@@ -110,14 +147,31 @@ export default function DashboardLayout({
 
         {/* User / Station Footer */}
         <div className="p-4 border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] transition-colors duration-200">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-full bg-[var(--bg-panel-raised)] border border-[var(--border-hairline)] flex items-center justify-center font-bold text-xs text-[#38BDF8]">
-              CSO
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-[var(--bg-panel-raised)] border border-[var(--border-hairline)] flex items-center justify-center font-bold text-xs text-[#38BDF8] shrink-0">
+                {userInitial}
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                  {displayName}
+                </div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold uppercase">
+                    {userRole}
+                  </span>
+                </div>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-bold text-[var(--text-primary)] truncate">Security Supervisor</div>
-              <div className="text-[10px] font-mono text-[var(--text-muted)] truncate">Station #01 (Main Exit)</div>
-            </div>
+
+            <button
+              onClick={() => logout()}
+              title="Sign Out"
+              aria-label="Sign Out"
+              className="p-1.5 rounded-lg text-[var(--text-muted)] hover:text-[var(--status-high)] hover:bg-[var(--bg-panel-hover)] transition-colors shrink-0"
+            >
+              <LogOut size={16} />
+            </button>
           </div>
         </div>
       </aside>

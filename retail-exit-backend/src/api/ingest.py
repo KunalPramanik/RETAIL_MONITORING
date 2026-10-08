@@ -98,8 +98,7 @@ async def ingest_exit_event(
 ):
     """Primary edge ingestion pipeline. Processes raw sensor streams, fuses consensus, and evaluates verdicts."""
     now = get_utc_now()
-    event_num = int(time.time() * 1000) % 90000 + 10000
-    event_id = f"EVT-2026-{event_num}"
+    event_id = f"EVT-{int(now.timestamp())}-{uuid.uuid4().hex[:6].upper()}"
 
     # 1. Fetch Products & Prepare Vision Line Items
     products_res = await session.execute(select(Product))

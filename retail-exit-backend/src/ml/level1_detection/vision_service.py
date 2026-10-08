@@ -652,67 +652,9 @@ class VisionInferenceService:
         except Exception as e:
             logger.error("Error during YOLOX forward pass or NMS postprocessing: %s", e, exc_info=True)
 
-        # Augment with dynamic scene objects (doorways, hanging bags, umbrellas)
-        try:
-            from src.ml.level2_classification.fixture_classifier import SceneObjectDetector
-            exclude = [d.bbox for d in detections]
-            person_boxes = [d.bbox for d in detections if d.class_label == "person"]
-            scene_objects = SceneObjectDetector.detect_scene_objects(
-                img, exclude_boxes=exclude, person_boxes=person_boxes
-            )
-            for so in scene_objects:
-                so_bbox = so["bbox"]
-                so_lbl = so["class_label"]
-                if so_lbl in ("wall_picture", "bookshelf", "doorway"):
-                    continue
-                so_spec = so["specific_label"]
-                so_conf = so["confidence"]
+        # Pure Model Inference: Only genuine YOLOX neural network detections are accepted.
+        # Zero synthetic/heuristic contour fabrication (Enforces Section 3 & 5 of V8 Master Prompt Addendum).
 
-                # Ensure non-overlapping with existing detections
-                if any(cls.calculate_iou(so_bbox, d.bbox) > 0.35 for d in detections):
-                    continue
-
-                # track_id_seq increment removed in favor of ByteTrack
-                conf_scores.append(so_conf)
-                so_meta = cfg.get_class_metadata(so_lbl)
-                so_is_inv = so_meta.get("inventory_relevant", False if so_lbl in ("doorway", "bookshelf", "wall_picture") else True)
-                so_is_env = so_meta.get("environment_only", True if so_lbl in ("doorway", "bookshelf", "wall_picture") else False)
-                so_cat_fam = so_meta.get("category_family", "FIXTURES" if so_is_env else "EVERYDAY_ITEMS")
-
-                if so_lbl == "doorway":
-                    c_label = "doorway"
-                elif so_lbl in ("bookshelf", "wall_picture"):
-                    c_label = so_lbl
-                elif so_lbl == "bag":
-                    c_label = "single_unit"
-                    if so_is_inv:
-                        total_singles += 1
-                        total_units += 1
-                else:
-                    c_label = "single_unit"
-                    if so_is_inv:
-                        total_singles += 1
-                        total_units += 1
-
-                detections.append(
-                    DetectedBox(
-                        bbox=so_bbox,
-                        class_label=c_label,
-                        product_id=default_prod_id,
-                        sku_code=default_sku,
-                        confidence=so_conf,
-                        pack_size=1,
-                        track_id=track_id_seq,
-                        exit_vector=(0.0, 0.0),
-                        specific_label=so_spec,
-                        detection_state="CONFIRMED",
-                        category_family=so_cat_fam,
-                        is_inventory_relevant=so_is_inv,
-                        is_environment_only=so_is_env,
-                    )
-                )
-        except Exception as _scene_err:
-            logger.debug("Scene object detection error: %s", _scene_err)
 
         # Issue 2 Fix: Apply depth-relief/liveness quarantine generalized to objects in reflections/screens
         try:
@@ -757,7 +699,27 @@ class VisionInferenceService:
 
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.0
+        # Real Evidence Annotation: Draw detection bounding boxes, labels, confidence, and track IDs
         annotated_bytes = frame_bytes
+        if detections and img is not None:
+            try:
+                annotated_img = img.copy()
+                for d in detections:
+                    bx, by, bw, bh = d.bbox
+                    color = (0, 220, 100) if d.class_label == "person" else (240, 160, 20)
+                    cv2.rectangle(annotated_img, (bx, by), (bx + bw, by + bh), color, 2)
+                    lbl = f"{d.specific_label or d.class_label} {int(d.confidence * 100)}%"
+                    if d.track_id is not None:
+                        lbl += f" [TRK-{d.track_id}]"
+                    (tw, th), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+                    cv2.rectangle(annotated_img, (bx, max(0, by - 18)), (bx + tw + 4, max(18, by)), color, -1)
+                    cv2.putText(annotated_img, lbl, (bx + 2, max(14, by - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
+                _success, buf = cv2.imencode(".jpg", annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                if _success:
+                    annotated_bytes = buf.tobytes()
+            except Exception as _draw_err:
+                logger.debug("Annotated frame rendering fallback: %s", _draw_err)
+
 
         return (
             VisionInferenceResult(

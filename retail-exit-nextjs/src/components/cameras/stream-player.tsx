@@ -116,6 +116,9 @@ export default function StreamPlayer({
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [snapshotKey, setSnapshotKey] = useState(Date.now());
+  const [suggestedGateLine, setSuggestedGateLine] = useState<NormalizedPoint[] | null>(null);
+  const [suggestingLine, setSuggestingLine] = useState(false);
+  const [snapshotFailed, setSnapshotFailed] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -335,6 +338,39 @@ export default function StreamPlayer({
       await fetchCameraStats();
     } catch (err) {
       // offline fallback
+    }
+  };
+
+  const handleSuggestGateLine = async () => {
+    setSuggestingLine(true);
+    try {
+      const res = await safeFetch(`/api/cameras/${cameraId}/suggest-gate-line`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.suggestedLine && Array.isArray(data.suggestedLine)) {
+          setSuggestedGateLine(data.suggestedLine);
+          setRoiPolygon(data.suggestedLine);
+        }
+      }
+    } catch (err) {
+      console.warn("Gate line suggestion error:", err);
+    } finally {
+      setSuggestingLine(false);
+    }
+  };
+
+  const handleAcceptGateLine = async () => {
+    if (!suggestedGateLine) return;
+    try {
+      await safeFetch(`/api/cameras/${cameraId}/save-gate-line`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ line: suggestedGateLine }),
+      });
+      setSuggestedGateLine(null);
+      await fetchCameraStats();
+    } catch (err) {
+      console.warn("Gate line save error:", err);
     }
   };
 
@@ -803,7 +839,45 @@ export default function StreamPlayer({
       <div className="px-4 py-2 bg-[var(--bg-panel-raised)] border-t border-[var(--border-hairline)] flex flex-wrap justify-between items-center gap-2 transition-colors">
         {/* Left: ROI / Tripwire Editing Controls */}
         <div className="flex items-center gap-2 flex-wrap">
-          {isDrawingRoi ? (
+          {suggestedGateLine ? (
+            <div className="flex items-center gap-1.5 bg-blue-950/80 border border-blue-700/80 px-2.5 py-1 rounded-lg text-xs font-mono">
+              <span className="text-[#38BDF8] font-bold">AI Gate Line:</span>
+              <button
+                onClick={handleAcceptGateLine}
+                className="px-2 py-0.5 bg-[#10B981] hover:bg-[#059669] text-white rounded text-[11px] font-bold transition-colors"
+              >
+                ACCEPT
+              </button>
+              <button
+                onClick={() => {
+                  setIsDrawingRoi(true);
+                  setSuggestedGateLine(null);
+                }}
+                className="px-2 py-0.5 bg-[var(--bg-panel)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded text-[11px] border border-[var(--border-hairline)] transition-colors"
+              >
+                ADJUST
+              </button>
+              <button
+                onClick={() => {
+                  handleClearRoi();
+                  setIsDrawingRoi(true);
+                  setSuggestedGateLine(null);
+                }}
+                className="px-2 py-0.5 bg-[var(--bg-panel)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded text-[11px] border border-[var(--border-hairline)] transition-colors"
+              >
+                REDRAW
+              </button>
+              <button
+                onClick={() => {
+                  setSuggestedGateLine(null);
+                  handleClearRoi();
+                }}
+                className="px-1.5 py-0.5 text-[var(--text-muted)] hover:text-white text-[11px]"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : isDrawingRoi ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-[var(--signal-amber)] font-mono animate-pulse">
                 Click canvas to place points. Double-click to save.
@@ -818,10 +892,19 @@ export default function StreamPlayer({
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
               <button
+                onClick={handleSuggestGateLine}
+                disabled={suggestingLine}
+                className="px-2.5 py-1 text-xs bg-[var(--bg-panel)] hover:bg-[var(--bg-panel-hover)] text-[#A78BFA] border border-[#A78BFA]/40 rounded font-medium flex items-center gap-1.5 transition-colors"
+              >
+                <Sliders size={12} className={suggestingLine ? "animate-spin" : ""} />
+                AI Suggest Gate Line
+              </button>
+
+              <button
                 onClick={() => setIsDrawingRoi(true)}
                 className="px-3 py-1 text-xs bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded font-medium flex items-center gap-1.5 shadow transition-colors"
               >
-                <PenTool size={13} /> Draw ROI Polygon
+                <PenTool size={13} /> Draw Line / ROI
               </button>
 
               <button
@@ -847,6 +930,7 @@ export default function StreamPlayer({
               {/* View Snapshot Button */}
               <button
                 onClick={() => {
+                  setSnapshotFailed(false);
                   setSnapshotKey(Date.now());
                   setShowSnapshotModal(true);
                 }}
@@ -940,15 +1024,25 @@ export default function StreamPlayer({
               </button>
             </div>
 
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-[var(--border-hairline)]">
-              <img
-                src={currentSnapshotUrl}
-                alt={`Snapshot from ${cameraId}`}
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = videoSrc;
-                }}
-              />
+            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
+              {snapshotFailed ? (
+                <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
+                  <div className="p-3 rounded-full bg-neutral-800 text-neutral-400">
+                    <CameraIcon size={28} />
+                  </div>
+                  <div className="text-sm font-mono font-bold text-neutral-200">Snapshot Unavailable</div>
+                  <p className="text-xs text-neutral-400 max-w-sm">
+                    No visual evidence frame was recorded for this camera or the stream was in standby.
+                  </p>
+                </div>
+              ) : (
+                <img
+                  src={currentSnapshotUrl}
+                  alt={`Snapshot from ${cameraId}`}
+                  className="w-full h-full object-contain"
+                  onError={() => setSnapshotFailed(true)}
+                />
+              )}
             </div>
 
             <div className="flex flex-wrap justify-between items-center gap-3 pt-2 text-xs font-mono text-[var(--text-secondary)]">

@@ -97,6 +97,7 @@ export default function DashboardPage() {
   const [verifications, setVerifications] = useState<StockVerificationItem[]>([]);
   const [movementMonitor, setMovementMonitor] = useState<MovementMonitorRow[]>([]);
   const [previewSnapshot, setPreviewSnapshot] = useState<{ url: string; title: string } | null>(null);
+  const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false);
 
   // Edit Correction Modal State
   const [editingVerif, setEditingVerif] = useState<StockVerificationItem | null>(null);
@@ -367,7 +368,12 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {verifications.length === 0 ? (
+          <div className="p-8 text-center text-[var(--text-muted)] text-xs font-mono bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)]">
+            No inventory records available.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {verifications.slice(0, 6).map((v) => {
             const isPending = v.status === "PENDING_VERIFICATION";
             return (
@@ -445,6 +451,7 @@ export default function DashboardPage() {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* 3. Live Exit Feeds Grid with Industrial Surveillance HUD */}
@@ -566,12 +573,13 @@ export default function DashboardPage() {
                     </td>
                     <td className="p-3 text-right">
                       <button
-                        onClick={() =>
+                        onClick={() => {
+                          setSnapshotLoadFailed(false);
                           setPreviewSnapshot({
                             url: row.snapshotUrl || `/snapshots/preview_${row.cameraId}.jpg`,
                             title: `${row.cameraLabel} — ${row.objectClass} at ${row.timestamp}`,
-                          })
-                        }
+                          });
+                        }}
                         className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded border border-[var(--border-hairline)] text-[11px] font-bold transition-colors"
                       >
                         View
@@ -668,12 +676,13 @@ export default function DashboardPage() {
                     </td>
                     <td className="p-3 text-right">
                       <button
-                        onClick={() =>
+                        onClick={() => {
+                          setSnapshotLoadFailed(false);
                           setPreviewSnapshot({
                             url: row.snapshotUrl || `/snapshots/preview_CAM-01.jpg`,
                             title: `${row.personName} — ${row.billNumber} (${row.productName})`,
-                          })
-                        }
+                          });
+                        }}
                         className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded border border-[var(--border-hairline)] text-[11px] font-bold transition-colors"
                       >
                         Snapshot
@@ -810,15 +819,25 @@ export default function DashboardPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="relative aspect-video bg-black rounded-lg overflow-hidden border border-[var(--border-hairline)]">
-              <img
-                src={previewSnapshot.url}
-                alt={previewSnapshot.title}
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = "/snapshots/preview_CAM-01.jpg";
-                }}
-              />
+            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
+              {snapshotLoadFailed ? (
+                <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
+                  <div className="p-3 rounded-full bg-neutral-800 text-neutral-400">
+                    <Camera size={28} />
+                  </div>
+                  <div className="text-sm font-mono font-bold text-neutral-200">Snapshot Unavailable</div>
+                  <p className="text-xs text-neutral-400 max-w-sm">
+                    No visual evidence frame was recorded for this specific event or the edge camera stream was in standby.
+                  </p>
+                </div>
+              ) : (
+                <img
+                  src={previewSnapshot.url}
+                  alt={previewSnapshot.title}
+                  className="w-full h-full object-contain"
+                  onError={() => setSnapshotLoadFailed(true)}
+                />
+              )}
             </div>
             <div className="flex justify-end pt-2">
               <button

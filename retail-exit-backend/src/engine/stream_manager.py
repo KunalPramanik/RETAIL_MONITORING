@@ -412,6 +412,10 @@ class CameraStreamManager:
         return cls._instance
 
     @property
+    def sessions(self) -> Dict[str, CameraStreamSession]:
+        return self._streams
+
+    @property
     def lock(self) -> threading.Lock:
         return self._lock
 

@@ -113,7 +113,7 @@ async def get_movement_monitor(
         person_name = ev.employee.name if ev.employee else (
             ev.notes.split("Person:")[1].split()[0] if ev.notes and "Person:" in ev.notes else "Authorized Handler"
         )
-        bill_num = ev.invoice.invoice_number if ev.invoice else (f"INV-{ev.event_id[:6].upper()}")
+        bill_num = ev.invoice.invoice_number if ev.invoice else (f"INV-{ev.event_id}")
 
         prod_name = "Industrial Goods"
         sku_code = "MAT-GEN"
@@ -146,7 +146,7 @@ async def get_movement_monitor(
             status = "CORRECT"
 
         monitor_records.append({
-            "movementId": f"MOV-{ev.event_id[:8]}",
+            "movementId": f"MOV-{ev.event_id}",
             "eventId": ev.event_id,
             "timestamp": ev.ts.strftime("%H:%M:%S") if ev.ts else get_utc_now().strftime("%H:%M:%S"),
             "personName": person_name,
@@ -352,7 +352,7 @@ async def get_movement_monitor(
         person_name = ev.employee.name if ev.employee else (
             ev.notes.split("Person:")[1].split()[0] if ev.notes and "Person:" in ev.notes else "Authorized Handler"
         )
-        bill_num = ev.invoice.invoice_number if ev.invoice else (f"INV-{ev.event_id[:6].upper()}")
+        bill_num = ev.invoice.invoice_number if ev.invoice else (f"INV-{ev.event_id}")
 
         prod_name = "Industrial Goods"
         sku_code = "MAT-GEN"
@@ -385,7 +385,7 @@ async def get_movement_monitor(
             status = "CORRECT"
 
         monitor_records.append({
-            "movementId": f"MOV-{ev.event_id[:8]}",
+            "movementId": f"MOV-{ev.event_id}",
             "eventId": ev.event_id,
             "timestamp": ev.ts.strftime("%H:%M:%S") if ev.ts else get_utc_now().strftime("%H:%M:%S"),
             "personName": person_name,

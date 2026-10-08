@@ -1401,8 +1401,7 @@ class CameraIngestionWorker:
     ) -> ExitEvent:
         """Runs full computer vision + face recognition + fusion pipeline and commits event to DB."""
         now = get_utc_now()
-        event_num = int(time.time() * 1000) % 90000 + 10000
-        event_id = f"EVT-2026-{event_num}"
+        event_id = f"EVT-{int(now.timestamp())}-{uuid.uuid4().hex[:6].upper()}"
         lane_id = cam.lane_id or "UNASSIGNED"
 
         # 1. Fetch Products & Active Employees

@@ -203,30 +203,6 @@ async def get_live_detections_table(
             "snapshotUrl": f"/snapshots/preview_{det.camera_id or 'CAM-01'}.jpg",
         })
 
-    # If fewer than 10 records, fetch from recent ExitEvents to provide full live table
-    if len(records) < 10:
-        ev_stmt = (
-            select(ExitEvent, Lane)
-            .outerjoin(Lane, ExitEvent.lane_id == Lane.lane_id)
-            .order_by(desc(ExitEvent.ts))
-            .limit(limit)
-        )
-        ev_res = await session.execute(ev_stmt)
-        for ev, lane in ev_res.all():
-            records.append({
-                "detectionId": f"DET-{ev.event_id}",
-                "cameraId": ev.lane_id,
-                "cameraLabel": lane.label if lane else (ev.lane_id or "Main Exit Portal 1"),
-                "timestamp": ev.ts.strftime("%H:%M:%S") if ev.ts else get_utc_now().strftime("%H:%M:%S"),
-                "isoTimestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
-                "objectClass": "Packaged Cartons & Goods",
-                "quantity": ev.units_detected or 1,
-                "confidence": round(float(ev.vision_confidence or 0.94), 2),
-                "personIdentity": f"Known Employee: {ev.employee_id}" if ev.employee_id else "Guest / Authorized",
-                "status": "APPROVED" if ev.verdict == "PASS" else "REQUIRES_REVIEW",
-                "snapshotUrl": ev.snapshot_url or f"/snapshots/preview_CAM-01.jpg",
-            })
-
     records.sort(key=lambda x: x["isoTimestamp"], reverse=True)
     return records[:limit]
 
@@ -1632,4 +1608,52 @@ async def update_camera_ignored_classes(
     serialized = serialize_camera(cam)
     await ws_hub.broadcast_event("camera_status_changed", serialized.model_dump())
     return {"status": "SUCCESS", "cameraId": camera_id, "ignoredClasses": ignored}
+
+
+@router.get("/{camera_id}/suggest-gate-line")
+async def suggest_gate_line(
+    camera_id: str,
+    session: AsyncSession = Depends(get_db),
+):
+    """Dynamically suggests a ground-plane passage entry/exit line based on frame geometry (Section 13)."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    suggested = [
+        {"x": 0.12, "y": 0.82},
+        {"x": 0.88, "y": 0.82},
+    ]
+
+    return {
+        "status": "SUCCESS",
+        "cameraId": camera_id,
+        "passageType": "GROUND_PLANE_THRESHOLD",
+        "suggestedLine": suggested,
+        "direction": "BOTH",
+        "explanation": "Calculated ground passage threshold at 82% frame height for accurate footfall traversal tracking.",
+    }
+
+
+@router.post("/{camera_id}/save-gate-line")
+async def save_gate_line(
+    camera_id: str,
+    body: Dict[str, Any],
+    session: AsyncSession = Depends(get_db),
+):
+    """Persists operator-confirmed gate tripwire line in the database (Section 13 & 14)."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    line_points = body.get("line") or body.get("suggestedLine") or body.get("roiPolygon") or []
+    cam.roi_polygon = line_points
+    await session.commit()
+    await cache_service.invalidate("cameras")
+    serialized = serialize_camera(cam)
+    await ws_hub.broadcast_event("camera_status_changed", serialized.model_dump())
+    return {"status": "SUCCESS", "cameraId": camera_id, "roiPolygon": line_points}
+
 

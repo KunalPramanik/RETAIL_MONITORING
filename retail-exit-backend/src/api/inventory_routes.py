@@ -391,33 +391,6 @@ async def list_initial_stock_verifications(
     res = await session.execute(stmt)
     records = res.scalars().all()
 
-    # If no records exist, auto-seed pending proposals for registered catalog products
-    if len(records) == 0:
-        prod_res = await session.execute(select(Product))
-        products = prod_res.scalars().all()
-        now = get_utc_now()
-        seeded = []
-        for p in products:
-            proposed_qty = (p.pack_size or 1) * 20
-            verif = InitialStockVerification(
-                verification_id=f"verif_{uuid.uuid4().hex[:10]}",
-                product_id=p.product_id,
-                sku_code=p.sku_code,
-                product_name=p.name,
-                camera_id="CAM-01",
-                ai_proposed_count=proposed_qty,
-                verified_count=None,
-                difference=None,
-                status="PENDING_VERIFICATION",
-                model_version="yolox_retail_v8",
-                snapshot_url="/snapshots/preview_CAM-01.jpg",
-                created_at=now,
-            )
-            session.add(verif)
-            seeded.append(verif)
-        await session.commit()
-        records = seeded
-
     return [
         {
             "verificationId": r.verification_id,

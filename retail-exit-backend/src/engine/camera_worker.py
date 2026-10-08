@@ -1594,16 +1594,17 @@ class CameraIngestionWorker:
         except Exception as _mat_err:
             logger.warning("Material line items generation error: %s", _mat_err)
 
-        # 9. Record Real Face Match Attempt
-        face_attempt = FaceMatchAttempt(
-            event_id=event_id,
-            matched_employee_id=face_result.matched_employee_id,
-            similarity=round(face_result.similarity, 4),
-            model_version=face_result.model_version,
-            decision=face_result.decision,
-            created_at=now,
-        )
-        session.add(face_attempt)
+        # 9. Record Real Face Match Attempt (only when biometrics are active and valid)
+        if face_result and face_result.decision in ("MATCHED", "NO_MATCH", "LOW_CONFIDENCE"):
+            face_attempt = FaceMatchAttempt(
+                event_id=event_id,
+                matched_employee_id=face_result.matched_employee_id,
+                similarity=round(face_result.similarity, 4),
+                model_version=face_result.model_version,
+                decision=face_result.decision,
+                created_at=now,
+            )
+            session.add(face_attempt)
 
         # 10. Record Alert if Discrepancy
         alert_payload = None

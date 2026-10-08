@@ -525,10 +525,10 @@ export default function ProductsPage() {
                       </td>
                       <td className="p-3.5 font-mono">
                         <div className="text-[var(--text-primary)]">
-                          ${Number(item.unitPrice).toFixed(2)}/u
+                          ₹{Number(item.unitPrice).toFixed(2)}/u
                         </div>
                         <div className="text-xs text-[#4FD1B3]">
-                          ${Number(item.casePrice).toFixed(2)}/case
+                          ₹{Number(item.casePrice).toFixed(2)}/case
                         </div>
                       </td>
                       <td className="p-3.5 font-mono">
@@ -730,7 +730,7 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">
-                    UNIT PRICE ($)
+                    UNIT PRICE (₹)
                   </label>
                   <input
                     type="number"
@@ -745,7 +745,7 @@ export default function ProductsPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">
-                    CASE PRICE ($)
+                    CASE PRICE (₹)
                   </label>
                   <input
                     type="number"

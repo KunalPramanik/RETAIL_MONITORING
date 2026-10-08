@@ -468,15 +468,28 @@ class VisionInferenceService:
                         continue
 
                     # Issue 2 Fix: Apply dynamic explicit Regions of Interest (ROI) filtering
-                    if roi_polygon and len(roi_polygon) >= 3:
+                    if roi_polygon:
                         import cv2 as _cv2
                         import numpy as _np
-                        cx = float(bx + bw / 2.0)
-                        cy = float(by + bh / 2.0)
-                        pts = _np.array(roi_polygon, _np.int32)
-                        dist = _cv2.pointPolygonTest(pts, (cx, cy), False)
-                        if dist < 0:
-                            continue  # Center is strictly outside ROI
+                        raw_pts = roi_polygon
+                        if isinstance(raw_pts, dict) and "points" in raw_pts:
+                            raw_pts = raw_pts["points"]
+                        clean_pts = []
+                        if isinstance(raw_pts, (list, tuple)):
+                            for pt in raw_pts:
+                                if isinstance(pt, dict):
+                                    px = pt.get("x", pt.get("X", 0))
+                                    py = pt.get("y", pt.get("Y", 0))
+                                    clean_pts.append([int(px), int(py)])
+                                elif isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                                    clean_pts.append([int(pt[0]), int(pt[1])])
+                        if len(clean_pts) >= 3:
+                            cx = float(bx + bw / 2.0)
+                            cy = float(by + bh / 2.0)
+                            pts = _np.array(clean_pts, _np.int32)
+                            dist = _cv2.pointPolygonTest(pts, (cx, cy), False)
+                            if dist < 0:
+                                continue  # Center is strictly outside ROI
 
                     specific_label_check = cfg.class_labels.get(cid, "Retail Item")
 

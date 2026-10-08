@@ -340,7 +340,7 @@ async def ingest_exit_event(
     )
 
     face_attempt = None
-    if face_decision is not None:
+    if face_decision in ("MATCHED", "NO_MATCH", "LOW_CONFIDENCE"):
         face_attempt = FaceMatchAttempt(
             event_id=event_id,
             matched_employee_id=matched_employee_id,

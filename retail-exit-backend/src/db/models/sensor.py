@@ -76,7 +76,7 @@ class FaceMatchAttempt(Base):
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 
     __table_args__ = (
-        CheckConstraint("decision IN ('MATCHED', 'NO_MATCH', 'LOW_CONFIDENCE')", name="chk_face_decision"),
+        CheckConstraint("decision IN ('MATCHED', 'NO_MATCH', 'LOW_CONFIDENCE', 'DISABLED', 'BYPASS')", name="chk_face_decision"),
     )
 
     event = relationship("ExitEvent", back_populates="face_matches")

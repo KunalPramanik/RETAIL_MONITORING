@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from typing import Dict, Any, Optional
 import json
 import time
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 import logging
 import asyncio

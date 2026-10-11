@@ -20,6 +20,10 @@ import {
   ExternalLink,
   ChevronRight,
   Info,
+  Maximize2,
+  Check,
+  MoveUp,
+  MoveDown,
 } from "lucide-react";
 
 interface CameraItem {
@@ -71,6 +75,55 @@ export default function CameraManagementPage() {
   const [selectedCameraForIgnore, setSelectedCameraForIgnore] = useState<CameraItem | null>(null);
   const [currentIgnoredClasses, setCurrentIgnoredClasses] = useState<string[]>([]);
   const [savingIgnore, setSavingIgnore] = useState(false);
+
+  // Gate / Tripwire Line Suggestion State
+  const [selectedCameraForGate, setSelectedCameraForGate] = useState<CameraItem | null>(null);
+  const [suggestedGateLine, setSuggestedGateLine] = useState<{ x: number; y: number }[]>([]);
+  const [gateExplanation, setGateExplanation] = useState<string>("");
+  const [savingGateLine, setSavingGateLine] = useState<boolean>(false);
+  const [manualDrawMode, setManualDrawMode] = useState<boolean>(false);
+
+  const openGateLineModal = async (cam: CameraItem) => {
+    setSelectedCameraForGate(cam);
+    setManualDrawMode(false);
+    try {
+      const res = await safeFetch(`/api/cameras/${cam.cameraId}/suggest-gate-line`);
+      if (res.ok) {
+        const data = await res.json();
+        setSuggestedGateLine(data.suggestedLine || [{ x: 0.12, y: 0.82 }, { x: 0.88, y: 0.82 }]);
+        setGateExplanation(data.explanation || "Calculated ground passage threshold for accurate footfall traversal tracking.");
+      } else {
+        setSuggestedGateLine([{ x: 0.12, y: 0.82 }, { x: 0.88, y: 0.82 }]);
+        setGateExplanation("Default baseline ground passage line.");
+      }
+    } catch {
+      setSuggestedGateLine([{ x: 0.12, y: 0.82 }, { x: 0.88, y: 0.82 }]);
+      setGateExplanation("Default baseline ground passage line.");
+    }
+  };
+
+  const handleSaveGateLine = async (linePoints: { x: number; y: number }[]) => {
+    if (!selectedCameraForGate) return;
+    setSavingGateLine(true);
+    try {
+      const res = await safeFetch(`/api/cameras/${selectedCameraForGate.cameraId}/save-gate-line`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ line: linePoints }),
+      });
+      if (res.ok) {
+        alert("Gate passage line saved successfully!");
+        setSelectedCameraForGate(null);
+        fetchCameras();
+      } else {
+        alert("Failed to save gate line.");
+      }
+    } catch (e: any) {
+      alert(`Error saving gate line: ${e.message}`);
+    } finally {
+      setSavingGateLine(false);
+    }
+  };
 
   const [formData, setFormData] = useState({
     connectionType: "LAN_RTSP",
@@ -402,6 +455,13 @@ export default function CameraManagementPage() {
                           title="Configure Ignored Classes (CC.2.1)"
                         >
                           <Sliders size={14} />
+                        </button>
+                        <button
+                          onClick={() => openGateLineModal(cam)}
+                          className="p-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[#4FD1B3] rounded border border-[var(--border-hairline)] transition-colors"
+                          title="Configure Gate / Tripwire Line (Section 13)"
+                        >
+                          <Maximize2 size={14} />
                         </button>
                         <button
                           onClick={async () => {
@@ -755,6 +815,142 @@ export default function CameraManagementPage() {
               >
                 Close Preview
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gate / Tripwire Passage Line Configuration Modal */}
+      {selectedCameraForGate && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div>
+                <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <Maximize2 size={18} className="text-[#4FD1B3]" /> Gate & Tripwire Suggestion: {selectedCameraForGate.label}
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] font-mono mt-0.5">
+                  AI-suggested passage traversal threshold line for boundary crossing detection
+                </p>
+              </div>
+              <button onClick={() => setSelectedCameraForGate(null)} className="text-[var(--text-secondary)] hover:text-white p-1">
+                ✕
+              </button>
+            </div>
+
+            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center select-none">
+              <img
+                src={`/snapshots/preview_${selectedCameraForGate.cameraId}.jpg?t=${Date.now()}`}
+                alt={selectedCameraForGate.label}
+                className="w-full h-full object-cover"
+                onError={(e: any) => {
+                  e.currentTarget.src = "/snapshots/preview_CAM-01.jpg";
+                }}
+              />
+              {/* Dynamic SVG Tripwire Line Overlay */}
+              <svg className="absolute inset-0 w-full h-full pointer-events-none">
+                {suggestedGateLine.length >= 2 && (
+                  <>
+                    <line
+                      x1={`${suggestedGateLine[0].x * 100}%`}
+                      y1={`${suggestedGateLine[0].y * 100}%`}
+                      x2={`${suggestedGateLine[1].x * 100}%`}
+                      y2={`${suggestedGateLine[1].y * 100}%`}
+                      stroke="#4FD1B3"
+                      strokeWidth="3"
+                      strokeDasharray="6 3"
+                    />
+                    <circle
+                      cx={`${suggestedGateLine[0].x * 100}%`}
+                      cy={`${suggestedGateLine[0].y * 100}%`}
+                      r="6"
+                      fill="#38BDF8"
+                    />
+                    <circle
+                      cx={`${suggestedGateLine[1].x * 100}%`}
+                      cy={`${suggestedGateLine[1].y * 100}%`}
+                      r="6"
+                      fill="#38BDF8"
+                    />
+                    <text
+                      x={`${((suggestedGateLine[0].x + suggestedGateLine[1].x) / 2) * 100}%`}
+                      y={`${((suggestedGateLine[0].y + suggestedGateLine[1].y) / 2) * 100 - 2}%`}
+                      fill="#4FD1B3"
+                      fontSize="12"
+                      fontWeight="bold"
+                      fontFamily="monospace"
+                      textAnchor="middle"
+                    >
+                      PASSAGE TRIPWIRE
+                    </text>
+                  </>
+                )}
+              </svg>
+            </div>
+
+            <div className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] text-xs font-mono text-[var(--text-secondary)] flex justify-between items-center">
+              <div>
+                <span className="text-white font-bold">Tripwire Coordinates: </span>
+                {suggestedGateLine.map((p, i) => `P${i + 1}: (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`).join("  →  ")}
+              </div>
+              <div className="text-[11px] text-[var(--text-muted)]">{gateExplanation}</div>
+            </div>
+
+            <div className="flex flex-wrap justify-between items-center gap-2 pt-2 border-t border-[var(--border-hairline)] font-mono text-xs">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSuggestedGateLine((prev) =>
+                      prev.map((p) => ({ ...p, y: Math.max(0.1, Number((p.y - 0.05).toFixed(2))) }))
+                    )
+                  }
+                  className="px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-white rounded border border-[var(--border-hairline)] flex items-center gap-1"
+                >
+                  <MoveUp size={13} /> NUDGE UP
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSuggestedGateLine((prev) =>
+                      prev.map((p) => ({ ...p, y: Math.min(0.95, Number((p.y + 0.05).toFixed(2))) }))
+                    )
+                  }
+                  className="px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-white rounded border border-[var(--border-hairline)] flex items-center gap-1"
+                >
+                  <MoveDown size={13} /> NUDGE DOWN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuggestedGateLine([
+                      { x: 0.12, y: 0.82 },
+                      { x: 0.88, y: 0.82 },
+                    ]);
+                  }}
+                  className="px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] rounded border border-[var(--border-hairline)]"
+                >
+                  RESET
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCameraForGate(null)}
+                  className="px-3.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSaveGateLine(suggestedGateLine)}
+                  disabled={savingGateLine}
+                  className="px-4 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded flex items-center gap-1.5 shadow-md shadow-emerald-900/30 disabled:opacity-50"
+                >
+                  <Check size={14} /> {savingGateLine ? "Saving..." : "ACCEPT (Save Line)"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

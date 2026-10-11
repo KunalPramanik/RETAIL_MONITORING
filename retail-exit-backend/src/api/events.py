@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 
 from src.db.session import get_db
-from datetime import timedelta
+from datetime import datetime, timedelta
 from src.db.models import ExitEvent, ExitEventLineItem, Employee, Invoice, Product, PersonAppearanceSummary, Lane, get_utc_now
 from src.schemas.events import (
     ExitEventResponse,
@@ -25,11 +25,14 @@ async def list_events(
     lane_id: Optional[str] = Query(None, alias="laneId"),
     verdict: Optional[str] = Query(None),
     severity: Optional[str] = Query(None),
+    date_preset: Optional[str] = Query(None, alias="datePreset"),
+    start_time: Optional[datetime] = Query(None, alias="startTime"),
+    end_time: Optional[datetime] = Query(None, alias="endTime"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session: AsyncSession = Depends(get_db),
 ):
-    """Lists historical exit events with optional multi-facet filtering."""
+    """Lists historical exit events with optional multi-facet and date/time filtering."""
     query = (
         select(ExitEvent)
         .options(selectinload(ExitEvent.line_items))
@@ -42,6 +45,30 @@ async def list_events(
         query = query.where(ExitEvent.verdict == verdict)
     if severity and severity != "ALL":
         query = query.where(ExitEvent.severity == severity)
+
+    now = get_utc_now()
+    if date_preset:
+        preset = date_preset.lower()
+        if preset == "today":
+            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            query = query.where(ExitEvent.ts >= start_of_day)
+        elif preset == "yesterday":
+            start_of_yesterday = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_yesterday = start_of_yesterday + timedelta(days=1)
+            query = query.where(ExitEvent.ts >= start_of_yesterday, ExitEvent.ts < end_of_yesterday)
+        elif preset in ("week", "7d"):
+            query = query.where(ExitEvent.ts >= (now - timedelta(days=7)))
+        elif preset in ("month", "30d"):
+            start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            query = query.where(ExitEvent.ts >= start_of_month)
+        elif preset == "year":
+            start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            query = query.where(ExitEvent.ts >= start_of_year)
+
+    if start_time:
+        query = query.where(ExitEvent.ts >= start_time)
+    if end_time:
+        query = query.where(ExitEvent.ts <= end_time)
 
     query = query.limit(limit).offset(offset)
     result = await session.execute(query)
@@ -145,10 +172,11 @@ async def get_movement_monitor(
         else:
             status = "CORRECT"
 
+        import uuid
         monitor_records.append({
-            "movementId": f"MOV-{ev.event_id}",
+            "movementId": f"MOV-{ev.event_id}" if ev.event_id else f"MOV-{uuid.uuid4().hex[:12]}",
             "eventId": ev.event_id,
-            "timestamp": ev.ts.strftime("%H:%M:%S") if ev.ts else get_utc_now().strftime("%H:%M:%S"),
+            "timestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
             "personName": person_name,
             "billNumber": bill_num,
             "productName": prod_name,

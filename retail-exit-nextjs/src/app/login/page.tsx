@@ -139,26 +139,6 @@ function LoginForm() {
               </div>
             )}
 
-            {/* Quick Access Helper */}
-            <div className="mb-4 p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-[var(--text-secondary)] flex items-center justify-between">
-              <div>
-                <span className="font-semibold text-[#38BDF8]">Default Credentials:</span>{" "}
-                <span className="font-mono text-[var(--text-primary)]">admin</span> /{" "}
-                <span className="font-mono text-[var(--text-primary)]">admin</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIdentifier("admin");
-                  setPassword("admin");
-                  setErrorMessage(null);
-                }}
-                className="text-[10px] font-semibold text-[#38BDF8] hover:underline uppercase tracking-wider"
-              >
-                Auto-fill
-              </button>
-            </div>
-
             {/* Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Identifier Input */}
@@ -181,7 +161,7 @@ function LoginForm() {
                     required
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="admin or operator@secops.local"
+                    placeholder="Enter email or operator username"
                     disabled={submitting}
                     className="w-full pl-10 pr-4 py-2.5 text-xs sm:text-sm rounded-xl border border-[var(--border-hairline)] bg-[var(--bg-canvas)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-[#38BDF8]/50 focus:border-[#38BDF8] transition-all disabled:opacity-50"
                   />
@@ -310,9 +290,6 @@ function LoginForm() {
                 <div>• Enterprise Desk: Ext. 4010</div>
                 <div>• Email: admin@secops.local</div>
               </div>
-              <p className="text-[11px] text-[var(--text-muted)]">
-                Default system credentials for local lab testing are provisioned in the deployment configuration documentation.
-              </p>
             </div>
 
             <div className="mt-5 flex justify-end">

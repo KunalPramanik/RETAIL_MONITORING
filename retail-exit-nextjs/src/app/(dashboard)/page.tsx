@@ -2,7 +2,6 @@
 
 import { safeFetch, getWsUrl } from "@/lib/api-client";
 import React, { useState, useEffect } from "react";
-import StreamPlayer from "@/components/cameras/stream-player";
 import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
 import {
   Activity,
@@ -96,6 +95,8 @@ export default function DashboardPage() {
 
   // V8 Addendum: Live Detections, Stock Baseline Verifications & Movement Monitor
   const [liveDetections, setLiveDetections] = useState<LiveDetectionRow[]>([]);
+  const [detectionsLoading, setDetectionsLoading] = useState<boolean>(true);
+  const [detectionsError, setDetectionsError] = useState<string | null>(null);
   const [verifications, setVerifications] = useState<StockVerificationItem[]>([]);
   const [movementMonitor, setMovementMonitor] = useState<MovementMonitorRow[]>([]);
   const [previewSnapshot, setPreviewSnapshot] = useState<{ url: string; fallbackUrl?: string; title: string } | null>(null);
@@ -159,10 +160,24 @@ export default function DashboardPage() {
       }
 
       // 5. Fetch Live Camera Detections Table (Section 2)
-      const resLiveDet = await safeFetch("/api/cameras/detections/live?limit=15");
-      if (resLiveDet.ok) {
-        const detData = await resLiveDet.json();
-        setLiveDetections(detData);
+      setDetectionsLoading(true);
+      setDetectionsError(null);
+      try {
+        const resLiveDet = await safeFetch("/api/cameras/detections/live?limit=15");
+        if (resLiveDet.ok) {
+          const detData = await resLiveDet.json();
+          setLiveDetections(detData);
+        } else if (resLiveDet.status === 403) {
+          setDetectionsError("Access denied");
+        } else if (resLiveDet.status === 503) {
+          setDetectionsError("AI model unavailable");
+        } else {
+          setDetectionsError("Could not load detections — retry");
+        }
+      } catch {
+        setDetectionsError("Could not load detections — retry");
+      } finally {
+        setDetectionsLoading(false);
       }
 
       // 6. Fetch Initial Stock Count Baseline Verifications (Section 5)
@@ -467,11 +482,11 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* 3. Live Exit Feeds Grid with Industrial Surveillance HUD */}
+      {/* 3. Edge Camera Fleet Overview (Video Player Hidden per Section A-2 Addendum) */}
       <div className="space-y-3">
         <div className="flex justify-between items-center">
           <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-            <Camera size={18} className="text-[#38BDF8]" /> Live Surveillance Feeds & Video HUD
+            <Camera size={18} className="text-[#38BDF8]" /> Active Edge Surveillance Fleet
           </h2>
           <div className="flex items-center gap-3">
             <button
@@ -495,7 +510,7 @@ export default function DashboardPage() {
               <Camera size={36} />
             </div>
             <div>
-              <h3 className="text-base font-bold text-[var(--text-primary)]">No CCTV Cameras Registered</h3>
+              <h3 className="text-base font-bold text-[var(--text-primary)]">No cameras configured</h3>
               <p className="text-xs text-[var(--text-secondary)] max-w-sm mt-1">
                 Connect your IP RTSP surveillance cameras, USB direct devices, or WiFi feeds to enable real-time tracking.
               </p>
@@ -508,18 +523,33 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {cameras.map((cam) => (
-              <StreamPlayer
-                key={cam.cameraId}
-                cameraId={cam.cameraId}
-                cameraName={cam.label}
-                cameraIp={cam.ipAddress}
-                streamUrl={cam.streamUrl}
-                laneId={cam.laneId}
-                initialRoi={cam.roiPolygon || null}
-              />
-            ))}
+          <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-[#38BDF8]/10 text-[#38BDF8]">
+                <Camera size={20} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-bold text-[var(--text-primary)] font-mono">
+                    FLEET CONNECTED: {cameras.length} {cameras.length === 1 ? "CAMERA" : "CAMERAS"}
+                  </h3>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    AI INGESTION ACTIVE
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  Live streaming video player hidden per operational security protocol. Object detection, ByteTrack tracking, and snapshot capture remain active in background.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/settings/cameras"
+                className="px-3 py-1.5 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium flex items-center gap-1 transition-colors"
+              >
+                Configure Fleet <ArrowRight size={13} />
+              </Link>
+            </div>
           </div>
         )}
       </div>
@@ -558,10 +588,30 @@ export default function DashboardPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
-              {liveDetections.length === 0 ? (
+              {detectionsLoading && liveDetections.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-[var(--text-muted)]">
-                    Awaiting camera object detection frames...
+                  <td colSpan={8} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                    Loading detections…
+                  </td>
+                </tr>
+              ) : detectionsError ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-amber-400 font-mono text-xs">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <span>{detectionsError}</span>
+                      <button
+                        onClick={fetchData}
+                        className="px-2.5 py-1 text-[11px] bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] border border-[var(--border-hairline)] rounded text-[#38BDF8] transition-colors"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : liveDetections.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                    No detections available
                   </td>
                 </tr>
               ) : (
@@ -644,13 +694,13 @@ export default function DashboardPage() {
             <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
               {movementMonitor.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="p-8 text-center text-[var(--text-muted)]">
-                    No active authorized material dispatches in progress.
+                  <td colSpan={9} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                    No movement events available
                   </td>
                 </tr>
               ) : (
-                movementMonitor.map((row) => (
-                  <tr key={row.movementId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
+                movementMonitor.map((row, idx) => (
+                  <tr key={`${row.movementId || row.eventId || 'mov'}-${idx}`} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
                     <td className="p-3 text-[var(--text-secondary)] font-mono">{formatLocalTime(row.isoTimestamp || row.timestamp)}</td>
                     <td className="p-3 font-bold text-[var(--text-primary)] flex items-center gap-1.5">
                       <UserCheck size={13} className="text-[#38BDF8]" />
@@ -729,12 +779,12 @@ export default function DashboardPage() {
           <div className="space-y-2">
             {events.length === 0 ? (
               <div className="p-8 text-center text-[var(--text-muted)] text-xs font-mono">
-                Awaiting exit lane crossings...
+                No movement events available
               </div>
             ) : (
-              events.map((ev) => (
+              events.map((ev, idx) => (
                 <div
-                  key={ev.eventId}
+                  key={`${ev.eventId || 'evt'}-${idx}`}
                   className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] flex justify-between items-center text-xs"
                 >
                   <div className="space-y-0.5">
@@ -779,7 +829,7 @@ export default function DashboardPage() {
             {alerts.length === 0 ? (
               <div className="p-8 text-center text-[var(--text-muted)] text-xs font-mono flex flex-col items-center gap-1">
                 <CheckCircle size={24} className="text-[var(--status-ok)]" />
-                <span>Zero active security alarms</span>
+                <span>No alerts available</span>
               </div>
             ) : (
               alerts.map((alt) => (

@@ -90,3 +90,13 @@ retail-exit-backend/tests/
 retail-exit-backend/ml/
 retail-exit-backend/src/ml/weights/checkpoints/*.onnx
 !retail-exit-backend/src/ml/weights/checkpoints/.gitkeep
+
+# Hardware Runtime State & Local Diagnostic Scripts
+retail-exit-backend/src/hardware/usb_state.json
+retail-exit-backend/scripts/view_db.py
+retail-exit-backend/scripts/check_*.py
+retail-exit-backend/scripts/inspect_*.py
+retail-exit-backend/scripts/clean_*.py
+retail-exit-backend/scripts/reset_*.py
+retail-exit-backend/scripts/bootstrap_*.py
+

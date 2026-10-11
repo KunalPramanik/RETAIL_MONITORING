@@ -16,6 +16,7 @@ class Employee(Base):
     __tablename__ = "employee"
 
     employee_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    employee_code: Any = Column(String(32), unique=True, nullable=True, index=True)
     name: Any = Column(String(255), nullable=False)
     role: Any = Column(String(128), nullable=False)
     rfid_badge_id: Any = Column(String(128), unique=True, nullable=False, index=True)

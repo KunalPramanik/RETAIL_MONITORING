@@ -146,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.status === 401) {
           return {
             success: false,
-            error: data?.detail || "Incorrect username or password. Default admin: admin / AdminSecurePass2026! (or 'admin')",
+            error: data?.detail || "Incorrect username or password. Please verify your credentials.",
           };
         }
         const errMsg = data?.detail || data?.message || "Authentication failed. Please check your credentials.";

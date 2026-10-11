@@ -1,4 +1,4 @@
-﻿"""System Threshold & Operational Settings Endpoints"""
+"""System Threshold & Operational Settings Endpoints"""
 
 from fastapi import APIRouter, Depends, HTTPException
 from src.api.deps import get_current_user, role_required
@@ -155,5 +155,115 @@ async def reset_database(
     await cache_service.clear()
     await ws_hub.broadcast_event("database_reset", {"status": "ZERO_STATE"})
     return {"status": "SUCCESS", "message": "Database purged to pure zero-state baseline."}
+
+
+# --- Store Profile & Onboarding Directives (Section A-7) ---
+
+from pydantic import BaseModel, Field
+from typing import Optional, Dict, Any
+from src.db.models import Store, Camera, Product, InitialStockVerification
+
+
+class StoreProfileSchema(BaseModel):
+    storeId: Optional[str] = None
+    name: str = Field(..., min_length=2, max_length=255)
+    address: Optional[str] = ""
+    timezone: str = Field("Asia/Kolkata", min_length=2)
+    currency: str = "INR"
+
+
+class OnboardingProgressSchema(BaseModel):
+    storeConfigured: bool
+    camerasConfigured: int
+    productsConfigured: int
+    baselineVerified: bool
+    thresholdsConfigured: bool
+    isComplete: bool
+
+
+@router.get("/store", response_model=StoreProfileSchema)
+async def get_store_profile(session: AsyncSession = Depends(get_db)):
+    """Retrieves current store profile and operational timezone."""
+    result = await session.execute(select(Store).limit(1))
+    s = result.scalar_one_or_none()
+    if not s:
+        s = Store(name="SEC-OPS Retail Facility", address="Exit Gate 01", timezone="Asia/Kolkata")
+        session.add(s)
+        await session.commit()
+        await session.refresh(s)
+
+    return StoreProfileSchema(
+        storeId=s.store_id,
+        name=s.name,
+        address=s.address or "",
+        timezone=s.timezone or "Asia/Kolkata",
+        currency="INR",
+    )
+
+
+@router.put("/store", response_model=StoreProfileSchema)
+async def update_store_profile(
+    body: StoreProfileSchema,
+    session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+):
+    """Updates store profile, operating timezone, and facility address."""
+    result = await session.execute(select(Store).limit(1))
+    s = result.scalar_one_or_none()
+    if not s:
+        s = Store(name=body.name, address=body.address, timezone=body.timezone)
+        session.add(s)
+    else:
+        s.name = body.name
+        s.address = body.address
+        s.timezone = body.timezone
+
+    await session.commit()
+    await session.refresh(s)
+
+    return StoreProfileSchema(
+        storeId=s.store_id,
+        name=s.name,
+        address=s.address or "",
+        timezone=s.timezone or "Asia/Kolkata",
+        currency="INR",
+    )
+
+
+@router.get("/onboarding", response_model=OnboardingProgressSchema)
+async def get_onboarding_progress(session: AsyncSession = Depends(get_db)):
+    """Inspects live database state to compute accurate store onboarding completion checklist."""
+    # 1. Store profile
+    s_res = await session.execute(select(Store).limit(1))
+    store_exists = s_res.scalar_one_or_none() is not None
+
+    # 2. Cameras count
+    cam_res = await session.execute(select(Camera))
+    cams_count = len(cam_res.scalars().all())
+
+    # 3. Products count
+    prod_res = await session.execute(select(Product))
+    prods_count = len(prod_res.scalars().all())
+
+    # 4. Baseline verification
+    verif_res = await session.execute(select(InitialStockVerification).where(InitialStockVerification.status == "APPROVED"))
+    verifs_count = len(verif_res.scalars().all())
+    baseline_ok = verifs_count > 0
+
+    # 5. Thresholds configured
+    t_res = await session.execute(select(ThresholdConfig).limit(1))
+    thresholds_ok = t_res.scalar_one_or_none() is not None
+
+    is_complete = store_exists and cams_count > 0 and prods_count > 0 and baseline_ok
+
+    return OnboardingProgressSchema(
+        storeConfigured=store_exists,
+        camerasConfigured=cams_count,
+        productsConfigured=prods_count,
+        baselineVerified=baseline_ok,
+        thresholdsConfigured=thresholds_ok,
+        isComplete=is_complete,
+    )
+
 
 

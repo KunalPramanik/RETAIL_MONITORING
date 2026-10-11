@@ -1496,7 +1496,8 @@ class CameraIngestionWorker:
 
         # 7. Write ExitEvent Row (Identity confidence floor from settings.biometric.face_match_threshold)
         is_verified_employee = (
-            face_result.decision == "MATCHED"
+            getattr(settings.biometric, "enabled", False)
+            and face_result.decision == "MATCHED"
             and face_result.matched_employee_id is not None
             and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold
         )
@@ -1587,7 +1588,7 @@ class CameraIngestionWorker:
                             })
 
                     dir_tag = "EXIT" if "EXIT" in trigger_reason.upper() else "ENTRY"
-                    carrier_name = face_result.employee_name if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold) else "UNKNOWN_PERSON"
+                    carrier_name = face_result.employee_name if (getattr(settings.biometric, "enabled", False) and face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold) else "UNKNOWN_PERSON"
                     mat_desc = ", ".join([f"{c}x {n}" for n, c in mat_seg_res.counts_by_class.items()])
                     event.notes = f"[{dir_tag}] Carrier: {carrier_name}. Handled: {mat_desc}. Trigger: {trigger_reason}."
         except Exception as _mat_err:

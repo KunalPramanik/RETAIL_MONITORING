@@ -26,6 +26,7 @@ class EmployeeUpdate(BaseModel):
 
 class EmployeeResponse(EmployeeBase):
     employeeId: str
+    employeeCode: Optional[str] = None
     mismatchCount30d: int = 0
     hasFaceEnrolled: bool = False
     embeddingUpdatedAt: Optional[str] = None

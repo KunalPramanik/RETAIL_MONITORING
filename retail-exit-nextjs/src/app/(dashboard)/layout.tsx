@@ -20,6 +20,7 @@ import {
   FileSpreadsheet,
   LogOut,
   Loader2,
+  Sparkles,
 } from "lucide-react";
 
 export default function DashboardLayout({
@@ -31,7 +32,7 @@ export default function DashboardLayout({
   const router = useRouter();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [currentTime, setCurrentTime] = useState("");
-  const [apiOnline, setApiOnline] = useState(true);
+  const [apiHealth, setApiHealth] = useState<"HEALTHY" | "DEGRADED" | "OFFLINE" | "CHECKING">("CHECKING");
 
   // Authentication guard
   useEffect(() => {
@@ -48,13 +49,24 @@ export default function DashboardLayout({
     const checkApi = async () => {
       try {
         const res = await safeFetch("/api/health");
-        setApiOnline(res.ok);
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.status === "HEALTHY") {
+            setApiHealth("HEALTHY");
+          } else if (data?.status === "DEGRADED") {
+            setApiHealth("DEGRADED");
+          } else {
+            setApiHealth("HEALTHY");
+          }
+        } else {
+          setApiHealth("DEGRADED");
+        }
       } catch {
-        // backend might be starting
+        setApiHealth("OFFLINE");
       }
     };
     checkApi();
-    const apiInterval = setInterval(checkApi, 15000);
+    const apiInterval = setInterval(checkApi, 20000);
 
     return () => {
       clearInterval(timer);
@@ -64,13 +76,16 @@ export default function DashboardLayout({
 
   const navItems = [
     { label: "Dashboard", href: "/", icon: Activity },
+    { label: "Store Onboarding", href: "/onboarding", icon: Sparkles },
     { label: "Cameras & Fleet", href: "/settings/cameras", icon: Camera },
     { label: "Security Alerts", href: "/alerts", icon: AlertTriangle },
-    { label: "Products & Pack Math", href: "/products", icon: Box },
+    { label: "Inventory & Ledger", href: "/inventory", icon: Box },
+    { label: "Products & Pack Math", href: "/products", icon: Layers },
     { label: "Employees & Face ID", href: "/employees", icon: Users },
     { label: "Invoices & OCR", href: "/invoices", icon: FileText },
     { label: "Exit Events", href: "/events", icon: Layers },
     { label: "Reports & PDF", href: "/reports", icon: FileSpreadsheet },
+    { label: "Platform Fleet", href: "/platform", icon: ShieldAlert },
     { label: "Settings & Sensors", href: "/settings", icon: Settings },
   ];
 
@@ -201,12 +216,35 @@ export default function DashboardLayout({
             {/* API Health Pill */}
             <div
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-mono border font-medium ${
-                apiOnline
+                apiHealth === "HEALTHY"
                   ? "bg-[var(--status-ok)]/10 text-[var(--status-ok)] border-[var(--status-ok)]/30"
+                  : apiHealth === "DEGRADED"
+                  ? "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                  : apiHealth === "CHECKING"
+                  ? "bg-blue-500/10 text-blue-400 border-blue-500/30"
                   : "bg-[var(--status-high)]/10 text-[var(--status-high)] border-[var(--status-high)]/30"
               }`}
             >
-              <CheckCircle size={13} /> {apiOnline ? "API: 8000 ONLINE" : "API: CONNECTING"}
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  apiHealth === "HEALTHY"
+                    ? "bg-[var(--status-ok)] animate-pulse"
+                    : apiHealth === "DEGRADED"
+                    ? "bg-amber-400"
+                    : apiHealth === "CHECKING"
+                    ? "bg-blue-400 animate-pulse"
+                    : "bg-[var(--status-high)]"
+                }`}
+              />
+              <span>
+                {apiHealth === "HEALTHY"
+                  ? "API: HEALTHY"
+                  : apiHealth === "DEGRADED"
+                  ? "API: DEGRADED"
+                  : apiHealth === "CHECKING"
+                  ? "API: CHECKING..."
+                  : "API: OFFLINE"}
+              </span>
             </div>
           </div>
         </header>

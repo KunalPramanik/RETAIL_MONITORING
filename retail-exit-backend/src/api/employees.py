@@ -51,8 +51,10 @@ def serialize_employee(emp: Any, mismatch_count: int = 0) -> EmployeeResponse:
     """Serializes an Employee ORM instance to a typed EmployeeResponse."""
     has_face = bool(emp.face_embedding is not None and len(emp.face_embedding) > 0)
     emb_ts = emp.embedding_updated_at.isoformat() if getattr(emp, "embedding_updated_at", None) else None
+    code = emp.employee_code if getattr(emp, "employee_code", None) else f"EMP-{str(emp.employee_id)[:6].upper()}"
     return EmployeeResponse(
         employeeId=str(emp.employee_id),
+        employeeCode=code,
         name=str(emp.name),
         role=str(emp.role),
         rfidBadgeId=str(emp.rfid_badge_id),
@@ -133,7 +135,38 @@ async def create_employee(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail=f"Badge ID '{body.rfidBadgeId}' already assigned")
 
+    # Generate atomic next employee code EMP-XXXXXX
+    codes_res = await session.execute(
+        select(Employee.employee_code).where(Employee.employee_code.isnot(None))
+    )
+    existing_codes = codes_res.scalars().all()
+    max_num = 0
+    for c in existing_codes:
+        if c and c.startswith("EMP-"):
+            try:
+                num = int(c.split("-")[1])
+                if num > max_num:
+                    max_num = num
+            except (ValueError, IndexError):
+                pass
+    
+    if max_num == 0:
+        count_res = await session.execute(select(func.count(Employee.employee_id)))
+        cnt = count_res.scalar_one_or_none() or 0
+        next_num = cnt + 1
+    else:
+        next_num = max_num + 1
+
+    candidate_code = f"EMP-{next_num:06d}"
+    while True:
+        dup = await session.execute(select(Employee).where(Employee.employee_code == candidate_code))
+        if not dup.scalar_one_or_none():
+            break
+        next_num += 1
+        candidate_code = f"EMP-{next_num:06d}"
+
     emp = Employee(
+        employee_code=candidate_code,
         name=body.name,
         role=body.role,
         rfid_badge_id=body.rfidBadgeId,

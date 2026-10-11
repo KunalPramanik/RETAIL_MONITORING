@@ -21,6 +21,7 @@ from datetime import datetime, timezone, timedelta
 
 from src.core.config import settings
 from src.db.session import init_db, close_db, AsyncSessionLocal
+from src.core.multi_tenant import init_platform_db
 from src.db.models import Camera, Alert, ThresholdConfig, Lane, get_utc_now
 from src.db.init_config import init_baseline_configuration
 from src.api.router import api_router
@@ -113,6 +114,7 @@ async def lifespan(app: FastAPI):
 
     logger.info("Initializing SEC-OPS backend services and database schema...")
     await init_db()
+    await init_platform_db()
     # DB initialized via Alembic Migrations in Production
 
     # Initialize baseline configuration (Store, ThresholdConfig) with clean operational defaults

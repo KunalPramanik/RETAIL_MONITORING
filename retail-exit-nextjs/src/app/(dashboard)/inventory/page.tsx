@@ -1,0 +1,630 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import { safeFetch } from "@/lib/api-client";
+import {
+  Box,
+  Layers,
+  CheckCircle,
+  AlertTriangle,
+  RefreshCw,
+  Plus,
+  Search,
+  Filter,
+  Check,
+  X,
+  FileCheck,
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Camera,
+  ArrowRight,
+  ShieldAlert,
+} from "lucide-react";
+
+interface VerificationItem {
+  verificationId: string;
+  productId: string;
+  skuCode: string;
+  productName: string;
+  cameraId: string;
+  aiProposedCount: number;
+  verifiedCount?: number;
+  difference?: number;
+  status: "PENDING_VERIFICATION" | "VERIFIED_ACCURATE" | "CORRECTED" | "REJECTED";
+  verifiedBy?: string;
+  correctionReason?: string;
+  snapshotUrl?: string;
+  modelVersion?: string;
+  createdAt?: string;
+  verifiedAt?: string;
+}
+
+interface StockItem {
+  skuCode: string;
+  productName: string;
+  category: string;
+  packSize: number;
+  unitPrice: number;
+  casePrice: number;
+  openingStock: number;
+  incomingConfirmed: number;
+  outgoingConfirmed: number;
+  adjustedStock: number;
+  currentStock: number;
+  inventoryValue: number;
+  stockStatus: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
+}
+
+export default function InventoryDashboardPage() {
+  const [stockList, setStockList] = useState<StockItem[]>([]);
+  const [verifications, setVerifications] = useState<VerificationItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [activeTab, setActiveTab] = useState<"STOCK" | "VERIFICATIONS">("STOCK");
+
+  // Edit / Recount Modal State
+  const [editingItem, setEditingItem] = useState<VerificationItem | null>(null);
+  const [correctedCount, setCorrectedCount] = useState<string>("");
+  const [correctionReason, setCorrectionReason] = useState<string>("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Manual Adjustment Modal State
+  const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [adjustSku, setAdjustSku] = useState("");
+  const [adjustQty, setAdjustQty] = useState("");
+  const [adjustReason, setAdjustReason] = useState("");
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [resStock, resVerif] = await Promise.all([
+        safeFetch(`/api/inventory/stock${search ? `?query=${encodeURIComponent(search)}` : ""}`),
+        safeFetch("/api/inventory/verification"),
+      ]);
+
+      if (resStock.ok) {
+        const dataStock = await resStock.json();
+        setStockList(dataStock);
+      }
+      if (resVerif.ok) {
+        const dataVerif = await resVerif.json();
+        setVerifications(dataVerif);
+      }
+    } catch (e) {
+      console.warn("Failed to load inventory data:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [search]);
+
+  // Handle YES — ACCEPT
+  const handleAcceptProposal = async (verifId: string) => {
+    try {
+      setSubmitting(true);
+      const res = await safeFetch(`/api/inventory/verification/${verifId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isCorrect: true }),
+      });
+      if (res.ok) {
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Verification failed");
+      }
+    } catch (e: any) {
+      alert(e.message || "Request failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle NO — EDIT Submission
+  const handleSaveCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingItem) return;
+    const cnt = parseInt(correctedCount, 10);
+    if (isNaN(cnt) || cnt < 0) {
+      alert("Please provide a valid non-negative count.");
+      return;
+    }
+    if (!correctionReason.trim()) {
+      alert("Please provide a reason for the discrepancy correction.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await safeFetch(`/api/inventory/verification/${editingItem.verificationId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isCorrect: false,
+          correctedCount: cnt,
+          correctionReason: correctionReason.trim(),
+        }),
+      });
+      if (res.ok) {
+        setEditingItem(null);
+        setCorrectedCount("");
+        setCorrectionReason("");
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Correction failed");
+      }
+    } catch (e: any) {
+      alert(e.message || "Request failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Handle Manual Stock Adjustment
+  const handleManualAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const qty = parseInt(adjustQty, 10);
+    if (isNaN(qty) || qty === 0) {
+      alert("Please enter a non-zero adjustment delta.");
+      return;
+    }
+    if (!adjustReason.trim()) {
+      alert("Adjustment reason is mandatory.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await safeFetch("/api/inventory/adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku_code: adjustSku,
+          qty_adjustment: qty,
+          reason: adjustReason.trim(),
+        }),
+      });
+      if (res.ok) {
+        setShowAdjustModal(false);
+        setAdjustSku("");
+        setAdjustQty("");
+        setAdjustReason("");
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Adjustment failed");
+      }
+    } catch (e: any) {
+      alert(e.message || "Request failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const pendingVerifications = verifications.filter((v) => v.status === "PENDING_VERIFICATION");
+
+  const totalInventoryValue = stockList.reduce((acc, item) => acc + (item.inventoryValue || 0), 0);
+  const totalOnHandUnits = stockList.reduce((acc, item) => acc + (item.currentStock || 0), 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-3">
+            <Box className="text-[#38BDF8]" /> Inventory Ledger & Opening Stock Census
+          </h1>
+          <p className="text-[var(--text-secondary)] text-sm mt-1">
+            Real-time on-hand stock balances, automated IN/OUT movement transactions, and AI-assisted baseline verification.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowAdjustModal(true)}
+            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors font-mono"
+          >
+            <Plus size={15} /> Adjust Stock
+          </button>
+          <button
+            onClick={fetchData}
+            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+          >
+            <RefreshCw size={15} /> Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+          <span className="text-xs font-mono text-[var(--text-secondary)] uppercase">Total On-Hand Units</span>
+          <div className="text-2xl font-bold font-mono text-[#38BDF8] mt-1">{totalOnHandUnits.toLocaleString()} U</div>
+          <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Live across all storage zones</span>
+        </div>
+        <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+          <span className="text-xs font-mono text-[var(--text-secondary)] uppercase">Total Valuation (₹ INR)</span>
+          <div className="text-2xl font-bold font-mono text-[#4FD1B3] mt-1">₹ {totalInventoryValue.toLocaleString()}</div>
+          <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Indian Rupees asset value</span>
+        </div>
+        <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+          <span className="text-xs font-mono text-[var(--text-secondary)] uppercase">Pending Opening Verifications</span>
+          <div className="text-2xl font-bold font-mono text-[#E8A33D] mt-1">{pendingVerifications.length} Items</div>
+          <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Awaiting operator YES / NO audit</span>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-[var(--border-hairline)] gap-6 text-sm font-mono">
+        <button
+          onClick={() => setActiveTab("STOCK")}
+          className={`pb-3 font-semibold transition-colors flex items-center gap-2 ${
+            activeTab === "STOCK"
+              ? "text-[#38BDF8] border-b-2 border-[#38BDF8]"
+              : "text-[var(--text-secondary)] hover:text-white"
+          }`}
+        >
+          <Box size={16} /> Current Stock Ledger ({stockList.length})
+        </button>
+        <button
+          onClick={() => setActiveTab("VERIFICATIONS")}
+          className={`pb-3 font-semibold transition-colors flex items-center gap-2 ${
+            activeTab === "VERIFICATIONS"
+              ? "text-[#38BDF8] border-b-2 border-[#38BDF8]"
+              : "text-[var(--text-secondary)] hover:text-white"
+          }`}
+        >
+          <FileCheck size={16} /> Opening Stock Census ({verifications.length})
+          {pendingVerifications.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-[#E8A33D] text-black font-bold">
+              {pendingVerifications.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Tab Content: Current Stock Ledger */}
+      {activeTab === "STOCK" && (
+        <div className="space-y-4">
+          <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)] flex justify-between items-center">
+            <div className="relative flex-1 max-w-md">
+              <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search by SKU or material name..."
+                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
+              />
+            </div>
+            <div className="text-xs font-mono text-[var(--text-secondary)]">
+              Accounting Invariant: <span className="text-[#4FD1B3]">Current = Opening + IN − OUT + Adj</span>
+            </div>
+          </div>
+
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
+            {stockList.length === 0 && !loading ? (
+              <div className="p-12 text-center text-[var(--text-secondary)]">
+                <Box size={40} className="mx-auto mb-3 text-[#2C323D]" />
+                <h4 className="text-base font-bold text-[var(--text-primary)]">No inventory records available</h4>
+                <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-sm mx-auto">
+                  Initial census pending or awaiting receipt dispatch. Register products and conduct an initial opening stock scan to populate the ledger.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] text-xs font-mono border-b border-[var(--border-hairline)]">
+                    <tr>
+                      <th className="p-4">SKU / CODE</th>
+                      <th className="p-4">MATERIAL NAME</th>
+                      <th className="p-4">CATEGORY</th>
+                      <th className="p-4 text-right">OPENING</th>
+                      <th className="p-4 text-right">IN (+)</th>
+                      <th className="p-4 text-right">OUT (−)</th>
+                      <th className="p-4 text-right">ADJ (±)</th>
+                      <th className="p-4 text-right">CURRENT STOCK</th>
+                      <th className="p-4 text-right">UNIT PRICE</th>
+                      <th className="p-4 text-right">TOTAL VALUE</th>
+                      <th className="p-4 text-center">STATUS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
+                    {stockList.map((item, idx) => (
+                      <tr key={`${item.skuCode}-${idx}`} className="hover:bg-[var(--bg-panel-raised)] transition-colors font-mono">
+                        <td className="p-4 font-bold text-[#38BDF8]">{item.skuCode}</td>
+                        <td className="p-4 font-sans font-semibold text-[var(--text-primary)]">{item.productName}</td>
+                        <td className="p-4 text-xs text-[var(--text-secondary)]">{item.category}</td>
+                        <td className="p-4 text-right text-[var(--text-secondary)]">{item.openingStock} U</td>
+                        <td className="p-4 text-right text-[#4FD1B3]">+{item.incomingConfirmed}</td>
+                        <td className="p-4 text-right text-[#E5484D]">−{item.outgoingConfirmed}</td>
+                        <td className="p-4 text-right text-[#E8A33D]">{item.adjustedStock >= 0 ? `+${item.adjustedStock}` : item.adjustedStock}</td>
+                        <td className="p-4 text-right font-bold text-lg text-white">{item.currentStock} U</td>
+                        <td className="p-4 text-right text-[var(--text-secondary)]">₹ {item.unitPrice?.toFixed(2) || "0.00"}</td>
+                        <td className="p-4 text-right font-bold text-[#4FD1B3]">₹ {item.inventoryValue?.toLocaleString() || "0"}</td>
+                        <td className="p-4 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              item.stockStatus === "IN_STOCK"
+                                ? "bg-[#4FD1B3]/15 text-[#4FD1B3] border border-[#4FD1B3]/30"
+                                : item.stockStatus === "LOW_STOCK"
+                                ? "bg-[#E8A33D]/15 text-[#E8A33D] border border-[#E8A33D]/30"
+                                : "bg-[#E5484D]/15 text-[#E5484D] border border-[#E5484D]/30"
+                            }`}
+                          >
+                            {item.stockStatus.replace("_", " ")}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content: Opening Stock Census */}
+      {activeTab === "VERIFICATIONS" && (
+        <div className="space-y-4">
+          <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)] text-xs text-[var(--text-secondary)] flex justify-between items-center">
+            <div>
+              <span className="font-bold text-[var(--text-primary)]">Human-in-the-Loop Opening Stock Protocol:</span>
+              <p className="mt-0.5">
+                AI scans the floor and proposes baseline counts. Operators verify visually: click <b>YES — ACCEPT</b> to confirm or <b>NO — EDIT</b> to record a manual recount with an audit reason.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
+            {verifications.length === 0 && !loading ? (
+              <div className="p-12 text-center text-[var(--text-secondary)]">
+                <FileCheck size={40} className="mx-auto mb-3 text-[#2C323D]" />
+                <h4 className="text-base font-bold text-[var(--text-primary)]">No opening stock verification sessions</h4>
+                <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-sm mx-auto">
+                  When cameras perform initial inventory counts, proposed baselines will be queued here for operator review.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] text-xs font-mono border-b border-[var(--border-hairline)]">
+                    <tr>
+                      <th className="p-4">STATUS</th>
+                      <th className="p-4">SKU / CODE</th>
+                      <th className="p-4">MATERIAL NAME</th>
+                      <th className="p-4 text-center">AI PROPOSED</th>
+                      <th className="p-4 text-center">VERIFIED COUNT</th>
+                      <th className="p-4 text-center">VARIANCE</th>
+                      <th className="p-4">AUDIT REASON / OPERATOR</th>
+                      <th className="p-4 text-right">ACTIONS</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
+                    {verifications.map((v, idx) => (
+                      <tr key={`${v.verificationId}-${idx}`} className="hover:bg-[var(--bg-panel-raised)] transition-colors font-mono">
+                        <td className="p-4">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              v.status === "VERIFIED_ACCURATE"
+                                ? "bg-[#4FD1B3]/15 text-[#4FD1B3] border border-[#4FD1B3]/30"
+                                : v.status === "CORRECTED"
+                                ? "bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30"
+                                : "bg-[#E8A33D]/15 text-[#E8A33D] border border-[#E8A33D]/30 animate-pulse"
+                            }`}
+                          >
+                            {v.status.replace("_", " ")}
+                          </span>
+                        </td>
+                        <td className="p-4 font-bold text-[#38BDF8]">{v.skuCode}</td>
+                        <td className="p-4 font-sans font-semibold text-[var(--text-primary)]">{v.productName}</td>
+                        <td className="p-4 text-center font-bold text-white">{v.aiProposedCount} U</td>
+                        <td className="p-4 text-center">
+                          {v.verifiedCount !== undefined && v.verifiedCount !== null ? (
+                            <span className="font-bold text-[#4FD1B3]">{v.verifiedCount} U</span>
+                          ) : (
+                            <span className="text-[var(--text-muted)]">—</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-center">
+                          {v.difference !== undefined && v.difference !== null ? (
+                            <span className={v.difference === 0 ? "text-[#4FD1B3]" : "text-[#E8A33D]"}>
+                              {v.difference > 0 ? `+${v.difference}` : v.difference}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--text-muted)]">—</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-xs font-sans text-[var(--text-secondary)]">
+                          {v.correctionReason || (v.verifiedBy ? `Verified by ${v.verifiedBy}` : "Awaiting operator review")}
+                        </td>
+                        <td className="p-4 text-right">
+                          {v.status === "PENDING_VERIFICATION" ? (
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => handleAcceptProposal(v.verificationId)}
+                                disabled={submitting}
+                                className="px-3 py-1 bg-[#10B981] hover:bg-[#059669] text-white rounded text-xs font-bold font-mono flex items-center gap-1 shadow-sm transition-all disabled:opacity-50"
+                              >
+                                <Check size={13} /> YES — ACCEPT
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setEditingItem(v);
+                                  setCorrectedCount(String(v.aiProposedCount));
+                                  setCorrectionReason("");
+                                }}
+                                disabled={submitting}
+                                className="px-3 py-1 bg-[var(--bg-panel-raised)] hover:bg-[#E5484D]/20 text-[#E5484D] border border-[#E5484D]/40 rounded text-xs font-bold font-mono flex items-center gap-1 transition-all disabled:opacity-50"
+                              >
+                                <X size={13} /> NO — EDIT
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-[var(--text-muted)] font-mono">LOCKED</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Recount / Correction Modal */}
+      {editingItem && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <FileCheck size={18} className="text-[#E8A33D]" /> Recount Correction: {editingItem.skuCode}
+              </h3>
+              <button onClick={() => setEditingItem(null)} className="text-[var(--text-secondary)] hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCorrection} className="space-y-4 text-sm font-mono">
+              <div className="p-3 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)] text-xs space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">Material:</span>
+                  <span className="text-white font-bold">{editingItem.productName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">AI Proposed Count:</span>
+                  <span className="text-[#38BDF8] font-bold">{editingItem.aiProposedCount} Units</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">PHYSICAL RECOUNT VALUE (UNITS) *</label>
+                <input
+                  type="number"
+                  min="0"
+                  required
+                  value={correctedCount}
+                  onChange={(e) => setCorrectedCount(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white font-mono outline-none focus:border-[#38BDF8]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">MANDATORY REASON FOR CORRECTION *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 3 cases obscured behind pillar; manual verification done."
+                  value={correctionReason}
+                  onChange={(e) => setCorrectionReason(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white font-sans text-xs outline-none focus:border-[#38BDF8]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => setEditingItem(null)}
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                >
+                  {submitting ? "Saving..." : "Lock Corrected Baseline"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Stock Adjustment Modal */}
+      {showAdjustModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Plus size={18} className="text-[#38BDF8]" /> Manual Stock Adjustment
+              </h3>
+              <button onClick={() => setShowAdjustModal(false)} className="text-[var(--text-secondary)] hover:text-white">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleManualAdjustment} className="space-y-4 text-sm font-mono">
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">SELECT SKU / PRODUCT *</label>
+                <select
+                  required
+                  value={adjustSku}
+                  onChange={(e) => setAdjustSku(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white outline-none"
+                >
+                  <option value="">Select a material...</option>
+                  {stockList.map((s) => (
+                    <option key={s.skuCode} value={s.skuCode}>
+                      {s.skuCode} — {s.productName} (Current: {s.currentStock} U)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">QUANTITY DELTA (+ to Add, − to Deduct) *</label>
+                <input
+                  type="number"
+                  required
+                  placeholder="e.g. +10 or -5"
+                  value={adjustQty}
+                  onChange={(e) => setAdjustQty(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] mb-1">ADJUSTMENT REASON *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Warehouse intake receipt, damaged pallet write-off"
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white font-sans text-xs outline-none focus:border-[#38BDF8]"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustModal(false)}
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                >
+                  {submitting ? "Posting..." : "Post Adjustment"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

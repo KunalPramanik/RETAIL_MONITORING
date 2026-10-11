@@ -46,3 +46,12 @@ ml/weights/checkpoints/*.onnx
 # OS
 .DS_Store
 Thumbs.db
+
+# Hardware Runtime State & Local Diagnostic Scripts
+src/hardware/usb_state.json
+scripts/view_db.py
+scripts/check_*.py
+scripts/inspect_*.py
+scripts/clean_*.py
+scripts/reset_*.py
+scripts/bootstrap_*.py

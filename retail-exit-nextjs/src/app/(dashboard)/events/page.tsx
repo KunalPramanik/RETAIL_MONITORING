@@ -36,13 +36,35 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [verdictFilter, setVerdictFilter] = useState("ALL");
+  const [datePreset, setDatePreset] = useState("ALL");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<ExitEventItem | null>(null);
   const [showVerifyModal, setShowVerifyModal] = useState(false);
+
+  const formatEventTime = (isoString?: string) => {
+    if (!isoString) return "-";
+    try {
+      const d = new Date(isoString);
+      return `${d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}, ${d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    } catch {
+      return isoString;
+    }
+  };
 
   const fetchEvents = async () => {
     try {
       setLoading(true);
-      const res = await safeFetch("/api/events");
+      const queryParams = new URLSearchParams();
+      if (verdictFilter !== "ALL") queryParams.append("verdict", verdictFilter);
+      if (datePreset !== "ALL" && datePreset !== "CUSTOM") {
+        queryParams.append("datePreset", datePreset.toLowerCase());
+      }
+      if (datePreset === "CUSTOM") {
+        if (startDate) queryParams.append("startTime", new Date(startDate).toISOString());
+        if (endDate) queryParams.append("endTime", new Date(endDate).toISOString());
+      }
+      const res = await safeFetch(`/api/events?${queryParams.toString()}`);
       if (res.ok) {
         const data = await res.json();
         setEvents(data);
@@ -56,7 +78,7 @@ export default function EventsPage() {
 
   useEffect(() => {
     fetchEvents();
-  }, []);
+  }, [verdictFilter, datePreset, startDate, endDate]);
 
   const filtered = events.filter((ev) => {
     const matchesVerdict = verdictFilter === "ALL" || ev.verdict === verdictFilter;
@@ -95,32 +117,82 @@ export default function EventsPage() {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-between bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
-        <div className="relative flex-1 max-w-md">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by event ID or exit lane..."
-            className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
-          />
+      {/* Filter Bar with Date / Preset Filters */}
+      <div className="space-y-3 bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center">
+          <div className="relative flex-1 max-w-md w-full">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by event ID or exit lane..."
+              className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-[var(--text-secondary)] mr-1">VERDICT:</span>
+            {["ALL", "PASS", "MISMATCH"].map((v) => (
+              <button
+                key={v}
+                onClick={() => setVerdictFilter(v)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors ${
+                  verdictFilter === v
+                    ? "bg-[#2563EB] text-white"
+                    : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
+                }`}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {["ALL", "PASS", "MISMATCH"].map((v) => (
+
+        {/* Date / Time Presets & Range */}
+        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-[var(--border-hairline)]">
+          <span className="text-xs font-mono text-[var(--text-secondary)] flex items-center gap-1.5 mr-1">
+            <Clock size={13} className="text-[#38BDF8]" /> DATE RANGE:
+          </span>
+          {[
+            { id: "ALL", label: "All Time" },
+            { id: "TODAY", label: "Today" },
+            { id: "YESTERDAY", label: "Yesterday" },
+            { id: "7D", label: "Last 7 Days" },
+            { id: "MONTH", label: "This Month" },
+            { id: "YEAR", label: "This Year" },
+            { id: "CUSTOM", label: "Custom Range" },
+          ].map((preset) => (
             <button
-              key={v}
-              onClick={() => setVerdictFilter(v)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors ${
-                verdictFilter === v
-                  ? "bg-[#2563EB] text-white"
-                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
+              key={preset.id}
+              onClick={() => setDatePreset(preset.id)}
+              className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${
+                datePreset === preset.id
+                  ? "bg-[#38BDF8] text-black font-bold"
+                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-white border border-[var(--border-hairline)]"
               }`}
             >
-              {v}
+              {preset.label}
             </button>
           ))}
+
+          {datePreset === "CUSTOM" && (
+            <div className="flex items-center gap-2 ml-2">
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded px-2 py-1 text-xs text-[var(--text-primary)] font-mono outline-none"
+              />
+              <span className="text-xs text-[var(--text-secondary)]">to</span>
+              <input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded px-2 py-1 text-xs text-[var(--text-primary)] font-mono outline-none"
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -150,8 +222,8 @@ export default function EventsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
-                {filtered.map((item) => (
-                  <tr key={item.eventId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
+                {filtered.map((item, idx) => (
+                  <tr key={`${item.eventId}-${idx}`} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
                     <td className="p-4">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[11px] font-mono font-bold ${
@@ -184,7 +256,7 @@ export default function EventsPage() {
                       )}
                     </td>
                     <td className="p-4 font-mono text-xs text-right text-[var(--text-secondary)]">
-                      {new Date(item.timestamp).toLocaleTimeString()}
+                      {formatEventTime(item.timestamp)}
                     </td>
                   </tr>
                 ))}

@@ -19,6 +19,7 @@ import {
 
 interface EmployeeItem {
   employeeId: string;
+  employeeCode?: string;
   name: string;
   role: string;
   rfidBadgeId: string;
@@ -73,9 +74,12 @@ export default function EmployeesPage() {
         body: JSON.stringify(formData),
       });
       if (res.ok) {
+        const createdEmp = await res.json();
         setShowAddModal(false);
         setFormData({ name: "", role: "STORE_ASSOCIATE", rfidBadgeId: "" });
         fetchEmployees();
+        const code = createdEmp.employeeCode || createdEmp.employee_code || "EMP-ASSIGNED";
+        alert(`Employee registered successfully! Assigned Code: ${code}`);
       } else {
         const err = await res.json();
         alert(err.detail || "Registration failed");
@@ -177,6 +181,7 @@ export default function EmployeesPage() {
               <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] text-xs font-mono border-b border-[var(--border-hairline)]">
                 <tr>
                   <th className="p-4">STATUS</th>
+                  <th className="p-4">EMP CODE</th>
                   <th className="p-4">NAME</th>
                   <th className="p-4">ROLE</th>
                   <th className="p-4">RFID BADGE ID</th>
@@ -199,6 +204,9 @@ export default function EmployeesPage() {
                         <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
                         {emp.activeFlag ? "ACTIVE" : "INACTIVE"}
                       </span>
+                    </td>
+                    <td className="p-4 font-mono text-xs font-bold text-[#38BDF8]">
+                      {emp.employeeCode || `EMP-${emp.employeeId.slice(0, 6).toUpperCase()}`}
                     </td>
                     <td className="p-4 font-bold text-[var(--text-primary)]">{emp.name}</td>
                     <td className="p-4">
@@ -254,6 +262,16 @@ export default function EmployeesPage() {
             </div>
 
             <form onSubmit={handleCreateEmployee} className="space-y-3 text-sm">
+              <div className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-3 text-xs font-mono space-y-1">
+                <div className="text-[var(--text-secondary)] flex justify-between items-center">
+                  <span>EMPLOYEE CODE (SYSTEM SEQUENCED):</span>
+                  <span className="text-[#38BDF8] font-bold px-2 py-0.5 bg-[#38BDF8]/10 rounded border border-[#38BDF8]/30">EMP-AUTO</span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  Collision-safe sequence (e.g. EMP-000001) will be atomically assigned by the server. Operator manual editing is disabled.
+                </p>
+              </div>
+
               <div>
                 <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">FULL NAME *</label>
                 <input
@@ -275,8 +293,9 @@ export default function EmployeesPage() {
                 >
                   <option value="STORE_ASSOCIATE">Store Associate</option>
                   <option value="OPERATOR">Loading Dock Operator</option>
+                  <option value="SECURITY">Store Security Guard</option>
                   <option value="SUPERVISOR">Security Supervisor</option>
-                  <option value="ADMIN">Facility Administrator</option>
+                  <option value="ADMIN">Store Administrator</option>
                 </select>
               </div>
 

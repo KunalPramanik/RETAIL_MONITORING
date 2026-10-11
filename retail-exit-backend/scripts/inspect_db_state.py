@@ -15,3 +15,4 @@ for t in sorted(tables):
         print(f"{t:<35} | {cnt:<8}")
     except Exception as e:
         print(f"{t:<35} | ERROR: {e}")
+

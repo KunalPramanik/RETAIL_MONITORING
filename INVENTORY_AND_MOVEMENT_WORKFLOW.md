@@ -96,3 +96,4 @@ Manual stock overrides are permitted for physical reconciliation, breakages, or 
 * Every adjustment creates an immutable `MaterialMovementLedger` row with `transaction_type="MANUAL_ADJUSTMENT"`.
 * Mandatory fields: `operator_id`, `reason`, `qty_change`, `previous_stock`, `new_stock`.
 * Currency standard: Indian Rupee (₹ / INR).
+

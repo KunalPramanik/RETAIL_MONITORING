@@ -210,6 +210,7 @@ class CameraTestConnectionResponse(BaseModel):
     fps: Optional[int] = None
     latencyMs: Optional[float] = None
     errorMessage: Optional[str] = None
+    previewImageBase64: Optional[str] = None
 
 
 class CameraHeartbeatCreate(BaseModel):

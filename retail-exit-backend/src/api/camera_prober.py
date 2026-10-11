@@ -52,23 +52,42 @@ def capture_camera_frame_sync(
     if dev_idx is not None:
         diag_info["host"] = f"dev_{dev_idx}"
         diag_info["is_reachable"] = True
-        try:
-            buf, lat = camera_stream_manager.get_latest_real_jpeg(f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=0.8)
-            if buf is not None:
-                diag_info["stage"] = "SUCCESS"
-                return (buf, f"Local Camera Device ({dev_idx})", lat, diag_info) if return_diag else (buf, f"Local Camera Device ({dev_idx})", lat)
-        except Exception:
-            pass
 
+        # Check existing stream manager session first to avoid exclusive hardware lock collisions
         try:
-            cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
-            if not cap.isOpened():
+            buf, lat = camera_stream_manager.get_latest_real_jpeg(f"dev_{dev_idx}", str(dev_idx), "", None, max_wait_sec=2.0)
+            if buf is not None and len(buf) > 0:
+                diag_info["stage"] = "SUCCESS"
+                diag_info["is_port_open"] = True
+                diag_info["is_handshake_ok"] = True
+                return (buf, f"Local Camera Device ({dev_idx})", lat, diag_info) if return_diag else (buf, f"Local Camera Device ({dev_idx})", lat)
+        except Exception as sm_exc:
+            logger.debug("Stream manager lookup for dev_%s failed: %s", dev_idx, sm_exc)
+
+        # Fallback to direct hardware capture if stream manager didn't yield a frame
+        try:
+            cap = None
+            if os.name == "nt":
+                # DirectShow opens rapidly on Windows without MSMF lockouts
                 cap = cv2.VideoCapture(dev_idx, cv2.CAP_DSHOW)
-            if not cap.isOpened():
+                if not cap.isOpened():
+                    cap = cv2.VideoCapture(dev_idx, cv2.CAP_MSMF)
+                if not cap.isOpened():
+                    cap = cv2.VideoCapture(dev_idx)
+            else:
                 cap = cv2.VideoCapture(dev_idx)
-            if cap.isOpened():
-                ret, frame = cap.read()
+
+            if cap and cap.isOpened():
+                # Allow hardware sensor and exposure AGC/AWB to warm up
+                ret, frame = False, None
+                for _ in range(8):
+                    ret, frame = cap.read()
+                    if ret and frame is not None and frame.size > 0:
+                        break
+                    time.sleep(0.04)
+
                 cap.release()
+
                 if ret and frame is not None and frame.size > 0:
                     ret_enc, buf_enc = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                     if ret_enc:
@@ -86,7 +105,7 @@ def capture_camera_frame_sync(
                     )
             else:
                 diag_info["stage"] = "LOCAL_DEVICE_UNAVAILABLE"
-                diag_info["error_message"] = f"Local camera (index {dev_idx}) could not be opened on any capture backend (MSMF/DShow)."
+                diag_info["error_message"] = f"Local camera (index {dev_idx}) could not be opened on any capture backend (DirectShow/MSMF)."
         except Exception as exc:
             diag_info["stage"] = "LOCAL_DEVICE_ERROR"
             diag_info["error_message"] = f"Local camera capture error for index {dev_idx}: {exc}"

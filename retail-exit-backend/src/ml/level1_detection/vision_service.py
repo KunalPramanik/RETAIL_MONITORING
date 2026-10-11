@@ -597,8 +597,20 @@ class VisionInferenceService:
                     elif is_env:
                         class_label = "wall_picture"
                         pack_size = 1
+                    elif cid in cfg.class_labels:
+                        # Genuine recognized object from model taxonomy (multi-object detection)
+                        lbl = cfg.class_labels[cid]
+                        class_label = "single_unit" if not is_env else "environment_item"
+                        specific_label = lbl
+                        pack_size = 1
                     else:
-                        continue
+                        # Genuine physical detection with unmapped class or unknown shape
+                        aspect_str = "Square" if 0.8 <= (bw / max(1, bh)) <= 1.2 else ("Horizontal" if (bw > bh) else "Vertical")
+                        class_label = "unknown"
+                        specific_label = f"UNKNOWN ({aspect_str} {int(bw)}x{int(bh)})"
+                        pack_size = 1
+                        is_inv = False
+                        obj_role = "unknown_shape"
 
                     # Exact per-instance counting: only confirmed inventory-relevant objects contribute to retail counts
                     if is_inv:

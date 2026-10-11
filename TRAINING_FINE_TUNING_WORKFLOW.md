@@ -68,3 +68,4 @@ The `ModelRegistry` maintains strict version control over all deployed artifacts
 * **Production Model**: Serves 100% of live exit lane authorization checks.
 * **Shadow Model**: Evaluates identical incoming camera frames asynchronously (up to 25% traffic sampling) to measure real-world inference parity and latency without impacting physical turnstiles or customer passage.
 * **Instant Rollback**: If a newly promoted model displays drift or unexpected false alarms, `POST /api/ml/models/rollback` atomically reverts the active production pointer to the last verified stable checkpoint.
+

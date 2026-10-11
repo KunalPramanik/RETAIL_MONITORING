@@ -14,6 +14,7 @@ import os
 import time
 import uuid
 import json
+import base64
 import httpx
 import cv2
 import numpy as np
@@ -474,12 +475,15 @@ async def test_camera_connection(
             await session.commit()
             await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
 
+        preview_b64 = f"data:image/jpeg;base64,{base64.b64encode(frame_bytes).decode('ascii')}"
+
         return CameraTestConnectionResponse(
             success=True,
             status="ONLINE",
             streamUrl=working_url,
             subStreamPath=sub_stream_path,
             snapshotUrl=f"/snapshots/preview_{camera_id}.jpg",
+            previewImageBase64=preview_b64,
             resolution=cam.resolution if cam else "1920x1080",
             fps=cam.fps if cam else 30,
             latencyMs=latency_ms,

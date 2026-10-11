@@ -388,6 +388,7 @@ async def get_movement_monitor(
             "movementId": f"MOV-{ev.event_id}",
             "eventId": ev.event_id,
             "timestamp": ev.ts.strftime("%H:%M:%S") if ev.ts else get_utc_now().strftime("%H:%M:%S"),
+            "isoTimestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
             "personName": person_name,
             "billNumber": bill_num,
             "productName": prod_name,

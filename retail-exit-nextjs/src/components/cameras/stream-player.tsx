@@ -1040,7 +1040,14 @@ export default function StreamPlayer({
                   src={currentSnapshotUrl}
                   alt={`Snapshot from ${cameraId}`}
                   className="w-full h-full object-contain"
-                  onError={() => setSnapshotFailed(true)}
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.src.includes("/snapshots/")) {
+                      target.src = `/snapshots/preview_${cameraId}.jpg?t=${snapshotKey}`;
+                    } else {
+                      setSnapshotFailed(true);
+                    }
+                  }}
                 />
               )}
             </div>

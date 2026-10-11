@@ -33,6 +33,7 @@ interface LiveDetectionRow {
   cameraId: string;
   cameraLabel: string;
   timestamp: string;
+  isoTimestamp?: string;
   objectClass: string;
   quantity: number;
   confidence: number;
@@ -63,6 +64,7 @@ interface MovementMonitorRow {
   movementId: string;
   eventId: string;
   timestamp: string;
+  isoTimestamp?: string;
   personName: string;
   billNumber: string;
   productName: string;
@@ -96,8 +98,19 @@ export default function DashboardPage() {
   const [liveDetections, setLiveDetections] = useState<LiveDetectionRow[]>([]);
   const [verifications, setVerifications] = useState<StockVerificationItem[]>([]);
   const [movementMonitor, setMovementMonitor] = useState<MovementMonitorRow[]>([]);
-  const [previewSnapshot, setPreviewSnapshot] = useState<{ url: string; title: string } | null>(null);
+  const [previewSnapshot, setPreviewSnapshot] = useState<{ url: string; fallbackUrl?: string; title: string } | null>(null);
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false);
+
+  const formatLocalTime = (isoOrTime?: string) => {
+    if (!isoOrTime) return "--:--:--";
+    try {
+      const d = new Date(isoOrTime);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+      }
+    } catch (_) {}
+    return isoOrTime;
+  };
 
   // Edit Correction Modal State
   const [editingVerif, setEditingVerif] = useState<StockVerificationItem | null>(null);
@@ -554,8 +567,10 @@ export default function DashboardPage() {
               ) : (
                 liveDetections.map((row) => (
                   <tr key={row.detectionId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
-                    <td className="p-3 font-bold text-[#38BDF8]">{row.cameraLabel}</td>
-                    <td className="p-3 text-[var(--text-secondary)]">{row.timestamp}</td>
+                    <td className="p-3 font-bold text-[#38BDF8]">
+                      {row.cameraLabel && row.cameraLabel !== "Any" ? row.cameraLabel : `Camera ${row.cameraId}`}
+                    </td>
+                    <td className="p-3 text-[var(--text-secondary)] font-mono">{formatLocalTime(row.isoTimestamp || row.timestamp)}</td>
                     <td className="p-3 font-semibold text-[var(--text-primary)]">{row.objectClass}</td>
                     <td className="p-3 text-right font-bold text-[#E8A33D]">{row.quantity}</td>
                     <td className="p-3 text-right text-[var(--status-ok)]">{(row.confidence * 100).toFixed(1)}%</td>
@@ -575,9 +590,11 @@ export default function DashboardPage() {
                       <button
                         onClick={() => {
                           setSnapshotLoadFailed(false);
+                          const camName = row.cameraLabel && row.cameraLabel !== "Any" ? row.cameraLabel : `Camera ${row.cameraId}`;
                           setPreviewSnapshot({
                             url: row.snapshotUrl || `/snapshots/preview_${row.cameraId}.jpg`,
-                            title: `${row.cameraLabel} — ${row.objectClass} at ${row.timestamp}`,
+                            fallbackUrl: `/api/cameras/${row.cameraId}/snapshot`,
+                            title: `${camName} — ${row.objectClass} at ${formatLocalTime(row.isoTimestamp || row.timestamp)}`,
                           });
                         }}
                         className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded border border-[var(--border-hairline)] text-[11px] font-bold transition-colors"
@@ -634,7 +651,7 @@ export default function DashboardPage() {
               ) : (
                 movementMonitor.map((row) => (
                   <tr key={row.movementId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
-                    <td className="p-3 text-[var(--text-secondary)]">{row.timestamp}</td>
+                    <td className="p-3 text-[var(--text-secondary)] font-mono">{formatLocalTime(row.isoTimestamp || row.timestamp)}</td>
                     <td className="p-3 font-bold text-[var(--text-primary)] flex items-center gap-1.5">
                       <UserCheck size={13} className="text-[#38BDF8]" />
                       <span>{row.personName}</span>
@@ -835,7 +852,13 @@ export default function DashboardPage() {
                   src={previewSnapshot.url}
                   alt={previewSnapshot.title}
                   className="w-full h-full object-contain"
-                  onError={() => setSnapshotLoadFailed(true)}
+                  onError={() => {
+                    if (previewSnapshot.fallbackUrl && previewSnapshot.url !== previewSnapshot.fallbackUrl) {
+                      setPreviewSnapshot({ ...previewSnapshot, url: previewSnapshot.fallbackUrl });
+                    } else {
+                      setSnapshotLoadFailed(true);
+                    }
+                  }}
                 />
               )}
             </div>

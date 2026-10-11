@@ -65,6 +65,7 @@ export default function CameraManagementPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
+  const [viewingPreview, setViewingPreview] = useState<any>(null);
 
   // CC.2.1 Ignored Classes Filter Modal State
   const [selectedCameraForIgnore, setSelectedCameraForIgnore] = useState<CameraItem | null>(null);
@@ -138,9 +139,9 @@ export default function CameraManagementPage() {
     try {
       const payload: any = {
         label: formData.label.trim(),
-        ipAddress: formData.connectionType === "USB" ? "0" : formData.ipAddress.trim(),
+        ipAddress: formData.connectionType === "USB" ? (formData.ipAddress || "0") : formData.ipAddress.trim(),
         rtspPath: formData.rtspPath.trim() || "/live/ch0",
-        streamUrl: formData.connectionType === "WIFI_HTTP" ? formData.streamUrl.trim() : undefined,
+        streamUrl: formData.connectionType === "WIFI_HTTP" ? formData.streamUrl.trim() : (formData.connectionType === "USB" ? (formData.ipAddress || "0") : undefined),
         credentials: formData.credentials.trim() || undefined,
         laneId: formData.laneId,
       };
@@ -163,6 +164,8 @@ export default function CameraManagementPage() {
           success: Boolean(testData.success),
           latencyMs: testData.latencyMs,
           errorMessage: testData.errorMessage ? formatErrorMessage(testData.errorMessage) : undefined,
+          previewImageBase64: testData.previewImageBase64,
+          snapshotUrl: testData.snapshotUrl,
         });
         fetchCameras();
       } else {
@@ -402,12 +405,23 @@ export default function CameraManagementPage() {
                         </button>
                         <button
                           onClick={async () => {
-                            const res = await safeFetch(`/api/cameras/${cam.cameraId}/test-connection`, { method: "POST" });
-                            const dat = await res.json();
-                            alert(dat.success ? "Stream handshake SUCCESSFUL!" : `Failed: ${dat.errorMessage}`);
+                            try {
+                              const res = await safeFetch(`/api/cameras/${cam.cameraId}/test-connection`, { method: "POST" });
+                              const dat = await res.json();
+                              setViewingPreview({
+                                label: cam.label,
+                                cameraId: cam.cameraId,
+                                snapshotUrl: dat.previewImageBase64 || `/snapshots/preview_${cam.cameraId}.jpg?t=${Date.now()}`,
+                                success: Boolean(dat.success),
+                                latencyMs: dat.latencyMs,
+                                errorMessage: dat.errorMessage,
+                              });
+                            } catch (e: any) {
+                              alert(`Connection test error: ${e.message}`);
+                            }
                           }}
                           className="p-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded border border-[var(--border-hairline)] transition-colors"
-                          title="Test RTSP Pull"
+                          title="Test Live Stream & View Screenshot"
                         >
                           <Play size={14} />
                         </button>
@@ -561,7 +575,7 @@ export default function CameraManagementPage() {
 
             {testResult && (
               <div
-                className={`p-3 rounded-lg border text-xs font-mono ${
+                className={`p-3 rounded-lg border text-xs font-mono space-y-2.5 ${
                   testResult.success
                     ? "bg-[#4FD1B3]/10 border-[#4FD1B3]/40 text-[#4FD1B3]"
                     : "bg-[#E5484D]/10 border-[#E5484D]/40 text-[#E5484D]"
@@ -574,6 +588,19 @@ export default function CameraManagementPage() {
                 ) : (
                   <div className="flex items-center gap-2">
                     <AlertTriangle size={15} /> Error: {formatErrorMessage(testResult.errorMessage)}
+                  </div>
+                )}
+
+                {(testResult.previewImageBase64 || testResult.snapshotUrl) && (
+                  <div className="relative rounded-lg overflow-hidden border border-white/10 bg-black aspect-video flex items-center justify-center">
+                    <img
+                      src={testResult.previewImageBase64 || testResult.snapshotUrl}
+                      alt="Live Camera Preview"
+                      className="w-full h-full object-contain"
+                    />
+                    <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-emerald-600/90 text-white text-[10px] font-mono font-bold tracking-wider uppercase shadow">
+                      LIVE PREVIEW SCREENSHOT
+                    </div>
                   </div>
                 )}
               </div>
@@ -674,6 +701,60 @@ export default function CameraManagementPage() {
                   {savingIgnore ? "Saving Filter..." : "Save Filter Config"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewingPreview && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-2xl w-full p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div>
+                <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
+                  <Camera size={18} className="text-[#38BDF8]" />
+                  Camera Live Feed — {viewingPreview.label} ({viewingPreview.cameraId})
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] font-mono mt-0.5">
+                  Latency: {viewingPreview.latencyMs ? `${viewingPreview.latencyMs}ms` : "Live"} | Status:{" "}
+                  <span className={viewingPreview.success ? "text-[#4FD1B3]" : "text-[#E5484D]"}>
+                    {viewingPreview.success ? "ONLINE (VERIFIED)" : "CONNECTION_FAILED"}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setViewingPreview(null)}
+                className="text-[var(--text-secondary)] hover:text-white p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
+              {viewingPreview.success ? (
+                <img
+                  src={viewingPreview.snapshotUrl}
+                  alt={viewingPreview.label}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
+                  <AlertTriangle size={32} className="text-[#E5484D]" />
+                  <div className="text-sm font-mono font-bold text-white">Stream Pull Failed</div>
+                  <p className="text-xs text-neutral-400 max-w-sm font-mono">
+                    {formatErrorMessage(viewingPreview.errorMessage || "Camera device unreachable or preempted.")}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-[var(--border-hairline)]">
+              <button
+                onClick={() => setViewingPreview(null)}
+                className="px-4 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-mono border border-[var(--border-hairline)] transition-colors"
+              >
+                Close Preview
+              </button>
             </div>
           </div>
         </div>

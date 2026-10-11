@@ -83,3 +83,4 @@ The database schema guarantees full provenance for every operational event:
 | **Did stock change?** | `material_movement_ledger.delta_units` | `-24` units |
 | **Was an alert triggered?** | `alert.alert_id` / `alert.alert_type` | `None` or `MISMATCH_OVERAGE` |
 | **Which AI model version?** | `vision_detection.model_version` | `yolox-v8.2-prod` |
+

@@ -1,6 +1,6 @@
 from .base import *
 from sqlalchemy import Column, String, Integer, Numeric, Boolean, DateTime, ForeignKey, Text, CheckConstraint, Index, JSON
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, synonym
 
 class Lane(Base):
     __tablename__ = "lane"
@@ -49,6 +49,7 @@ class Camera(Base):
     offline_since: Any = Column(DateTime(timezone=True), nullable=True)
     added_by: Any = Column(String(36), ForeignKey("app_user.user_id"), nullable=True)
     added_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    created_at = synonym("added_at")
     removed_at: Any = Column(DateTime(timezone=True), nullable=True)  # Soft delete
 
     __table_args__ = (

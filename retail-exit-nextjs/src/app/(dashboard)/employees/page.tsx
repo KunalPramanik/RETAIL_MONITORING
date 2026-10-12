@@ -15,6 +15,7 @@ import {
   CheckCircle,
   Clock,
   Key,
+  RotateCw,
 } from "lucide-react";
 
 interface EmployeeItem {
@@ -36,6 +37,17 @@ export default function EmployeesPage() {
   const [enrollEmployee, setEnrollEmployee] = useState<EmployeeItem | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // 360 Multi-Angle Face Enrollment State
+  const [enroll360Employee, setEnroll360Employee] = useState<EmployeeItem | null>(null);
+  const [files360, setFiles360] = useState<{ [angle: string]: File | null }>({
+    front: null,
+    left: null,
+    right: null,
+    up: null,
+    down: null,
+  });
+  const [uploading360, setUploading360] = useState(false);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -115,6 +127,43 @@ export default function EmployeesPage() {
       alert(err.message || "Upload error");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleUpload360 = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!enroll360Employee) return;
+    const activeFiles = Object.values(files360).filter((f): f is File => f !== null);
+    if (activeFiles.length === 0) {
+      alert("Please select at least 1 face angle image for 360 enrollment.");
+      return;
+    }
+    setUploading360(true);
+    try {
+      const data = new FormData();
+      activeFiles.forEach((file) => {
+        data.append("files", file);
+      });
+
+      const res = await safeFetch(`/api/employees/${enroll360Employee.employeeId}/face-360`, {
+        method: "POST",
+        body: data,
+      });
+
+      if (res.ok) {
+        const respData = await res.json();
+        alert(respData.message || "360° Multi-Angle Biometric Profile successfully saved!");
+        setEnroll360Employee(null);
+        setFiles360({ front: null, left: null, right: null, up: null, down: null });
+        fetchEmployees();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "360° Face enrollment failed");
+      }
+    } catch (err: any) {
+      alert(err.message || "Upload error");
+    } finally {
+      setUploading360(false);
     }
   };
 
@@ -216,12 +265,25 @@ export default function EmployeesPage() {
                     </td>
                     <td className="p-4 font-mono text-xs text-[#E8A33D]">{emp.rfidBadgeId}</td>
                     <td className="p-4">
-                      <button
-                        onClick={() => setEnrollEmployee(emp)}
-                        className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-raised)] text-[#4FD1B3] border border-[var(--border-hairline)] hover:border-[#4FD1B3] rounded text-xs font-mono flex items-center gap-1.5 transition-colors"
-                      >
-                        <Camera size={13} /> {emp.hasPhoto ? "Re-Enroll Face" : "Enroll Face"}
-                      </button>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEnroll360Employee(emp);
+                            setFiles360({ front: null, left: null, right: null, up: null, down: null });
+                          }}
+                          className="px-2.5 py-1 bg-gradient-to-r from-blue-600/20 to-teal-600/20 hover:from-blue-600/30 hover:to-teal-600/30 text-[#38BDF8] border border-[#38BDF8]/40 hover:border-[#38BDF8] rounded text-xs font-mono font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                          title="Multi-Angle 360 Biometric Enrollment"
+                        >
+                          <RotateCw size={13} className="text-[#38BDF8]" /> 360° Face Add
+                        </button>
+                        <button
+                          onClick={() => setEnrollEmployee(emp)}
+                          className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-raised)] text-[#4FD1B3] border border-[var(--border-hairline)] hover:border-[#4FD1B3] rounded text-xs font-mono flex items-center gap-1.5 transition-colors"
+                          title="Single Portrait Photo Enrollment"
+                        >
+                          <Camera size={13} /> {emp.hasPhoto ? "Photo" : "Add Photo"}
+                        </button>
+                      </div>
                     </td>
                     <td className="p-4 font-mono text-xs">
                       {emp.mismatchCount30d > 0 ? (
@@ -386,6 +448,102 @@ export default function EmployeesPage() {
                 >
                   {uploading ? "Extracting Embeddings..." : "Save Biometric Face"}
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 360 Multi-Angle Face Biometric Enrollment Modal */}
+      {enroll360Employee && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <RotateCw size={18} className="text-[#38BDF8]" /> 360° Multi-Angle Face Enrollment: {enroll360Employee.name}
+              </h3>
+              <button
+                onClick={() => setEnroll360Employee(null)}
+                className="text-[var(--text-secondary)] hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--text-secondary)]">
+              Upload multi-angle portraits (Front, Left Profile, Right Profile, Up, Down) to construct a 360-degree
+              512-d ArcFace centroid. This enables omni-directional recognition at retail exit gates under any camera angle.
+            </p>
+
+            <form onSubmit={handleUpload360} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { key: "front", label: "0° Frontal Face *" },
+                  { key: "left", label: "45° Left Profile" },
+                  { key: "right", label: "45° Right Profile" },
+                  { key: "up", label: "15° Tilted Up" },
+                  { key: "down", label: "15° Tilted Down" },
+                ].map((slot) => (
+                  <div
+                    key={slot.key}
+                    className="border border-[var(--border-hairline)] hover:border-[#38BDF8] rounded-lg p-3 text-center bg-[var(--bg-canvas)] transition-all flex flex-col justify-between"
+                  >
+                    <div>
+                      <span className="text-[11px] font-mono text-[var(--text-secondary)] font-bold block mb-2">
+                        {slot.label}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        id={`slot-${slot.key}`}
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] || null;
+                          setFiles360((prev) => ({ ...prev, [slot.key]: f }));
+                        }}
+                      />
+                      <label
+                        htmlFor={`slot-${slot.key}`}
+                        className="cursor-pointer block py-2 border border-dashed border-[var(--border-hairline)] hover:border-[#38BDF8] rounded bg-[var(--bg-panel-raised)]"
+                      >
+                        <Camera size={18} className="mx-auto text-[#38BDF8] mb-1" />
+                        <span className="text-[10px] text-[var(--text-muted)] block truncate px-1">
+                          {files360[slot.key]?.name || "Select Image"}
+                        </span>
+                      </label>
+                    </div>
+                    {files360[slot.key] && (
+                      <span className="text-[10px] text-[#4FD1B3] font-mono font-bold mt-1.5 flex items-center justify-center gap-1">
+                        <CheckCircle size={10} /> Loaded
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center text-xs font-mono text-[var(--text-secondary)] pt-2 border-t border-[var(--border-hairline)]">
+                <span>
+                  Angles Ready:{" "}
+                  <b className="text-[#38BDF8]">
+                    {Object.values(files360).filter((f) => f !== null).length} / 5
+                  </b>
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEnroll360Employee(null)}
+                    className="px-3.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={uploading360 || Object.values(files360).filter((f) => f !== null).length === 0}
+                    className="px-4 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-900/30 disabled:opacity-50 flex items-center gap-1.5"
+                  >
+                    {uploading360 ? "Synthesizing 360 Embeddings..." : "Save 360° Profile"}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

@@ -6,7 +6,7 @@ class VisionDetection(Base):
     __tablename__ = "vision_detection"
 
     detection_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
-    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="CASCADE"), nullable=False)
+    event_id: Any = Column(String(36), ForeignKey("exit_event.event_id", ondelete="SET NULL"), nullable=True)
     camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=True)
     frame_ts: Any = Column(DateTime(timezone=True), nullable=False)
     model_version: Any = Column(String(64), nullable=False)
@@ -14,6 +14,9 @@ class VisionDetection(Base):
     class_label: Any = Column(String(64), nullable=False)  # 'case_full', 'case_open', 'single_unit', 'person'
     product_id: Any = Column(String(36), ForeignKey("product.product_id"), nullable=True)
     confidence: Any = Column(Numeric(5, 4), nullable=False)
+    track_id: Any = Column(String(64), nullable=True)
+    category: Any = Column(String(32), nullable=False, default="GENERAL_OBJECT")  # PERSON, MATERIAL, GENERAL_OBJECT, ENVIRONMENT
+    snapshot_url: Any = Column(Text, nullable=True)
 
     event = relationship("ExitEvent", back_populates="vision_detections")
     camera = relationship("Camera", back_populates="vision_detections")

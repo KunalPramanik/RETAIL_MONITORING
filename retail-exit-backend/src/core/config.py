@@ -96,7 +96,7 @@ class DetectionConfig(BaseModel):
     vehicle_conf_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_VEHICLE_CONF_THRESHOLD", "0.25")))
     nms_iou_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_NMS_IOU_THRESHOLD", "0.35")))
     dense_shelf_nms_iou_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_DENSE_SHELF_NMS_IOU_THRESHOLD", "0.45")))
-    inference_timeout_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_INFERENCE_TIMEOUT_SEC", "3.0")))
+    inference_timeout_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_INFERENCE_TIMEOUT_SEC", "6.0")))
     circuit_breaker_failure_threshold: int = Field(default_factory=lambda: int(os.getenv("SECOPS_CIRCUIT_BREAKER_FAILURES", "3")))
     circuit_breaker_cooldown_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CIRCUIT_BREAKER_COOLDOWN_SEC", "30.0")))
 

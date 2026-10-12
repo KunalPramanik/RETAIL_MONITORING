@@ -154,7 +154,7 @@ class CameraIngestionWorker:
                 stmt = select(Camera).where(
                     and_(
                         Camera.removed_at.is_(None),
-                        Camera.status.in_(["ONLINE", "PENDING_SETUP", "OFFLINE"]),
+                        Camera.status.in_(["ONLINE", "DEGRADED", "PENDING_SETUP", "OFFLINE"]),
                     )
                 )
                 res = await session.execute(stmt)
@@ -1227,6 +1227,49 @@ class CameraIngestionWorker:
         except Exception as push_err:
             logger.debug("Failed to push annotated frame to stream_manager: %s", push_err)
 
+        # Persist live VisionDetection records with immutable annotated evidence snapshot
+        if vis_res.detections:
+            snap_time_str = now.strftime('%Y%m%d_%H%M%S')
+            batch_snap_name = f"det_{cam.camera_id}_{snap_time_str}_{uuid.uuid4().hex[:4]}.jpg"
+            batch_snap_path = os.path.join("snapshots", batch_snap_name)
+            batch_snap_url = f"/snapshots/{batch_snap_name}"
+
+            def _write_det_snapshot(path: str, ann_b: bytes):
+                try:
+                    os.makedirs("snapshots", exist_ok=True)
+                    with open(path, "wb") as sf:
+                        sf.write(ann_b)
+                except Exception as _serr:
+                    logger.debug("Failed writing detection batch snapshot: %s", _serr)
+
+            asyncio.create_task(asyncio.to_thread(_write_det_snapshot, batch_snap_path, annotated_bytes))
+
+            now_epoch = now.timestamp()
+            last_save_ts = getattr(self, "_last_det_save_ts", {}).get(cam.camera_id, 0.0)
+            if (now_epoch - last_save_ts) >= 2.0:
+                if not hasattr(self, "_last_det_save_ts"):
+                    self._last_det_save_ts = {}
+                self._last_det_save_ts[cam.camera_id] = now_epoch
+
+                for d in vis_res.detections:
+                    det_cat = "PERSON" if d.class_label == "person" else (
+                        "MATERIAL" if (d.is_inventory_relevant or d.class_label in ("case_full", "single_unit")) else "GENERAL_OBJECT"
+                    )
+                    vdet = VisionDetection(
+                        event_id=None,
+                        camera_id=cam.camera_id,
+                        frame_ts=now,
+                        model_version=vis_res.model_version,
+                        class_label=d.class_label,
+                        confidence=d.confidence,
+                        bbox=d.bbox,
+                        product_id=d.product_id,
+                        track_id=str(d.track_id) if d.track_id is not None else None,
+                        category=det_cat,
+                        snapshot_url=batch_snap_url,
+                    )
+                    session.add(vdet)
+
         def _persist_to_disk(c_id: str, raw_b: bytes, ann_b: bytes):
             try:
                 os.makedirs("snapshots", exist_ok=True)
@@ -1250,10 +1293,13 @@ class CameraIngestionWorker:
             await self._handle_offline_camera(cam, session, now)
             return None
 
-        # Camera is streaming live video: update heartbeat
+        # Camera is streaming live video: update heartbeat and frame timestamp
         cam.last_heartbeat_at = now
-        cam.status = "ONLINE"
-        cam.offline_since = None
+        cam.last_frame_at = now
+        if cam.status == "OFFLINE":
+            cam.status = "ONLINE"
+            cam.degraded_reason = None
+            cam.offline_since = None
 
         annotated_bytes = frame_bytes
         detection_data: Dict[str, Any] = {
@@ -1269,11 +1315,24 @@ class CameraIngestionWorker:
         }
 
         inference_succeeded = False
+        vis_res = None
+        face_res = None
+        face_boxes = []
         try:
             catalog, roster = await self._get_cached_catalog_and_roster(session)
             vis_res, face_res, annotated_bytes, face_boxes, display_containers = (
                 await self._run_vision_and_face_inference(cam, frame_bytes, catalog, roster)
             )
+
+            # Record telemetry and check auto-recovery from DEGRADED
+            cam.last_inference_at = now
+            cam.inference_latency_ms = getattr(vis_res, "latency_ms", None)
+            breaker = self._get_circuit_breaker(cam.camera_id)
+            if cam.status == "DEGRADED" and breaker.state.value == "CLOSED":
+                cam.status = "ONLINE"
+                cam.degraded_reason = None
+                cam.offline_since = None
+                logger.info("Camera %s auto-recovered to ONLINE (inference healthy).", cam.camera_id)
 
             carrier_label = face_res.employee_name if face_res.matched_employee_id else "UNVERIFIED"
             frame_w, frame_h = 1280, 720
@@ -1317,6 +1376,7 @@ class CameraIngestionWorker:
 
         except CircuitBreakerOpenException as cbe:
             cam.status = "DEGRADED"
+            cam.degraded_reason = f"CIRCUIT_BREAKER_OPEN: {str(cbe)}"
             logger.warning("Camera %s inference circuit breaker OPEN: %s", cam.camera_id, cbe)
             detection_data.update({
                 "operationalStatus": "MODEL_UNAVAILABLE",
@@ -1327,6 +1387,7 @@ class CameraIngestionWorker:
             await ws_hub.broadcast_event("detection_update", detection_data)
         except (asyncio.TimeoutError, TimeoutError) as te:
             cam.status = "DEGRADED"
+            cam.degraded_reason = f"INFERENCE_TIMEOUT: exceeded {settings.detection.inference_timeout_sec}s"
             logger.warning("Camera %s inference TIMEOUT (exceeded %.1fs)", cam.camera_id, settings.detection.inference_timeout_sec)
             detection_data.update({
                 "operationalStatus": "INFERENCE_TIMEOUT",
@@ -1339,12 +1400,16 @@ class CameraIngestionWorker:
             logger.warning("Preview CV annotation error on %s: %s", cam.camera_id, e)
 
         # Motion detection to automatically generate exit events (only when inference is healthy)
-        if inference_succeeded and self._check_motion(cam.camera_id, frame_bytes):
+        if inference_succeeded and self._check_motion(cam.camera_id, frame_bytes) and vis_res is not None:
             await self.process_camera_frame(
                 cam=cam,
                 frame_bytes=frame_bytes,
                 session=session,
                 trigger_reason="MOTION_TRAVERSAL",
+                precomputed_vision=vis_res,
+                precomputed_face=face_res,
+                precomputed_annotated_bytes=annotated_bytes,
+                precomputed_face_boxes=face_boxes,
             )
 
         return annotated_bytes
@@ -1398,6 +1463,10 @@ class CameraIngestionWorker:
         frame_bytes: bytes,
         session,
         trigger_reason: str = "MANUAL_SCAN",
+        precomputed_vision: Optional[Any] = None,
+        precomputed_face: Optional[Any] = None,
+        precomputed_annotated_bytes: Optional[bytes] = None,
+        precomputed_face_boxes: Optional[List[Any]] = None,
     ) -> ExitEvent:
         """Runs full computer vision + face recognition + fusion pipeline and commits event to DB."""
         now = get_utc_now()
@@ -1419,44 +1488,52 @@ class CameraIngestionWorker:
             for e in employees
         ]
 
-        breaker = self._get_circuit_breaker(cam.camera_id)
-        if not breaker.can_execute():
-            raise CircuitBreakerOpenException(
-                f"Inference circuit breaker is OPEN for camera {cam.camera_id} (failure threshold exceeded)."
-            )
+        if precomputed_vision is not None and precomputed_face is not None:
+            # Reuse already-computed inference results from the polling cycle (zero CPU waste)
+            vision_result = precomputed_vision
+            face_result = precomputed_face
+            annotated_bytes = precomputed_annotated_bytes or frame_bytes
+            final_annotated_bytes = precomputed_annotated_bytes or frame_bytes
+            face_boxes = precomputed_face_boxes or []
+        else:
+            breaker = self._get_circuit_breaker(cam.camera_id)
+            if not breaker.can_execute():
+                raise CircuitBreakerOpenException(
+                    f"Inference circuit breaker is OPEN for camera {cam.camera_id} (failure threshold exceeded)."
+                )
 
-        try:
-            # 2. Run Real OpenCV Object Detection
-            vision_result, annotated_bytes = await asyncio.wait_for(
-                asyncio.to_thread(
-                    VisionInferenceService.analyze_frame_bytes,
-                    frame_bytes=frame_bytes,
-                    catalog_products=catalog,
-                    roi_polygon=cam.roi_polygon,
-                    ignored_classes=cam.ignored_classes,
-                    camera_id=cam.camera_id,
-                ),
-                timeout=settings.detection.inference_timeout_sec,
-            )
+            try:
+                # 2. Run Real OpenCV Object Detection
+                vision_result, annotated_bytes = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        VisionInferenceService.analyze_frame_bytes,
+                        frame_bytes=frame_bytes,
+                        catalog_products=catalog,
+                        roi_polygon=cam.roi_polygon,
+                        ignored_classes=cam.ignored_classes,
+                        camera_id=cam.camera_id,
+                    ),
+                    timeout=settings.detection.inference_timeout_sec,
+                )
 
-            # 3. Run Real OpenCV Face Recognition on the annotated frame with Anti-Spoofing Liveness
-            face_result, final_annotated_bytes, face_boxes = await asyncio.wait_for(
-                asyncio.to_thread(
-                    FaceRecognitionService.detect_and_match_faces,
-                    frame_bytes=annotated_bytes,
-                    enrolled_employees=roster,
-                    prior_detections_count=len(vision_result.detections),
-                    cases_detected=vision_result.cases_detected,
-                    units_detected=vision_result.vision_count,
-                    raw_frame_bytes=frame_bytes,
-                    camera_id=cam.camera_id,
-                ),
-                timeout=settings.detection.inference_timeout_sec,
-            )
-            breaker.record_success()
-        except Exception as inf_err:
-            breaker.record_failure(inf_err)
-            raise
+                # 3. Run Real OpenCV Face Recognition on the annotated frame with Anti-Spoofing Liveness
+                face_result, final_annotated_bytes, face_boxes = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        FaceRecognitionService.detect_and_match_faces,
+                        frame_bytes=annotated_bytes,
+                        enrolled_employees=roster,
+                        prior_detections_count=len(vision_result.detections),
+                        cases_detected=vision_result.cases_detected,
+                        units_detected=vision_result.vision_count,
+                        raw_frame_bytes=frame_bytes,
+                        camera_id=cam.camera_id,
+                    ),
+                    timeout=settings.detection.inference_timeout_sec,
+                )
+                breaker.record_success()
+            except Exception as inf_err:
+                breaker.record_failure(inf_err)
+                raise
 
         # 4. Multi-Sensor Consensus Fusion (Degrades cleanly to Vision count when RFID/Scale absent)
         fusion_result = MultiSensorFusionEngine.fuse(
@@ -1532,6 +1609,9 @@ class CameraIngestionWorker:
 
         # 8. Record Real Vision Detections
         for d in vision_result.detections:
+            det_cat = "PERSON" if d.class_label == "person" else (
+                "MATERIAL" if (d.is_inventory_relevant or d.class_label in ("case_full", "single_unit")) else "GENERAL_OBJECT"
+            )
             det = VisionDetection(
                 event_id=event_id,
                 camera_id=cam.camera_id,
@@ -1541,6 +1621,9 @@ class CameraIngestionWorker:
                 confidence=d.confidence,
                 bbox=d.bbox,
                 product_id=d.product_id,
+                track_id=str(d.track_id) if d.track_id is not None else None,
+                category=det_cat,
+                snapshot_url=snapshot_url,
             )
             session.add(det)
 
@@ -1586,6 +1669,28 @@ class CameraIngestionWorker:
                                 "casesQty": line_item.cases_qty,
                                 "unitsQty": line_item.units_qty,
                             })
+
+                    # Automatic atomic stock balance ledger update for verified outbound materials
+                    try:
+                        from src.engine.inventory_ledger_engine import InventoryLedgerEngine
+                        for li in event_line_items:
+                            try:
+                                await InventoryLedgerEngine.record_confirmed_movement(
+                                    session=session,
+                                    material_id=li["productId"],
+                                    transaction_type="OUT",
+                                    unit_quantity=li["unitsQty"],
+                                    package_quantity=li["casesQty"],
+                                    camera_id=cam.camera_id,
+                                    direction="EXIT",
+                                    person_name=carrier_name,
+                                    timestamp=now,
+                                    commit=False,
+                                )
+                            except Exception as _single_ledg:
+                                logger.debug("Skipped ledger write for %s: %s", li.get("productId"), _single_ledg)
+                    except Exception as _ledg_err:
+                        logger.debug("Automatic inventory ledger stock sync: %s", _ledg_err)
 
                     dir_tag = "EXIT" if "EXIT" in trigger_reason.upper() else "ENTRY"
                     carrier_name = face_result.employee_name if (getattr(settings.biometric, "enabled", False) and face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold) else "UNKNOWN_PERSON"

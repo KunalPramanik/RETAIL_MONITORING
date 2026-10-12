@@ -137,60 +137,87 @@ async def get_movement_monitor(
 
     monitor_records = []
     for ev in events:
+        # Strict separation: A pure person traversal without linked material line items or invoice
+        # is NOT a material movement event.
+        has_materials = bool(ev.line_items and len(ev.line_items) > 0)
+        has_invoice = bool(ev.invoice is not None or ev.invoice_id is not None)
+        if not has_materials and not has_invoice:
+            continue
+
         person_name = ev.employee.name if ev.employee else (
-            ev.notes.split("Person:")[1].split()[0] if ev.notes and "Person:" in ev.notes else "Authorized Handler"
+            ev.notes.split("Person:")[1].split()[0] if ev.notes and "Person:" in ev.notes else "Unidentified Person"
         )
-        bill_num = ev.invoice.invoice_number if ev.invoice else (f"INV-{ev.event_id}")
+        bill_num = ev.invoice.invoice_number if ev.invoice else "UNAUTHORIZED"
 
-        prod_name = "Industrial Goods"
-        sku_code = "MAT-GEN"
-        auth_qty = ev.declared_units or (ev.units_detected + abs(ev.delta_units) if ev.delta_units else ev.units_detected or 20)
-        actual_qty = ev.units_detected or ev.consensus_units or 0
+        if has_materials:
+            for item in ev.line_items:
+                prod_name = item.product.name if item.product else "Registered Product"
+                sku_code = item.product.sku_code if item.product else "UNKNOWN-SKU"
+                actual_qty = item.units_qty
+                auth_qty = ev.declared_units if ev.declared_units else (
+                    ev.invoice.declared_total_units if (ev.invoice and ev.invoice.declared_total_units) else actual_qty
+                )
+                remaining_qty = max(0, auth_qty - actual_qty)
+                progress_pct = round((actual_qty / max(1, auth_qty)) * 100, 1) if auth_qty else 100.0
 
-        if ev.line_items and len(ev.line_items) > 0:
-            first_item = ev.line_items[0]
-            if first_item.product:
-                prod_name = first_item.product.name
-                sku_code = first_item.product.sku_code
-                if not auth_qty:
-                    auth_qty = first_item.units_qty
+                if ev.verdict == "PASS" or (actual_qty == auth_qty and auth_qty > 0):
+                    status = "CORRECT"
+                elif ev.verdict == "MISMATCH":
+                    status = "WRONG_ITEM"
+                elif actual_qty > auth_qty:
+                    status = "OVER_QUANTITY"
+                elif actual_qty < auth_qty:
+                    status = "UNDER_QUANTITY"
+                elif ev.verdict == "REVIEW_REQUIRED":
+                    status = "COUNT_UNCERTAIN"
+                else:
+                    status = "CORRECT"
 
-        remaining_qty = max(0, auth_qty - actual_qty)
-        progress_pct = round((actual_qty / max(1, auth_qty)) * 100, 1)
+                monitor_records.append({
+                    "movementId": f"MOV-{ev.event_id}-{item.line_item_id[:8]}" if item.line_item_id else f"MOV-{ev.event_id}",
+                    "eventId": ev.event_id,
+                    "timestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
+                    "personName": person_name,
+                    "billNumber": bill_num,
+                    "productName": prod_name,
+                    "skuCode": sku_code,
+                    "authorizedQty": auth_qty,
+                    "actualQty": actual_qty,
+                    "remainingQty": remaining_qty,
+                    "progressPct": progress_pct,
+                    "status": status,
+                    "verdict": ev.verdict,
+                    "cameraLabel": ev.lane.label if ev.lane else (ev.lane_id or "Exit Gate 1"),
+                    "snapshotUrl": ev.snapshot_url or (f"/snapshots/preview_{ev.lane_id}.jpg" if ev.lane_id else ""),
+                    "notes": ev.notes or f"Traversing via {ev.lane_id or 'Gate'}",
+                })
+        elif has_invoice:
+            prod_name = "Authorized Consignment"
+            sku_code = "AUTH-CONSIGN"
+            auth_qty = (ev.invoice.declared_total_units if ev.invoice else None) or ev.declared_units or 0
+            actual_qty = ev.units_detected or ev.consensus_units or 0
+            remaining_qty = max(0, auth_qty - actual_qty)
+            progress_pct = round((actual_qty / max(1, auth_qty)) * 100, 1) if auth_qty else 0.0
+            status = "CORRECT" if actual_qty == auth_qty else ("UNDER_QUANTITY" if actual_qty < auth_qty else "OVER_QUANTITY")
 
-        # Determine status per Section 11 of Addendum
-        if ev.verdict == "PASS" or (actual_qty == auth_qty and auth_qty > 0):
-            status = "CORRECT"
-        elif ev.verdict == "MISMATCH":
-            status = "WRONG_ITEM"
-        elif actual_qty > auth_qty:
-            status = "OVER_QUANTITY"
-        elif actual_qty < auth_qty:
-            status = "UNDER_QUANTITY"
-        elif ev.verdict == "REVIEW_REQUIRED":
-            status = "COUNT_UNCERTAIN"
-        else:
-            status = "CORRECT"
-
-        import uuid
-        monitor_records.append({
-            "movementId": f"MOV-{ev.event_id}" if ev.event_id else f"MOV-{uuid.uuid4().hex[:12]}",
-            "eventId": ev.event_id,
-            "timestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
-            "personName": person_name,
-            "billNumber": bill_num,
-            "productName": prod_name,
-            "skuCode": sku_code,
-            "authorizedQty": auth_qty,
-            "actualQty": actual_qty,
-            "remainingQty": remaining_qty,
-            "progressPct": progress_pct,
-            "status": status,
-            "verdict": ev.verdict,
-            "cameraLabel": ev.lane.label if ev.lane else (ev.lane_id or "Exit Gate 1"),
-            "snapshotUrl": ev.snapshot_url or "/snapshots/preview_CAM-01.jpg",
-            "notes": ev.notes or f"Traversing via {ev.lane_id or 'Gate'}",
-        })
+            monitor_records.append({
+                "movementId": f"MOV-{ev.event_id}",
+                "eventId": ev.event_id,
+                "timestamp": ev.ts.isoformat() if ev.ts else get_utc_now().isoformat(),
+                "personName": person_name,
+                "billNumber": bill_num,
+                "productName": prod_name,
+                "skuCode": sku_code,
+                "authorizedQty": auth_qty,
+                "actualQty": actual_qty,
+                "remainingQty": remaining_qty,
+                "progressPct": progress_pct,
+                "status": status,
+                "verdict": ev.verdict,
+                "cameraLabel": ev.lane.label if ev.lane else (ev.lane_id or "Exit Gate 1"),
+                "snapshotUrl": ev.snapshot_url or (f"/snapshots/preview_{ev.lane_id}.jpg" if ev.lane_id else ""),
+                "notes": ev.notes or f"Traversing via {ev.lane_id or 'Gate'}",
+            })
 
     return monitor_records
 

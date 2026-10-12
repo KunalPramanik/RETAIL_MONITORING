@@ -293,6 +293,70 @@ async def upload_employee_photo(
     )
 
 
+@router.post("/{employee_id}/face-360", response_model=EmployeePhotoResponse, status_code=200)
+async def upload_employee_360_faces(
+    employee_id: str,
+    files: List[UploadFile] = File(...),
+    session: AsyncSession = Depends(get_db),
+):
+    """Enrolls multiple angles (360-degree multi-view) for robust biometric face recognition."""
+    result = await session.execute(select(Employee).where(Employee.employee_id == employee_id))
+    emp = result.scalar_one_or_none()
+    if not emp:
+        raise HTTPException(status_code=404, detail=f"Employee '{employee_id}' not found")
+
+    if not files or len(files) == 0:
+        raise HTTPException(status_code=400, detail="Please upload at least one face angle photo for 360 enrollment.")
+
+    image_bytes_list = []
+    for f in files:
+        b = await f.read()
+        if len(b) >= 100:
+            image_bytes_list.append(b)
+
+    if not image_bytes_list:
+        raise HTTPException(status_code=400, detail="Uploaded photo files are empty or unreadable.")
+
+    embedding = FaceRecognitionService.extract_360_face_embedding(image_bytes_list)
+    if not embedding:
+        raise HTTPException(
+            status_code=422,
+            detail="No detectable faces found across the uploaded 360 images. Please ensure subject's face is clearly visible."
+        )
+
+    old_had_face = bool(emp.face_embedding is not None and len(emp.face_embedding) > 0)
+    emp.face_embedding = embedding
+    emp.embedding_updated_at = get_utc_now()
+    session.add(emp)
+    await session.flush()
+
+    await log_audit_entry(
+        session=session,
+        entity_type="EMPLOYEE",
+        entity_id=str(emp.employee_id),
+        action="ENROLL_360_FACE_PHOTOS",
+        actor_type="USER",
+        before_state={"has_face_enrolled": old_had_face},
+        after_state={"has_face_enrolled": True, "angles_processed": len(image_bytes_list), "embedding_dimension": len(embedding)},
+    )
+    await session.commit()
+
+    try:
+        from src.engine.camera_worker import camera_worker
+        camera_worker._cached_roster = []
+        camera_worker._cached_roster_ts = 0.0
+    except Exception as e:
+        logger.debug("Could not invalidate camera worker roster cache: %s", e)
+
+    return EmployeePhotoResponse(
+        employeeId=str(emp.employee_id),
+        name=str(emp.name),
+        hasFaceEnrolled=True,
+        embeddingDimension=len(embedding),
+        message=f"360-degree multi-angle biometric profile successfully enrolled for {emp.name} ({len(image_bytes_list)} angles processed).",
+    )
+
+
 @router.delete("/{employee_id}/photo", status_code=200)
 async def delete_employee_photo(
     employee_id: str,

@@ -203,14 +203,18 @@ async def get_live_detections_table(
             "detectionId": det.detection_id,
             "cameraId": det.camera_id or (cam.camera_id if cam else "CAM-01"),
             "cameraLabel": cam_label,
-            "timestamp": det.frame_ts.strftime("%H:%M:%S") if det.frame_ts else get_utc_now().strftime("%H:%M:%S"),
+            "timestamp": det.frame_ts.isoformat() if det.frame_ts else get_utc_now().isoformat(),
             "isoTimestamp": det.frame_ts.isoformat() if det.frame_ts else get_utc_now().isoformat(),
-            "objectClass": det.class_label.replace("_", " ").title(),
+            "objectClass": det.class_label.replace("_", " ").title() if det.class_label else "Object",
+            "classLabel": det.class_label,
+            "category": getattr(det, "category", None) or ("PERSON" if is_person else "GENERAL_OBJECT"),
+            "trackId": getattr(det, "track_id", None),
             "quantity": 1,
-            "confidence": round(float(det.confidence), 2),
+            "confidence": round(float(det.confidence), 2) if det.confidence is not None else 0.0,
             "personIdentity": person_identity,
-            "status": "APPROVED" if float(det.confidence) >= 0.85 else "REQUIRES_REVIEW",
-            "snapshotUrl": f"/snapshots/preview_{det.camera_id or 'CAM-01'}.jpg",
+            "status": "APPROVED" if float(det.confidence or 0.0) >= 0.85 else "REQUIRES_REVIEW",
+            "snapshotUrl": det.snapshot_url or f"/snapshots/preview_{det.camera_id or 'CAM-01'}.jpg",
+            "bbox": det.bbox,
         })
 
     records.sort(key=lambda x: x["isoTimestamp"], reverse=True)

@@ -1,6 +1,7 @@
 "use client";
 
 import { safeFetch } from "@/lib/api-client";
+import { formatLocalDateTime } from "@/lib/date-utils";
 import React, { useState, useEffect, useRef } from "react";
 import {
   AlertTriangle,
@@ -309,7 +310,7 @@ export default function AlertsPage() {
                   )}
 
                   <div className="text-xs text-[var(--text-secondary)] font-mono flex items-center gap-2">
-                    <Clock size={12} /> {new Date(item.createdAt).toLocaleString()}
+                    <Clock size={12} /> {formatLocalDateTime(item.createdAt)}
                   </div>
                 </div>
 

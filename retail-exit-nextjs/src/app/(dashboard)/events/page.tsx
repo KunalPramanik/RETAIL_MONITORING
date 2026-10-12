@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { safeFetch } from "@/lib/api-client";
+import { formatLocalDateTime } from "@/lib/date-utils";
 import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
 import {
   Activity,
@@ -43,13 +44,7 @@ export default function EventsPage() {
   const [showVerifyModal, setShowVerifyModal] = useState(false);
 
   const formatEventTime = (isoString?: string) => {
-    if (!isoString) return "-";
-    try {
-      const d = new Date(isoString);
-      return `${d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}, ${d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-    } catch {
-      return isoString;
-    }
+    return formatLocalDateTime(isoString);
   };
 
   const fetchEvents = async () => {

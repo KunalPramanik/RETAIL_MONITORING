@@ -92,6 +92,21 @@ class FaceRecognitionService:
         return normed.tolist()
 
     @classmethod
+    def extract_360_face_embedding(cls, frame_bytes_list: List[bytes]) -> Optional[List[float]]:
+        """Extracts and fuses multi-angle 360-degree ArcFace embeddings into a robust centroid."""
+        embeddings = []
+        for fb in frame_bytes_list:
+            emb = cls.extract_face_embedding(fb)
+            if emb:
+                embeddings.append(np.array(emb, dtype=np.float32))
+        if not embeddings:
+            return None
+        # Mean pooling of 360 multi-angle embeddings + L2 normalization
+        mean_emb = np.mean(embeddings, axis=0)
+        normed = cls._normalize(mean_emb)
+        return normed.tolist()
+
+    @classmethod
     def match_carrier(
         cls,
         probe_embedding: Union[List[float], List[List[float]]],

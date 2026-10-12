@@ -1,6 +1,7 @@
 "use client";
 
 import { safeFetch, getWsUrl } from "@/lib/api-client";
+import { formatLocalDateTime } from "@/lib/date-utils";
 import React, { useState, useEffect } from "react";
 import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
 import {
@@ -103,14 +104,7 @@ export default function DashboardPage() {
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false);
 
   const formatLocalTime = (isoOrTime?: string) => {
-    if (!isoOrTime) return "--:--:--";
-    try {
-      const d = new Date(isoOrTime);
-      if (!isNaN(d.getTime())) {
-        return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-      }
-    } catch (_) {}
-    return isoOrTime;
+    return formatLocalDateTime(isoOrTime);
   };
 
   // Edit Correction Modal State
@@ -578,7 +572,7 @@ export default function DashboardPage() {
             <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
               <tr>
                 <th className="p-3">CAMERA</th>
-                <th className="p-3">TIME</th>
+                <th className="p-3">DATE & TIME</th>
                 <th className="p-3">OBJECT / CLASS</th>
                 <th className="p-3 text-right">QUANTITY</th>
                 <th className="p-3 text-right">CONFIDENCE</th>
@@ -680,7 +674,7 @@ export default function DashboardPage() {
           <table className="w-full text-left text-xs font-mono">
             <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
               <tr>
-                <th className="p-3">TIME</th>
+                <th className="p-3">DATE & TIME</th>
                 <th className="p-3">PERSON</th>
                 <th className="p-3">BILL ID</th>
                 <th className="p-3">PRODUCT</th>
@@ -805,7 +799,7 @@ export default function DashboardPage() {
                   <div className="text-right font-mono">
                     <span className="font-bold text-[var(--status-ok)]">{ev.consensusUnits} Units</span>
                     <span className="text-[10px] text-[var(--text-muted)] block">
-                      {new Date(ev.timestamp).toLocaleTimeString()}
+                      {formatLocalDateTime(ev.timestamp)}
                     </span>
                   </div>
                 </div>
@@ -854,7 +848,7 @@ export default function DashboardPage() {
                     </div>
                     <span className="text-[10px] text-[var(--text-muted)] font-mono">
                       {alt.deltaUnits !== 0 && `Variance: ${alt.deltaUnits} U | `}
-                      {new Date(alt.createdAt).toLocaleTimeString()}
+                      {formatLocalDateTime(alt.createdAt)}
                     </span>
                   </div>
                   <Link

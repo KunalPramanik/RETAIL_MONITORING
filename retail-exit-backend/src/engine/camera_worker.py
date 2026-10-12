@@ -775,16 +775,27 @@ class CameraIngestionWorker:
         frame_w: int,
         frame_h: int,
         detection_data: Dict[str, Any],
+        overlay_boxes: Optional[List[Dict[str, Any]]] = None,
     ) -> None:
         """Calculates store occupancy, footfall, and crowd density."""
-        person_tracks_for_zone = [
-            {
-                "track_id": idx + 1,
+        person_tracks_for_zone = []
+        for idx, pb in enumerate(all_person_boxes):
+            matched_tid = None
+            if overlay_boxes:
+                for ob in overlay_boxes:
+                    ob_box = ob.get("box")
+                    if ob_box and len(ob_box) == 4:
+                        if abs(ob_box[0] - pb[0]) < 12 and abs(ob_box[1] - pb[1]) < 12:
+                            matched_tid = ob.get("track_id")
+                            break
+            if not matched_tid:
+                matched_tid = f"tr_{idx + 1}"
+
+            person_tracks_for_zone.append({
+                "track_id": matched_tid,
                 "bbox": pb,
                 "center": (pb[0] + pb[2] / 2.0, pb[1] + pb[3] / 2.0),
-            }
-            for idx, pb in enumerate(all_person_boxes)
-        ]
+            })
         try:
             occ_snapshot = zone_analytics_engine.process_person_tracks(
                 camera_id=cam.camera_id,
@@ -1047,13 +1058,14 @@ class CameraIngestionWorker:
                 prev_pt = cam_tracks.get(track_id)
                 cam_tracks[track_id] = curr_pt
 
-                person_dir = "TRAVERSAL"
+                person_dir = "IN"
                 if prev_pt:
                     dy = curr_pt[1] - prev_pt[1]
                     if dy < -0.012:
-                        person_dir = "ENTRY"
+                        person_dir = "IN"
                     elif dy > 0.012:
-                        person_dir = "EXIT"
+                        person_dir = "OUT"
+                ob["direction"] = person_dir
 
                 carried_mats: Dict[str, int] = {}
                 is_person = "PERSON" in ob["type"]
@@ -1251,10 +1263,26 @@ class CameraIngestionWorker:
                     self._last_det_save_ts = {}
                 self._last_det_save_ts[cam.camera_id] = now_epoch
 
+                saved_boxes = set()
                 for d in vis_res.detections:
                     det_cat = "PERSON" if d.class_label == "person" else (
                         "MATERIAL" if (d.is_inventory_relevant or d.class_label in ("case_full", "single_unit")) else "GENERAL_OBJECT"
                     )
+                    matched_tid = None
+                    matched_dir = "IN"
+                    for ob in overlay_boxes:
+                        ob_box = ob.get("box", [])
+                        if len(ob_box) == 4 and d.bbox:
+                            if abs(ob_box[0] - d.bbox[0]) < 15 and abs(ob_box[1] - d.bbox[1]) < 15:
+                                matched_tid = ob.get("track_id")
+                                matched_dir = ob.get("direction", "IN")
+                                break
+                    if not matched_tid and d.track_id is not None:
+                        matched_tid = str(d.track_id)
+
+                    if d.bbox and len(d.bbox) == 4:
+                        saved_boxes.add((d.bbox[0], d.bbox[1], d.bbox[2], d.bbox[3]))
+
                     vdet = VisionDetection(
                         event_id=None,
                         camera_id=cam.camera_id,
@@ -1264,11 +1292,33 @@ class CameraIngestionWorker:
                         confidence=d.confidence,
                         bbox=d.bbox,
                         product_id=d.product_id,
-                        track_id=str(d.track_id) if d.track_id is not None else None,
+                        track_id=matched_tid,
                         category=det_cat,
                         snapshot_url=batch_snap_url,
+                        direction=matched_dir,
                     )
                     session.add(vdet)
+
+                # Capture any person from overlay_boxes not already stored
+                for ob in overlay_boxes:
+                    if "PERSON" in ob.get("type", ""):
+                        ob_b = tuple(ob.get("box", [0, 0, 0, 0]))
+                        if ob_b not in saved_boxes and len(ob_b) == 4 and ob_b[2] > 0 and ob_b[3] > 0:
+                            saved_boxes.add(ob_b)
+                            session.add(VisionDetection(
+                                event_id=None,
+                                camera_id=cam.camera_id,
+                                frame_ts=now,
+                                model_version=vis_res.model_version if vis_res else "yolox_nano_v1",
+                                class_label="person",
+                                confidence=ob.get("confidence", 0.90),
+                                bbox=list(ob_b),
+                                product_id=None,
+                                track_id=ob.get("track_id"),
+                                category="PERSON",
+                                snapshot_url=batch_snap_url,
+                                direction=ob.get("direction", "IN"),
+                            ))
 
         def _persist_to_disk(c_id: str, raw_b: bytes, ann_b: bytes):
             try:
@@ -1349,8 +1399,19 @@ class CameraIngestionWorker:
                 vis_res, face_res, face_boxes, display_containers, frame_w, frame_h
             )
 
+            if overlay_boxes:
+                try:
+                    updated_boxes = intra_camera_tracker.update_tracks(
+                        camera_id=cam.camera_id,
+                        detections=overlay_boxes,
+                        timestamp=now.timestamp(),
+                    )
+                    overlay_boxes[:] = updated_boxes
+                except Exception as _trk_err:
+                    logger.debug("Early tracker update error: %s", _trk_err)
+
             await self._evaluate_hazards_and_behavior(cam, dec, all_person_boxes, overlay_boxes, now, session)
-            self._process_occupancy_and_zones(cam, all_person_boxes, frame_w, frame_h, detection_data)
+            self._process_occupancy_and_zones(cam, all_person_boxes, frame_w, frame_h, detection_data, overlay_boxes)
             overlay_boxes = self._deduplicate_and_filter_overlays(overlay_boxes)
             self._record_static_image_detections(cam, face_res, overlay_boxes, now, session)
 
@@ -1624,6 +1685,7 @@ class CameraIngestionWorker:
                 track_id=str(d.track_id) if d.track_id is not None else None,
                 category=det_cat,
                 snapshot_url=snapshot_url,
+                direction=getattr(d, "direction", "OUT") or "OUT",
             )
             session.add(det)
 

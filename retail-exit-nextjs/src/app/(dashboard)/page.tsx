@@ -4,6 +4,7 @@ import { safeFetch, getWsUrl } from "@/lib/api-client";
 import { formatLocalDateTime } from "@/lib/date-utils";
 import React, { useState, useEffect } from "react";
 import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
+import StreamPlayer from "@/components/cameras/stream-player";
 import {
   Activity,
   AlertTriangle,
@@ -25,6 +26,10 @@ import {
   FileText,
   Clock,
   TrendingUp,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Maximize2,
+  Video,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -35,6 +40,7 @@ interface LiveDetectionRow {
   timestamp: string;
   isoTimestamp?: string;
   objectClass: string;
+  direction?: string;
   quantity: number;
   confidence: number;
   personIdentity: string;
@@ -102,6 +108,13 @@ export default function DashboardPage() {
   const [movementMonitor, setMovementMonitor] = useState<MovementMonitorRow[]>([]);
   const [previewSnapshot, setPreviewSnapshot] = useState<{ url: string; fallbackUrl?: string; title: string } | null>(null);
   const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false);
+
+  // Real-Time Fleet Streaming State
+  const [streamViewMode, setStreamViewMode] = useState<"grid" | "single">("grid");
+  const [selectedCamId, setSelectedCamId] = useState<string | null>(null);
+  const [streamIsRaw, setStreamIsRaw] = useState<boolean>(false);
+  const [inspectingCamera, setInspectingCamera] = useState<any | null>(null);
+  const [streamNonce, setStreamNonce] = useState<number>(Date.now());
 
   const formatLocalTime = (isoOrTime?: string) => {
     return formatLocalDateTime(isoOrTime);
@@ -517,32 +530,195 @@ export default function DashboardPage() {
             </Link>
           </div>
         ) : (
-          <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-lg bg-[#38BDF8]/10 text-[#38BDF8]">
-                <Camera size={20} />
-              </div>
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl p-5 shadow-sm space-y-4 transition-colors">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--border-hairline)] pb-3">
               <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-bold text-[var(--text-primary)] font-mono">
-                    FLEET CONNECTED: {cameras.length} {cameras.length === 1 ? "CAMERA" : "CAMERAS"}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
+                    <Video size={18} className="text-[#38BDF8]" /> Real-Time Fleet Camera Streaming Monitor
                   </h3>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
-                    AI INGESTION ACTIVE
+                  <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    {cameras.filter((c) => c.status === "ONLINE").length} / {cameras.length} DEVICES STREAMING LIVE
                   </span>
                 </div>
-                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                  Live streaming video player hidden per operational security protocol. Object detection, ByteTrack tracking, and snapshot capture remain active in background.
+                <p className="text-xs text-[var(--text-secondary)] mt-1 font-mono">
+                  Active edge CCTV streaming with real-time YOLO vision detection, ByteTrack pedestrian tracking, and spatial zone footfall monitoring.
                 </p>
               </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Stream Raw vs Annotated Toggle */}
+                <button
+                  onClick={() => setStreamIsRaw(!streamIsRaw)}
+                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors flex items-center gap-1.5 ${
+                    !streamIsRaw
+                      ? "bg-[#38BDF8]/15 text-[#38BDF8] border-[#38BDF8]/40"
+                      : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:text-white"
+                  }`}
+                  title="Toggle between AI Overlays and Raw Camera Stream"
+                >
+                  <Eye size={13} />
+                  {!streamIsRaw ? "AI Overlays ON" : "Raw Video"}
+                </button>
+
+                {/* Grid vs Single View Toggle */}
+                {cameras.length > 1 && (
+                  <div className="flex items-center bg-[var(--bg-canvas)] rounded border border-[var(--border-hairline)] p-0.5">
+                    <button
+                      onClick={() => setStreamViewMode("grid")}
+                      className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
+                        streamViewMode === "grid"
+                          ? "bg-[var(--bg-panel-raised)] text-[#38BDF8] font-bold"
+                          : "text-[var(--text-secondary)] hover:text-white"
+                      }`}
+                    >
+                      Grid ({cameras.length})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setStreamViewMode("single");
+                        if (!selectedCamId && cameras.length > 0) setSelectedCamId(cameras[0].cameraId);
+                      }}
+                      className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
+                        streamViewMode === "single"
+                          ? "bg-[var(--bg-panel-raised)] text-[#38BDF8] font-bold"
+                          : "text-[var(--text-secondary)] hover:text-white"
+                      }`}
+                    >
+                      Single
+                    </button>
+                  </div>
+                )}
+
+                {/* Single Camera Selector Dropdown if in single mode */}
+                {streamViewMode === "single" && cameras.length > 1 && (
+                  <select
+                    value={selectedCamId || cameras[0]?.cameraId}
+                    onChange={(e) => setSelectedCamId(e.target.value)}
+                    className="px-2 py-1 text-xs font-mono bg-[var(--bg-canvas)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded"
+                  >
+                    {cameras.map((c) => (
+                      <option key={c.cameraId} value={c.cameraId}>
+                        {c.label || c.cameraId} ({c.status})
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Refresh Streams */}
+                <button
+                  onClick={() => {
+                    setStreamNonce(Date.now());
+                    fetchData();
+                  }}
+                  className="p-1.5 text-xs font-mono bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-white rounded border border-[var(--border-hairline)] transition-colors"
+                  title="Reload Streams"
+                >
+                  <RefreshCw size={13} />
+                </button>
+
+                <Link
+                  href="/settings/cameras"
+                  className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] border border-[var(--border-hairline)] rounded text-xs font-mono flex items-center gap-1 transition-colors"
+                >
+                  Fleet Settings <ArrowRight size={12} />
+                </Link>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Link
-                href="/settings/cameras"
-                className="px-3 py-1.5 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium flex items-center gap-1 transition-colors"
-              >
-                Configure Fleet <ArrowRight size={13} />
-              </Link>
+
+            {/* Active Camera Video Streams */}
+            <div
+              className={`grid gap-4 ${
+                streamViewMode === "single" || cameras.length === 1
+                  ? "grid-cols-1"
+                  : cameras.length === 2
+                  ? "grid-cols-1 lg:grid-cols-2"
+                  : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+              }`}
+            >
+              {(streamViewMode === "single"
+                ? cameras.filter((c) => c.cameraId === (selectedCamId || cameras[0]?.cameraId))
+                : cameras
+              ).map((cam) => {
+                const isOnline = cam.status === "ONLINE";
+                const videoSrc = `/api/cameras/${cam.cameraId}/stream?raw=${streamIsRaw}&t=${streamNonce}`;
+                return (
+                  <div
+                    key={cam.cameraId}
+                    className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl overflow-hidden flex flex-col group hover:border-[#38BDF8]/40 transition-all shadow-md"
+                  >
+                    {/* Stream Header Bar */}
+                    <div className="bg-[var(--bg-panel)] px-3 py-2 border-b border-[var(--border-hairline)] flex items-center justify-between text-xs font-mono">
+                      <div className="flex items-center gap-2 truncate">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isOnline ? "bg-emerald-400 shadow-[0_0_6px_#34D399]" : "bg-rose-500"
+                          }`}
+                        />
+                        <span className="font-bold text-[var(--text-primary)] truncate">
+                          {cam.label || `Camera ${cam.cameraId}`}
+                        </span>
+                        <span className="text-[10px] text-[var(--text-secondary)]">({cam.cameraId})</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] text-[#38BDF8] border border-[var(--border-hairline)]">
+                          {cam.laneId || "LANE-01"}
+                        </span>
+                        <button
+                          onClick={() => setInspectingCamera(cam)}
+                          className="p-1 hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-[#38BDF8] rounded transition-colors"
+                          title="Open Full Camera Inspector (PTZ & Controls)"
+                        >
+                          <Maximize2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Video Player Display Container */}
+                    <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden select-none">
+                      <img
+                        src={videoSrc}
+                        alt={cam.label}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `/api/cameras/${cam.cameraId}/snapshot?t=${Date.now()}`;
+                        }}
+                      />
+
+                      {/* Live Surveillance HUD Badges */}
+                      <div className="absolute top-2 left-2 z-20 pointer-events-none flex items-center gap-1.5">
+                        <span className="bg-black/75 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono font-bold text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          LIVE REC
+                        </span>
+                        <span className="bg-black/75 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono font-bold text-slate-300 border border-white/10 shadow">
+                          {cam.fps || 25} FPS
+                        </span>
+                      </div>
+
+                      <div className="absolute top-2 right-2 z-20 pointer-events-none">
+                        <span className="bg-black/75 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono font-bold text-amber-300 border border-amber-500/30 shadow">
+                          {cam.resolution || "1080p"}
+                        </span>
+                      </div>
+
+                      {/* Bottom Floating Bar */}
+                      <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between pointer-events-none">
+                        <span className="bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 border border-white/10 truncate max-w-[200px]">
+                          {cam.ipAddress ? `IP: ${cam.ipAddress}` : "RTSP EDGE"}
+                        </span>
+                        <button
+                          onClick={() => setInspectingCamera(cam)}
+                          className="pointer-events-auto px-2 py-0.5 bg-black/80 hover:bg-[#38BDF8] text-white hover:text-black rounded text-[10px] font-mono font-bold border border-white/20 transition-colors shadow flex items-center gap-1"
+                        >
+                          <Maximize2 size={10} /> Inspect
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -574,6 +750,7 @@ export default function DashboardPage() {
                 <th className="p-3">CAMERA</th>
                 <th className="p-3">DATE & TIME</th>
                 <th className="p-3">OBJECT / CLASS</th>
+                <th className="p-3 text-center">DIRECTION</th>
                 <th className="p-3 text-right">QUANTITY</th>
                 <th className="p-3 text-right">CONFIDENCE</th>
                 <th className="p-3">PERSON ASSOCIATION</th>
@@ -584,13 +761,13 @@ export default function DashboardPage() {
             <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
               {detectionsLoading && liveDetections.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                  <td colSpan={9} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
                     Loading detections…
                   </td>
                 </tr>
               ) : detectionsError ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-amber-400 font-mono text-xs">
+                  <td colSpan={9} className="p-8 text-center text-amber-400 font-mono text-xs">
                     <div className="flex flex-col items-center justify-center gap-2">
                       <span>{detectionsError}</span>
                       <button
@@ -604,7 +781,7 @@ export default function DashboardPage() {
                 </tr>
               ) : liveDetections.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                  <td colSpan={9} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
                     No detections available
                   </td>
                 </tr>
@@ -616,6 +793,24 @@ export default function DashboardPage() {
                     </td>
                     <td className="p-3 text-[var(--text-secondary)] font-mono">{formatLocalTime(row.isoTimestamp || row.timestamp)}</td>
                     <td className="p-3 font-semibold text-[var(--text-primary)]">{row.objectClass}</td>
+                    <td className="p-3 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                          row.direction === "IN" || row.direction === "ENTRY"
+                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                            : row.direction === "OUT" || row.direction === "EXIT"
+                            ? "bg-blue-950 text-blue-300 border border-blue-800"
+                            : "bg-slate-900 text-slate-300 border border-slate-700"
+                        }`}
+                      >
+                        {row.direction === "IN" || row.direction === "ENTRY" ? (
+                          <ArrowDownLeft size={10} className="text-emerald-400" />
+                        ) : row.direction === "OUT" || row.direction === "EXIT" ? (
+                          <ArrowUpRight size={10} className="text-blue-400" />
+                        ) : null}
+                        {row.direction || "IN"}
+                      </span>
+                    </td>
                     <td className="p-3 text-right font-bold text-[#E8A33D]">{row.quantity}</td>
                     <td className="p-3 text-right text-[var(--status-ok)]">{(row.confidence * 100).toFixed(1)}%</td>
                     <td className="p-3 text-[var(--text-secondary)]">{row.personIdentity}</td>
@@ -993,6 +1188,44 @@ export default function DashboardPage() {
         onClose={() => setShowVerifyModal(false)}
         onSuccess={() => fetchData()}
       />
+
+      {/* Full Camera Inspector Modal with PTZ, ROI and AI Detections */}
+      {inspectingCamera && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-5xl w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-[#38BDF8]/10 text-[#38BDF8] rounded-lg">
+                  <Video size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[var(--text-primary)] font-mono">
+                    {inspectingCamera.label || `Camera ${inspectingCamera.cameraId}`}
+                  </h3>
+                  <span className="text-xs font-mono text-[var(--text-secondary)]">
+                    ID: {inspectingCamera.cameraId} | Lane: {inspectingCamera.laneId || "LANE-01"} | Source: {inspectingCamera.ipAddress || "RTSP"}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setInspectingCamera(null)}
+                className="p-1.5 text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-panel-hover)] rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="rounded-lg overflow-hidden border border-[var(--border-hairline)]">
+              <StreamPlayer
+                cameraId={inspectingCamera.cameraId}
+                cameraName={inspectingCamera.label}
+                cameraIp={inspectingCamera.ipAddress}
+                laneId={inspectingCamera.laneId}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

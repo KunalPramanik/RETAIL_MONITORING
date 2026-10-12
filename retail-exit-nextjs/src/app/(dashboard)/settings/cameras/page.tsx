@@ -793,9 +793,12 @@ export default function CameraManagementPage() {
             <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
               {viewingPreview.success ? (
                 <img
-                  src={viewingPreview.snapshotUrl}
+                  src={`/api/cameras/${viewingPreview.cameraId}/stream?raw=false&t=${Date.now()}`}
                   alt={viewingPreview.label}
                   className="w-full h-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = viewingPreview.snapshotUrl;
+                  }}
                 />
               ) : (
                 <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">

@@ -517,7 +517,13 @@ class CameraStreamManager:
         return None, latency
 
     async def generate_mjpeg_stream(
-        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, fps: int = 15
+        self,
+        camera_key: str,
+        ip: str,
+        rtsp_path: str = "",
+        stream_url: Optional[str] = None,
+        fps: int = 15,
+        raw: bool = False,
     ) -> AsyncGenerator[bytes, None]:
         """Yields continuous multipart MJPEG stream frames."""
         session = self.get_session(camera_key, ip, rtsp_path, stream_url)
@@ -529,10 +535,12 @@ class CameraStreamManager:
             session.last_access_time = t_start
             frame_bytes = None
             with session.lock:
-                if session.last_annotated_frame_bytes is not None:
+                if not raw and session.last_annotated_frame_bytes is not None:
                     frame_bytes = session.last_annotated_frame_bytes
                 elif session.last_frame_bytes is not None:
                     frame_bytes = session.last_frame_bytes
+                elif session.last_annotated_frame_bytes is not None:
+                    frame_bytes = session.last_annotated_frame_bytes
 
             if frame_bytes is not None:
                 yield boundary + frame_bytes + b"\r\n"

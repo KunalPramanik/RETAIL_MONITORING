@@ -175,7 +175,8 @@ async def get_live_detections_table(
     """Returns real-time camera detection rows for the dashboard live detection table.
     
     Populated dynamically from active cameras, recent vision detections, and exit traversals.
-    Enforces Section 2 & 18 of the V8 Master Prompt Addendum.
+    Groups same-frame detections by category and class to present authentic quantities,
+    eliminating status jitter and hardcoded counts.
     """
     det_stmt = (
         select(VisionDetection, Camera, Employee)
@@ -183,38 +184,112 @@ async def get_live_detections_table(
         .outerjoin(ExitEvent, VisionDetection.event_id == ExitEvent.event_id)
         .outerjoin(Employee, ExitEvent.employee_id == Employee.employee_id)
         .order_by(desc(VisionDetection.frame_ts))
-        .limit(limit)
+        .limit(limit * 4)
     )
     det_res = await session.execute(det_stmt)
     raw_dets = det_res.all()
 
-    records = []
+    grouped_map: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+
     for det, cam, emp in raw_dets:
-        cam_label = cam.label if cam else (f"Camera-{det.camera_id[:4]}" if det.camera_id else "Camera-01")
+        cam_id = det.camera_id or (cam.camera_id if cam else "CAM-01")
+        cam_label = cam.label if cam else (f"Camera-{cam_id[:4]}" if cam_id else "Camera-01")
+
+        # Snapshot or 2-second timestamp window key for grouping same-frame items
+        frame_key = det.snapshot_url or (det.frame_ts.strftime('%Y%m%d%H%M%S') if det.frame_ts else "")
         is_person = "person" in (det.class_label or "").lower()
-        if emp and emp.name:
-            person_identity = emp.name
-        elif is_person:
-            person_identity = "UNKNOWN"
+        class_group = "PERSON" if is_person else (det.class_label or "object").lower()
+
+        group_key = (cam_id, frame_key, class_group)
+
+        # Precise ISO timestamp with explicit UTC 'Z'
+        if det.frame_ts:
+            ts_iso = det.frame_ts.isoformat()
+            if not ts_iso.endswith("Z") and "+" not in ts_iso:
+                ts_iso += "Z"
         else:
+            ts_iso = get_utc_now().isoformat() + "Z"
+
+        if group_key not in grouped_map:
+            grouped_map[group_key] = {
+                "detectionId": det.detection_id,
+                "cameraId": cam_id,
+                "cameraLabel": cam_label,
+                "timestamp": ts_iso,
+                "isoTimestamp": ts_iso,
+                "objectClass": "Person" if is_person else (det.class_label or "Object").replace("_", " ").title(),
+                "classLabel": det.class_label,
+                "category": getattr(det, "category", None) or ("PERSON" if is_person else "GENERAL_OBJECT"),
+                "trackId": getattr(det, "track_id", None),
+                "direction": getattr(det, "direction", None) or "IN",
+                "quantity": 0,
+                "confidence_sum": 0.0,
+                "confidence_max": 0.0,
+                "matched_employees": set(),
+                "has_unknown": False,
+                "snapshotUrl": det.snapshot_url or f"/snapshots/preview_{cam_id}.jpg",
+                "bboxes": [],
+            }
+
+        grp = grouped_map[group_key]
+        grp["quantity"] += 1
+        conf_val = float(det.confidence or 0.0)
+        grp["confidence_sum"] += conf_val
+        if conf_val > grp["confidence_max"]:
+            grp["confidence_max"] = conf_val
+            if getattr(det, "direction", None):
+                grp["direction"] = det.direction
+
+        if emp and emp.name:
+            grp["matched_employees"].add(emp.name)
+        elif is_person:
+            grp["has_unknown"] = True
+
+        if det.bbox:
+            grp["bboxes"].append(det.bbox)
+
+    records = []
+    for grp in grouped_map.values():
+        qty = grp["quantity"]
+        is_person = grp["category"] == "PERSON" or "person" in (grp["classLabel"] or "").lower()
+
+        if is_person:
+            display_class = f"{qty} Persons" if qty > 1 else "Person"
+            if grp["matched_employees"]:
+                emp_names = ", ".join(sorted(grp["matched_employees"]))
+                if grp["has_unknown"]:
+                    person_identity = f"{emp_names} (+{qty - len(grp['matched_employees'])} Unregistered)"
+                    status = "REQUIRES_REVIEW"
+                else:
+                    person_identity = emp_names
+                    status = "APPROVED"
+            else:
+                person_identity = f"Unregistered ({qty} Detected)" if qty > 1 else "UNKNOWN"
+                status = "REQUIRES_REVIEW"
+        else:
+            base_cls = grp["objectClass"]
+            display_class = f"{qty} {base_cls}s" if qty > 1 and not base_cls.endswith("s") else (f"{qty} {base_cls}" if qty > 1 else base_cls)
             person_identity = "None"
+            status = "APPROVED" if grp["confidence_max"] >= 0.60 else "REQUIRES_REVIEW"
 
         records.append({
-            "detectionId": det.detection_id,
-            "cameraId": det.camera_id or (cam.camera_id if cam else "CAM-01"),
-            "cameraLabel": cam_label,
-            "timestamp": det.frame_ts.isoformat() if det.frame_ts else get_utc_now().isoformat(),
-            "isoTimestamp": det.frame_ts.isoformat() if det.frame_ts else get_utc_now().isoformat(),
-            "objectClass": det.class_label.replace("_", " ").title() if det.class_label else "Object",
-            "classLabel": det.class_label,
-            "category": getattr(det, "category", None) or ("PERSON" if is_person else "GENERAL_OBJECT"),
-            "trackId": getattr(det, "track_id", None),
-            "quantity": 1,
-            "confidence": round(float(det.confidence), 2) if det.confidence is not None else 0.0,
+            "detectionId": grp["detectionId"],
+            "cameraId": grp["cameraId"],
+            "cameraLabel": grp["cameraLabel"],
+            "timestamp": grp["timestamp"],
+            "isoTimestamp": grp["isoTimestamp"],
+            "objectClass": display_class,
+            "classLabel": grp["classLabel"],
+            "category": grp["category"],
+            "trackId": grp["trackId"],
+            "direction": grp["direction"],
+            "quantity": qty,
+            "confidence": round(grp["confidence_max"], 2),
             "personIdentity": person_identity,
-            "status": "APPROVED" if float(det.confidence or 0.0) >= 0.85 else "REQUIRES_REVIEW",
-            "snapshotUrl": det.snapshot_url or f"/snapshots/preview_{det.camera_id or 'CAM-01'}.jpg",
-            "bbox": det.bbox,
+            "status": status,
+            "snapshotUrl": grp["snapshotUrl"],
+            "bbox": grp["bboxes"][0] if grp["bboxes"] else None,
+            "allBboxes": grp["bboxes"],
         })
 
     records.sort(key=lambda x: x["isoTimestamp"], reverse=True)
@@ -664,7 +739,7 @@ async def get_camera_snapshot(
 @router.get("/{camera_id}/stream")
 async def stream_camera_mjpeg(
     camera_id: str,
-    raw: bool = Query(True, description="Return raw unannotated video stream"),
+    raw: bool = Query(False, description="Return raw unannotated video stream"),
     session: AsyncSession = Depends(get_db),
 ):
     """Provides continuous high-FPS multipart MJPEG video stream directly to browser <img> elements."""
@@ -684,6 +759,7 @@ async def stream_camera_mjpeg(
         rtsp_path=target_path,
         stream_url=stream_url,
         fps=cam.fps or 20,
+        raw=raw,
     )
     return StreamingResponse(
         gen,

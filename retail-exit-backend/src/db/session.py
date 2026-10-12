@@ -78,6 +78,11 @@ def _sync_upgrade_sqlite_schema(sync_conn):
             if "is_active" not in user_cols:
                 sync_conn.execute(text("ALTER TABLE app_user ADD COLUMN is_active BOOLEAN DEFAULT 1"))
                 sync_conn.execute(text("UPDATE app_user SET is_active = 1 WHERE is_active IS NULL"))
+
+        res = sync_conn.execute(text("PRAGMA table_info(vision_detection)"))
+        vdet_cols = [row[1] for row in res.fetchall()]
+        if vdet_cols and "direction" not in vdet_cols:
+            sync_conn.execute(text("ALTER TABLE vision_detection ADD COLUMN direction VARCHAR(32) DEFAULT 'IN'"))
     except Exception:
         pass
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { safeFetch } from "@/lib/api-client";
+import { useAuth } from "@/lib/auth-context";
 import {
   ShieldAlert,
   Building,
@@ -36,6 +37,7 @@ interface AuditLogItem {
 }
 
 export default function PlatformFleetPage() {
+  const { user } = useAuth();
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,6 +136,20 @@ export default function PlatformFleetPage() {
       alert(e.message || "Request failed");
     }
   };
+
+  if (user && user.role !== "SUPER_ADMIN") {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8 bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl my-6">
+        <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-[var(--text-primary)] tracking-wide">Access Restricted</h2>
+        <p className="text-sm text-[var(--text-secondary)] max-w-md mt-2 leading-relaxed">
+          Platform Fleet & Multi-Tenant Governance controls are strictly reserved for the Software Owner (SUPER_ADMIN). Store administrators manage operations through the Store Onboarding and Settings pages.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -74,6 +74,8 @@ export default function DashboardLayout({
     };
   }, []);
 
+  const isSoftwareOwner = user?.role === "SUPER_ADMIN";
+
   const navItems = [
     { label: "Dashboard", href: "/", icon: Activity },
     { label: "Store Onboarding", href: "/onboarding", icon: Sparkles },
@@ -85,7 +87,7 @@ export default function DashboardLayout({
     { label: "Invoices & OCR", href: "/invoices", icon: FileText },
     { label: "Exit Events", href: "/events", icon: Layers },
     { label: "Reports & PDF", href: "/reports", icon: FileSpreadsheet },
-    { label: "Platform Fleet", href: "/platform", icon: ShieldAlert },
+    ...(isSoftwareOwner ? [{ label: "Platform Fleet", href: "/platform", icon: ShieldAlert }] : []),
     { label: "Settings & Sensors", href: "/settings", icon: Settings },
   ];
 

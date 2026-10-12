@@ -219,7 +219,7 @@ async def periodic_camera_monitor():
                             ),
                             and_(
                                 Camera.last_heartbeat_at.is_(None),
-                                Camera.created_at < cutoff,
+                                Camera.added_at < cutoff,
                             ),
                         ),
                     )
@@ -287,16 +287,8 @@ async def periodic_camera_monitor():
                     silent_stmt = select(Lane).where(
                         and_(
                             Lane.status == "ONLINE",
-                            or_(
-                                and_(
-                                    Lane.last_heartbeat_at.isnot(None),
-                                    Lane.last_heartbeat_at < lane_cutoff,
-                                ),
-                                and_(
-                                    Lane.last_heartbeat_at.is_(None),
-                                    Lane.created_at < lane_cutoff,
-                                ),
-                            ),
+                            Lane.last_heartbeat_at.isnot(None),
+                            Lane.last_heartbeat_at < lane_cutoff,
                         )
                     )
                     silent_res = await session.execute(silent_stmt)

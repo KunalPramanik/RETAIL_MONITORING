@@ -6,6 +6,17 @@ import uuid
 import os
 
 async def init_baseline_configuration(session: AsyncSession):
+    # 0. Ensure schema compatibility (auto-migrate missing columns like employee.employee_code)
+    try:
+        from sqlalchemy import text
+        cols_res = await session.execute(text("PRAGMA table_info(employee);"))
+        emp_cols = [r[1] for r in cols_res.fetchall()]
+        if emp_cols and "employee_code" not in emp_cols:
+            await session.execute(text("ALTER TABLE employee ADD COLUMN employee_code VARCHAR(32);"))
+            await session.flush()
+    except Exception:
+        pass
+
     # 1. Ensure baseline Store exists
     store_res = await session.execute(select(Store).limit(1))
     store = store_res.scalars().first()

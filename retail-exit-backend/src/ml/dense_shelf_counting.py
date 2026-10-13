@@ -363,3 +363,14 @@ class DenseShelfCountingService:
         elif r > 130 and g > 80 and b < 60:
             return "BROWN / KRAFT"
         return "MULTI_TONE"
+
+    @classmethod
+    def evaluate_with_strategy(cls, count_res: DenseShelfCountResult):
+        """Runs BookAndBookshelfStrategy for dense shelf packaging metrics (Section 7.3)."""
+        from src.ml.class_counting_strategies import BookAndBookshelfStrategy
+        return BookAndBookshelfStrategy.evaluate_books(
+            shelf_detected=count_res.shelf_detected,
+            shelf_levels=count_res.shelf_levels_count,
+            resolved_spines=count_res.total_visible_files,
+        )
+

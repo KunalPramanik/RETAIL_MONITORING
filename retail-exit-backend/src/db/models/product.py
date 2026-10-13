@@ -62,3 +62,38 @@ class InitialStockVerification(Base):
 
     product = relationship("Product")
     camera = relationship("Camera")
+
+
+class PendingProductIdentification(Base):
+    """Visual class detection without an active catalog mapping awaiting human assignment.
+    
+    Enforces Section 5.1 of the SEC-OPS V8 Master Prompt:
+    Captures unmapped visual detections with snapshot, confidence, and timestamp,
+    prompting operators to assign to an existing SKU or create a new product entry.
+    """
+    __tablename__ = "pending_product_identification"
+
+    id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    camera_id: Any = Column(String(36), ForeignKey("camera.camera_id"), nullable=True, index=True)
+    vision_class_id: Any = Column(Integer, nullable=False, index=True)
+    detected_label: Any = Column(String(128), nullable=False)
+    confidence: Any = Column(Numeric(5, 4), nullable=False, default=0.5000)
+    snapshot_url: Any = Column(Text, nullable=True)
+    status: Any = Column(String(32), nullable=False, default="PENDING_MAPPING")  # PENDING_MAPPING, MAPPED_TO_SKU, CREATED_NEW_PRODUCT, IGNORED
+    mapped_sku: Any = Column(String(64), nullable=True)
+    mapped_product_id: Any = Column(String(36), ForeignKey("product.product_id", ondelete="SET NULL"), nullable=True)
+    reviewed_by: Any = Column(String(128), nullable=True)
+    reviewed_at: Any = Column(DateTime(timezone=True), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING_MAPPING', 'MAPPED_TO_SKU', 'CREATED_NEW_PRODUCT', 'IGNORED')",
+            name="chk_pending_prod_id_status",
+        ),
+        Index("idx_pending_prod_status", "status"),
+    )
+
+    camera = relationship("Camera")
+    mapped_product = relationship("Product")
+

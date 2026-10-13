@@ -1564,6 +1564,72 @@ class CameraIngestionWorker:
                 "createdAt": now.isoformat(),
             })
 
+        # Check for unmapped product classes (Section 5.1 Pending Product Identification)
+        if not hasattr(self, "_last_unmapped_proposal_ts"):
+            self._last_unmapped_proposal_ts: Dict[Tuple[str, int], float] = {}
+
+        from src.db.models.product import PendingProductIdentification
+        for d in vis_res.detections:
+            clabel = getattr(d, "class_label", "").lower()
+            cid = getattr(d, "class_id", -1)
+            # Skip person, vehicle, or doorway infrastructure
+            if clabel in ("person", "doorway", "background", "wall picture") or cid in (0, 1001, 1002):
+                continue
+            if not getattr(d, "product_id", None) and cid >= 0:
+                debounce_unmapped = (cam.camera_id, int(cid))
+                last_u_ts = self._last_unmapped_proposal_ts.get(debounce_unmapped, 0.0)
+                if (now_epoch - last_u_ts) < 60.0:
+                    continue
+
+                # Check if already pending in database
+                existing_p = await session.execute(
+                    select(PendingProductIdentification).where(
+                        PendingProductIdentification.camera_id == cam.camera_id,
+                        PendingProductIdentification.vision_class_id == int(cid),
+                        PendingProductIdentification.status == "PENDING_MAPPING",
+                    )
+                )
+                if existing_p.scalar_one_or_none():
+                    continue
+
+                self._last_unmapped_proposal_ts[debounce_unmapped] = now_epoch
+                unmapped_id = f"unmap_{uuid.uuid4().hex[:10]}"
+                snap_fn = f"unmap_{cam.camera_id}_{unmapped_id}.jpg"
+                snap_p = os.path.join("snapshots", snap_fn)
+                snap_u = f"/snapshots/{snap_fn}"
+
+                def _write_unmap_snap(p: str, b: bytes):
+                    try:
+                        os.makedirs("snapshots", exist_ok=True)
+                        with open(p, "wb") as f:
+                            f.write(b)
+                    except Exception:
+                        pass
+
+                asyncio.create_task(asyncio.to_thread(_write_unmap_snap, snap_p, annotated_bytes))
+
+                pending_rec = PendingProductIdentification(
+                    id=unmapped_id,
+                    camera_id=cam.camera_id,
+                    vision_class_id=int(cid),
+                    detected_label=getattr(d, "class_label", "Unknown Object"),
+                    confidence=float(getattr(d, "confidence", 0.50)),
+                    snapshot_url=snap_u,
+                    status="PENDING_MAPPING",
+                    created_at=now,
+                )
+                session.add(pending_rec)
+                await session.flush()
+                await ws_hub.broadcast_event("pending_product_detected", {
+                    "id": pending_rec.id,
+                    "cameraId": cam.camera_id,
+                    "visionClassId": int(cid),
+                    "detectedLabel": pending_rec.detected_label,
+                    "confidence": float(pending_rec.confidence),
+                    "snapshotUrl": snap_u,
+                })
+
+
     def get_latest_frame_bytes(self, camera_id: str, raw: bool = True) -> Optional[bytes]:
         """Returns the latest captured frame bytes from memory cache (0ms latency, zero disk I/O)."""
         if raw:

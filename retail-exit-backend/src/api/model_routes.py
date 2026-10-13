@@ -104,6 +104,21 @@ class ExportDatasetRequest(BaseModel):
     output_dir: Optional[str] = None
 
 
+class AnnotationReviewRequest(BaseModel):
+    annotation_id: str
+    action: str = Field(..., description="APPROVE, MODIFY, or REJECT")
+    operator_id: str = "OPERATOR_ADMIN"
+    corrected_class_id: Optional[int] = None
+    corrected_bbox_yolo: Optional[List[float]] = None
+    notes: Optional[str] = None
+
+
+class FinalizeReviewRequest(BaseModel):
+    decision: str = Field(..., description="APPROVE_TRUSTED or REJECT")
+    operator_id: str = "OPERATOR_ADMIN"
+
+
+
 # ── Model Registry Endpoints ──
 
 @router.get("/models")
@@ -418,5 +433,69 @@ async def evaluate_checkpoint(
         "passes_promotion_gates": passes,
         "gate_failures": failures,
     }
+
+
+# ── Dataset Inspection & Human Annotation Endpoints (Section 2) ──
+
+@router.get("/dataset/inspect")
+async def inspect_dataset():
+    """Runs non-destructive image quality, blur, exposure, and duplicate audit (Section 2.1)."""
+    from src.ml.dataset_inspector import DatasetInspector
+    sample_dir = os.path.join(os.path.dirname(__file__), "..", "..", "data", "sample_dataset")
+    snapshots_dir = "snapshots"
+    report = DatasetInspector.inspect_directories([sample_dir, snapshots_dir])
+    return report.to_dict()
+
+
+@router.get("/dataset/annotation-queue")
+async def get_annotation_queue():
+    """Returns unreviewed items in the human-in-the-loop annotation queue (Section 2.2)."""
+    from src.ml.annotation_workflow import AnnotationWorkflowManager
+    mgr = AnnotationWorkflowManager()
+    pending = mgr.get_pending_items()
+    return [p.to_dict() for p in pending]
+
+
+@router.post("/dataset/annotation-queue/{queue_id}/review")
+async def review_annotation_item(
+    queue_id: str,
+    body: AnnotationReviewRequest,
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+):
+    """Reviews and confirms or corrects a candidate annotation."""
+    from src.ml.annotation_workflow import AnnotationWorkflowManager
+    mgr = AnnotationWorkflowManager()
+    ok = mgr.review_annotation(
+        queue_id=queue_id,
+        annotation_id=body.annotation_id,
+        operator_id=body.operator_id,
+        action=body.action,
+        corrected_class_id=body.corrected_class_id,
+        corrected_bbox_yolo=body.corrected_bbox_yolo,
+        notes=body.notes,
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail="Failed to apply review decision to annotation")
+    return {"status": "REVIEW_RECORDED", "queue_id": queue_id}
+
+
+@router.post("/dataset/annotation-queue/{queue_id}/finalize")
+async def finalize_image_review(
+    queue_id: str,
+    body: FinalizeReviewRequest,
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+):
+    """Finalizes image verification for promotion to trusted training dataset."""
+    from src.ml.annotation_workflow import AnnotationWorkflowManager
+    mgr = AnnotationWorkflowManager()
+    ok = mgr.finalize_image_review(
+        queue_id=queue_id,
+        operator_id=body.operator_id,
+        decision=body.decision,
+    )
+    if not ok:
+        raise HTTPException(status_code=400, detail="Failed to finalize image review (check for unreviewed annotations)")
+    return {"status": body.decision, "queue_id": queue_id}
+
 
 

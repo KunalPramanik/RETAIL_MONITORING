@@ -6,7 +6,7 @@ Produces per-instance polygonal masks, individual instance counts, and exact
 before/after removal delta calculations.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Tuple, Optional, Any
 import json
 import os
@@ -308,6 +308,22 @@ class MaterialSegmentationService:
             latency_ms=latency,
             confidence_avg=avg_conf,
         )
+
+    @classmethod
+    def get_class_strategy_breakdown(cls, result: SegmentationCountResult) -> Dict[str, Any]:
+        """Runs specialized class counting strategies for industrial materials (Section 7)."""
+        from src.ml.class_counting_strategies import CementStackStrategy, IronRebarStrategy
+
+        cement_faces = result.counts_by_class.get("Cement Bag (50kg)", 0)
+        rebar_instances = result.counts_by_class.get("Bundled Iron Rods / Rebar", 0)
+
+        cement_eval = CementStackStrategy.evaluate_stack(visible_faces=cement_faces, stack_height_px=600)
+        rebar_eval = IronRebarStrategy.evaluate_rebar(detected_bundles=rebar_instances)
+
+        return {
+            "cement_stack_analysis": asdict(cement_eval),
+            "rebar_bundle_analysis": asdict(rebar_eval),
+        }
 
     @classmethod
     def calculate_stack_removal_delta(

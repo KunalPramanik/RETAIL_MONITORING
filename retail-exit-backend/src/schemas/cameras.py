@@ -94,6 +94,7 @@ class CameraResponse(BaseModel):
     removedAt: Optional[str] = None
     ptzCapable: Optional[bool] = False
     isIrMode: Optional[bool] = False
+    cameraRole: Optional[str] = "GENERAL_MONITORING"
     roiPolygon: Optional[List[Any]] = None
     ignoredClasses: Optional[List[str]] = Field(default_factory=list)
 
@@ -111,6 +112,7 @@ class CameraCreate(BaseModel):
     pairingMethod: Optional[str] = "MANUAL"
     resolution: Optional[str] = "1920x1080"
     fps: Optional[int] = 30
+    cameraRole: Optional[str] = Field("GENERAL_MONITORING", alias="camera_role")
     ignoredClasses: Optional[List[str]] = Field(default_factory=list, alias="ignored_classes")
 
     @field_validator("label")
@@ -155,6 +157,7 @@ class CameraUpdate(BaseModel):
     resolution: Optional[str] = None
     fps: Optional[int] = None
     status: Optional[str] = None
+    cameraRole: Optional[str] = Field(default=None, alias="camera_role")
     ignoredClasses: Optional[List[str]] = Field(default=None, alias="ignored_classes")
 
     @field_validator("label")

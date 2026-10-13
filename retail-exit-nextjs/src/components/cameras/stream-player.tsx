@@ -115,7 +115,7 @@ export default function StreamPlayer({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const [scanMessage, setScanMessage] = useState<string | null>(null);
-  const [snapshotKey, setSnapshotKey] = useState(Date.now());
+  const [snapshotKey, setSnapshotKey] = useState(0);
   const [suggestedGateLine, setSuggestedGateLine] = useState<NormalizedPoint[] | null>(null);
   const [suggestingLine, setSuggestingLine] = useState(false);
   const [snapshotFailed, setSnapshotFailed] = useState(false);
@@ -215,6 +215,7 @@ export default function StreamPlayer({
 
   // 5. Initial stats fetch and periodic polling fallback
   useEffect(() => {
+    setSnapshotKey(Date.now());
     fetchCameraStats();
     const statsTimer = setInterval(fetchCameraStats, 10000);
     return () => clearInterval(statsTimer);

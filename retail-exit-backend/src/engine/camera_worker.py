@@ -135,10 +135,7 @@ class CameraIngestionWorker:
             except Exception as e:
                 if not self.is_running:
                     break
-                err_msg = str(e).lower()
-                if "no active connection" in err_msg or "closed" in err_msg:
-                    break
-                logger.error("Unexpected error in CameraIngestionWorker loop: %s", e, exc_info=True)
+                logger.warning("Transient warning in CameraIngestionWorker loop: %s. Resuming polling...", e)
                 try:
                     await asyncio.sleep(self.poll_interval_sec)
                 except asyncio.CancelledError:
@@ -177,10 +174,7 @@ class CameraIngestionWorker:
         except Exception as e:
             if not self.is_running:
                 return
-            err_msg = str(e).lower()
-            if "no active connection" in err_msg or "closed" in err_msg:
-                return
-            raise
+            logger.warning("Error fetching cameras for polling: %s", e)
 
     async def _capture_camera_frame(self, cam: Camera, session) -> Optional[bytes]:
         """Captures a real JPEG frame from stream manager or camera RTSP/HTTP feed."""
@@ -191,16 +185,10 @@ class CameraIngestionWorker:
         from src.engine.stream_manager import camera_stream_manager
         target_path = cam.sub_stream_path or cam.rtsp_path or ""
         sm_bytes, _ = camera_stream_manager.get_latest_real_jpeg(
-            cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.15
+            cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.80
         )
         if sm_bytes:
             return sm_bytes
-
-        clean_ip_str = str(cam.ip_address or "").strip()
-        clean_url_str = str(cam.stream_url or "").strip()
-        is_local = clean_ip_str in ("0", "1", "2", "webcam") or clean_url_str in ("0", "1", "2")
-        if is_local:
-            return None
 
         from src.api.cameras import capture_camera_frame_sync
         frame_bytes, _, _ = await asyncio.to_thread(
@@ -209,7 +197,7 @@ class CameraIngestionWorker:
             str(cam.rtsp_path or ""),
             str(cam.credentials_ref or ""),
             str(cam.sub_stream_path or ""),
-            1.2,
+            1.5,
             str(cam.stream_url or "") if cam.stream_url else None,
         )
         return frame_bytes
@@ -1460,21 +1448,121 @@ class CameraIngestionWorker:
         except Exception as e:
             logger.warning("Preview CV annotation error on %s: %s", cam.camera_id, e)
 
-        # Motion detection to automatically generate exit events (only when inference is healthy)
+        # Motion detection to automatically generate exit events (strictly for ENTRY_EXIT / DISPATCH lanes)
+        cam_role = getattr(cam, "camera_role", "GENERAL_MONITORING") or "GENERAL_MONITORING"
         if inference_succeeded and self._check_motion(cam.camera_id, frame_bytes) and vis_res is not None:
-            await self.process_camera_frame(
-                cam=cam,
-                frame_bytes=frame_bytes,
-                session=session,
-                trigger_reason="MOTION_TRAVERSAL",
-                precomputed_vision=vis_res,
-                precomputed_face=face_res,
-                precomputed_annotated_bytes=annotated_bytes,
-                precomputed_face_boxes=face_boxes,
-            )
+            if cam_role in ("ENTRY_EXIT", "DISPATCH"):
+                await self.process_camera_frame(
+                    cam=cam,
+                    frame_bytes=frame_bytes,
+                    session=session,
+                    trigger_reason="MOTION_TRAVERSAL",
+                    precomputed_vision=vis_res,
+                    precomputed_face=face_res,
+                    precomputed_annotated_bytes=annotated_bytes,
+                    precomputed_face_boxes=face_boxes,
+                )
+
+        # Baseline stock counting verification for STOCK_AREA, SHELF, WAREHOUSE cameras
+        if inference_succeeded and cam_role in ("STOCK_AREA", "SHELF", "WAREHOUSE") and vis_res is not None:
+            await self._check_initial_stock_proposals(cam, vis_res, annotated_bytes, session, now)
 
         return annotated_bytes
 
+    async def _check_initial_stock_proposals(
+        self,
+        cam: Camera,
+        vis_res: Any,
+        annotated_bytes: bytes,
+        session,
+        now: datetime,
+    ) -> None:
+        """Proposes initial baseline inventory counts when stock cameras detect products.
+
+        Debounced to avoid duplicate proposals within 60 seconds per product.
+        Enforces Section 5 & 6 of the V8 Master Prompt Addendum.
+        """
+        if not getattr(vis_res, "detections", None):
+            return
+
+        now_epoch = now.timestamp()
+        if not hasattr(self, "_last_stock_proposal_ts"):
+            self._last_stock_proposal_ts: Dict[Tuple[str, str], float] = {}
+
+        # Tally inventory-relevant product detections
+        prod_counts: Dict[str, int] = {}
+        for d in vis_res.detections:
+            if getattr(d, "product_id", None):
+                prod_counts[d.product_id] = prod_counts.get(d.product_id, 0) + (getattr(d, "pack_size", 1) or 1)
+
+        if not prod_counts:
+            return
+
+        for prod_id, count in prod_counts.items():
+            debounce_key = (cam.camera_id, prod_id)
+            last_ts = self._last_stock_proposal_ts.get(debounce_key, 0.0)
+            if (now_epoch - last_ts) < 60.0:
+                continue
+
+            # Check if pending verification already exists
+            from src.db.models.product import InitialStockVerification, Product
+            existing_res = await session.execute(
+                select(InitialStockVerification).where(
+                    InitialStockVerification.camera_id == cam.camera_id,
+                    InitialStockVerification.product_id == prod_id,
+                    InitialStockVerification.status == "PENDING_VERIFICATION",
+                )
+            )
+            if existing_res.scalar_one_or_none():
+                continue
+
+            # Resolve product
+            p_res = await session.execute(select(Product).where(Product.product_id == prod_id))
+            prod = p_res.scalar_one_or_none()
+            if not prod:
+                continue
+
+            self._last_stock_proposal_ts[debounce_key] = now_epoch
+            verif_id = f"verif_{uuid.uuid4().hex[:10]}"
+            snap_filename = f"verif_{cam.camera_id}_{verif_id}.jpg"
+            snap_path = os.path.join("snapshots", snap_filename)
+            snap_url = f"/snapshots/{snap_filename}"
+
+            def _write_verif_snap(p: str, b: bytes):
+                try:
+                    os.makedirs("snapshots", exist_ok=True)
+                    with open(p, "wb") as f:
+                        f.write(b)
+                except Exception as _e:
+                    logger.debug("Verif snapshot write error: %s", _e)
+
+            asyncio.create_task(asyncio.to_thread(_write_verif_snap, snap_path, annotated_bytes))
+
+            verif = InitialStockVerification(
+                verification_id=verif_id,
+                product_id=prod.product_id,
+                sku_code=prod.sku_code,
+                product_name=prod.name,
+                camera_id=cam.camera_id,
+                ai_proposed_count=count,
+                status="PENDING_VERIFICATION",
+                model_version=getattr(vis_res, "model_version", "yolox_retail_v8"),
+                snapshot_url=snap_url,
+                created_at=now,
+            )
+            session.add(verif)
+            await session.flush()
+
+            await ws_hub.broadcast_event("initial_count_pending", {
+                "verificationId": verif.verification_id,
+                "productId": prod.product_id,
+                "skuCode": prod.sku_code,
+                "productName": prod.name,
+                "cameraId": cam.camera_id,
+                "aiProposedCount": count,
+                "snapshotUrl": snap_url,
+                "createdAt": now.isoformat(),
+            })
 
     def get_latest_frame_bytes(self, camera_id: str, raw: bool = True) -> Optional[bytes]:
         """Returns the latest captured frame bytes from memory cache (0ms latency, zero disk I/O)."""
@@ -1690,11 +1778,16 @@ class CameraIngestionWorker:
             session.add(det)
 
         # 8b. Real Store Material Counting & ExitEventLineItem Attribution
-        carrier_name = (
-            face_result.employee_name
-            if (face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold)
-            else "UNKNOWN_PERSON"
+        is_matched_emp = (
+            face_result is not None
+            and getattr(settings.biometric, "enabled", False)
+            and getattr(face_result, "decision", "") == "MATCHED"
+            and getattr(face_result, "matched_employee_id", None) is not None
+            and float(getattr(face_result, "similarity", 0.0) or 0.0) >= settings.biometric.face_match_threshold
         )
+        carrier_name = face_result.employee_name if is_matched_emp else "UNKNOWN_PERSON"
+        dir_tag = "EXIT" if "EXIT" in trigger_reason.upper() else "ENTRY"
+        cam_role = getattr(cam, "camera_role", "GENERAL_MONITORING") or "GENERAL_MONITORING"
         event_line_items = []
         try:
             nparr = np.frombuffer(frame_bytes, np.uint8)
@@ -1732,30 +1825,30 @@ class CameraIngestionWorker:
                                 "unitsQty": line_item.units_qty,
                             })
 
-                    # Automatic atomic stock balance ledger update for verified outbound materials
-                    try:
-                        from src.engine.inventory_ledger_engine import InventoryLedgerEngine
-                        for li in event_line_items:
-                            try:
-                                await InventoryLedgerEngine.record_confirmed_movement(
-                                    session=session,
-                                    material_id=li["productId"],
-                                    transaction_type="OUT",
-                                    unit_quantity=li["unitsQty"],
-                                    package_quantity=li["casesQty"],
-                                    camera_id=cam.camera_id,
-                                    direction="EXIT",
-                                    person_name=carrier_name,
-                                    timestamp=now,
-                                    commit=False,
-                                )
-                            except Exception as _single_ledg:
-                                logger.debug("Skipped ledger write for %s: %s", li.get("productId"), _single_ledg)
-                    except Exception as _ledg_err:
-                        logger.debug("Automatic inventory ledger stock sync: %s", _ledg_err)
+                    # Automatic atomic stock balance ledger update strictly for verified outbound materials
+                    # from ENTRY_EXIT or DISPATCH lanes during confirmed EXIT traversal
+                    if cam_role in ("ENTRY_EXIT", "DISPATCH") and dir_tag == "EXIT" and event_line_items:
+                        try:
+                            from src.engine.inventory_ledger_engine import InventoryLedgerEngine
+                            for li in event_line_items:
+                                try:
+                                    await InventoryLedgerEngine.record_confirmed_movement(
+                                        session=session,
+                                        material_id=li["productId"],
+                                        transaction_type="OUT",
+                                        unit_quantity=li["unitsQty"],
+                                        package_quantity=li["casesQty"],
+                                        camera_id=cam.camera_id,
+                                        direction="EXIT",
+                                        person_name=carrier_name,
+                                        timestamp=now,
+                                        commit=False,
+                                    )
+                                except Exception as _single_ledg:
+                                    logger.debug("Skipped ledger write for %s: %s", li.get("productId"), _single_ledg)
+                        except Exception as _ledg_err:
+                            logger.debug("Automatic inventory ledger stock sync: %s", _ledg_err)
 
-                    dir_tag = "EXIT" if "EXIT" in trigger_reason.upper() else "ENTRY"
-                    carrier_name = face_result.employee_name if (getattr(settings.biometric, "enabled", False) and face_result.decision == "MATCHED" and face_result.matched_employee_id and float(face_result.similarity or 0.0) >= settings.biometric.face_match_threshold) else "UNKNOWN_PERSON"
                     mat_desc = ", ".join([f"{c}x {n}" for n, c in mat_seg_res.counts_by_class.items()])
                     event.notes = f"[{dir_tag}] Carrier: {carrier_name}. Handled: {mat_desc}. Trigger: {trigger_reason}."
         except Exception as _mat_err:

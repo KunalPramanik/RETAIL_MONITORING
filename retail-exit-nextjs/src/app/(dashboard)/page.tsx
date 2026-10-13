@@ -114,7 +114,7 @@ export default function DashboardPage() {
   const [selectedCamId, setSelectedCamId] = useState<string | null>(null);
   const [streamIsRaw, setStreamIsRaw] = useState<boolean>(false);
   const [inspectingCamera, setInspectingCamera] = useState<any | null>(null);
-  const [streamNonce, setStreamNonce] = useState<number>(Date.now());
+  const [streamNonce, setStreamNonce] = useState<number>(0);
 
   const formatLocalTime = (isoOrTime?: string) => {
     return formatLocalDateTime(isoOrTime);
@@ -249,6 +249,7 @@ export default function DashboardPage() {
       }
     };
 
+    setStreamNonce(Date.now());
     connectWs();
     const fallbackInterval = setInterval(fetchData, 15000);
 

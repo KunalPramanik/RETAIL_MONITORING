@@ -32,6 +32,7 @@ from src.engine.camera_worker import camera_worker
 from src.engine.alarm import AlarmCoordinator
 from src.engine.discovery_service import discovery_service
 from src.hardware.usb_detector import usb_service
+from src.services.retention_service import periodic_retention_worker
 
 configure_logging()
 logger = logging.getLogger("secops.main")
@@ -128,6 +129,7 @@ async def lifespan(app: FastAPI):
     await ws_hub.start()
     heartbeat_task = asyncio.create_task(periodic_ws_heartbeat())
     camera_monitor_task = asyncio.create_task(periodic_camera_monitor())
+    retention_task = asyncio.create_task(periodic_retention_worker())
     camera_worker.start()
     discovery_service.start()
     usb_service.start()
@@ -140,12 +142,13 @@ async def lifespan(app: FastAPI):
     # Gracefully stop worker and cancel background loops
     heartbeat_task.cancel()
     camera_monitor_task.cancel()
+    retention_task.cancel()
     await camera_worker.stop()
     await discovery_service.stop()
     await usb_service.stop()
     await ws_hub.stop()
 
-    await asyncio.gather(heartbeat_task, camera_monitor_task, return_exceptions=True)
+    await asyncio.gather(heartbeat_task, camera_monitor_task, retention_task, return_exceptions=True)
 
     # Cleanly dispose database connection pool
     await close_db()

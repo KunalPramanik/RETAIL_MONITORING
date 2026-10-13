@@ -15,6 +15,7 @@ from datetime import timedelta
 from sqlalchemy import select, and_
 
 from src.hardware.turnstile_driver import turnstile_driver
+from src.hardware.siren_adapter import siren_adapter
 from src.engine.notification_service import notification_service
 
 logger = logging.getLogger("secops.alarm")
@@ -57,11 +58,18 @@ class AlarmCoordinator:
                 logger.warning(f"TURNSTILE INTERLOCK on Lane {lane_id_str} for Alert {alert_id_str}: {lock_disp.status}")
 
             if audio_alarm_enabled:
+                siren_res = await siren_adapter.trigger_siren(
+                    duration_sec=10.0,
+                    reason=f"Alert {alert_id_str} [{alert.alert_type}]",
+                )
+                is_siren_ok = bool(siren_res.get("success", False))
+                s_mode = siren_res.get("hardwareMode", "UNKNOWN")
                 siren_disp = AlarmDispatch(
                     alert_id=alert_id_str,
                     channel="SIREN",
-                    status="SENT",
+                    status="ACKED" if is_siren_ok else "FAILED",
                     attempted_at=now,
+                    error_detail=f"Siren mode={s_mode} status={siren_res.get('status')}",
                 )
                 dispatches.append(siren_disp)
 
@@ -153,5 +161,15 @@ class AlarmCoordinator:
         if recovered_count > 0:
             await session.commit()
         return recovered_count
+
+    @classmethod
+    async def silence_alarms(cls) -> Dict[str, Any]:
+        """Silences the physical siren and unlocks turnstiles (fail-safe recovery)."""
+        siren_res = await siren_adapter.silence_siren()
+        turnstile_res = await turnstile_driver.unlock()
+        return {
+            "siren": siren_res,
+            "turnstile": turnstile_res,
+        }
 
 

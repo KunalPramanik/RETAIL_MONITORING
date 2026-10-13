@@ -13,8 +13,13 @@ export function formatLocalDateTime(isoOrTime?: string | null): string {
     if (/^\d{2}:\d{2}(:\d{2})?$/.test(isoOrTime)) {
       const today = new Date().toISOString().split("T")[0];
       dateStr = `${today}T${isoOrTime}Z`;
-    } else if (dateStr.includes("T") && !dateStr.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(dateStr)) {
-      dateStr = `${dateStr}Z`;
+    } else {
+      if (dateStr.includes(" ") && /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(dateStr)) {
+        dateStr = dateStr.replace(" ", "T");
+      }
+      if (dateStr.includes("T") && !dateStr.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(dateStr)) {
+        dateStr = `${dateStr}Z`;
+      }
     }
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {
@@ -36,6 +41,9 @@ export function formatLocalDateOnly(isoOrTime?: string | null): string {
   if (!isoOrTime) return "--";
   try {
     let dateStr = isoOrTime;
+    if (dateStr.includes(" ") && /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(dateStr)) {
+      dateStr = dateStr.replace(" ", "T");
+    }
     if (dateStr.includes("T") && !dateStr.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(dateStr)) {
       dateStr = `${dateStr}Z`;
     }
@@ -58,8 +66,13 @@ export function formatLocalTimeOnly(isoOrTime?: string | null): string {
     if (/^\d{2}:\d{2}(:\d{2})?$/.test(isoOrTime)) {
       const today = new Date().toISOString().split("T")[0];
       dateStr = `${today}T${isoOrTime}Z`;
-    } else if (dateStr.includes("T") && !dateStr.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(dateStr)) {
-      dateStr = `${dateStr}Z`;
+    } else {
+      if (dateStr.includes(" ") && /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(dateStr)) {
+        dateStr = dateStr.replace(" ", "T");
+      }
+      if (dateStr.includes("T") && !dateStr.endsWith("Z") && !/[+-]\d{2}:?\d{2}$/.test(dateStr)) {
+        dateStr = `${dateStr}Z`;
+      }
     }
     const d = new Date(dateStr);
     if (!isNaN(d.getTime())) {

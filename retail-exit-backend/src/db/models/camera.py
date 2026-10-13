@@ -38,6 +38,7 @@ class Camera(Base):
     resolution: Any = Column(String(32), nullable=True, default="1920x1080")
     fps: Any = Column(Integer, nullable=True, default=30)
     pipeline_mode: Any = Column(String(64), nullable=False, default="STANDARD_DETECTION")
+    camera_role: Any = Column(String(32), nullable=False, default="GENERAL_MONITORING")
     roi_polygon: Any = Column(JSONType, nullable=True)  # Dynamic Region of Interest (e.g. [[x,y], ...])
     ignored_classes: Any = Column(JSONType, nullable=True)  # Classes to ignore (e.g. ["STORAGE_SHELF"])
     status: Any = Column(String(32), nullable=False, default="PENDING_SETUP")
@@ -56,6 +57,7 @@ class Camera(Base):
         CheckConstraint("status IN ('ONLINE', 'OFFLINE', 'DEGRADED', 'PENDING_SETUP')", name="chk_camera_status"),
         CheckConstraint("pairing_method IN ('MANUAL', 'QR_CAMERA_DISPLAYED', 'QR_APP_GENERATED')", name="chk_camera_pairing_method"),
         CheckConstraint("pipeline_mode IN ('STANDARD_DETECTION', 'MATERIAL_SEGMENTATION', 'PERIMETER_TRIPWIRE_GATE')", name="chk_camera_pipeline_mode"),
+        CheckConstraint("camera_role IN ('ENTRY_EXIT', 'STOCK_AREA', 'SHELF', 'WAREHOUSE', 'DISPATCH', 'GENERAL_MONITORING')", name="chk_camera_role"),
         Index("idx_camera_lane", "lane_id"),
     )
 

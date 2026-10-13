@@ -91,6 +91,7 @@ def serialize_camera(c: Camera) -> CameraResponse:
         addedAt=c.added_at.isoformat() if c.added_at else datetime.now(timezone.utc).isoformat(),
         removedAt=c.removed_at.isoformat() if c.removed_at else None,
         ptzCapable=ptz_service.is_ptz_capable(c),
+        cameraRole=getattr(c, "camera_role", "GENERAL_MONITORING") or "GENERAL_MONITORING",
         roiPolygon=getattr(c, "roi_polygon", None),
         ignoredClasses=getattr(c, "ignored_classes", []) or [],
     )
@@ -423,6 +424,7 @@ async def register_camera(
         resolution=body.resolution or "1920x1080",
         fps=body.fps or 30,
         status="PENDING_SETUP",
+        camera_role=body.cameraRole or "GENERAL_MONITORING",
         last_heartbeat_at=now,
         added_at=now,
     )
@@ -1137,6 +1139,8 @@ async def update_camera(
         cam.fps = body.fps
     if body.status is not None:
         cam.status = body.status
+    if body.cameraRole is not None:
+        cam.camera_role = body.cameraRole
     if body.ignoredClasses is not None:
         cam.ignored_classes = body.ignoredClasses
 
@@ -1748,5 +1752,57 @@ async def save_gate_line(
     serialized = serialize_camera(cam)
     await ws_hub.broadcast_event("camera_status_changed", serialized.model_dump())
     return {"status": "SUCCESS", "cameraId": camera_id, "roiPolygon": line_points}
+
+
+class CameraRoleUpdate(BaseModel):
+    cameraRole: str = Field(..., description="ENTRY_EXIT | STOCK_AREA | SHELF | WAREHOUSE | DISPATCH | GENERAL_MONITORING")
+
+
+@router.patch("/{camera_id}/role")
+async def update_camera_role(
+    camera_id: str,
+    body: CameraRoleUpdate,
+    session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+):
+    """Configures the operational purpose/role of the camera (Section 6.1)."""
+    valid_roles = {"ENTRY_EXIT", "STOCK_AREA", "SHELF", "WAREHOUSE", "DISPATCH", "GENERAL_MONITORING"}
+    req_role = body.cameraRole.upper().strip()
+    if req_role not in valid_roles:
+        raise HTTPException(status_code=400, detail=f"Invalid camera role. Must be one of: {sorted(list(valid_roles))}")
+
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    cam.camera_role = req_role
+    await session.commit()
+    await cache_service.invalidate("cameras")
+    serialized = serialize_camera(cam)
+    await ws_hub.broadcast_event("camera_status_changed", serialized.model_dump())
+    return {"status": "SUCCESS", "cameraId": camera_id, "cameraRole": req_role}
+
+
+@router.patch("/{camera_id}/zones")
+async def update_camera_zones(
+    camera_id: str,
+    body: Dict[str, Any],
+    session: AsyncSession = Depends(get_db),
+    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+):
+    """Configures normalized entry/exit lines and shelf/stock zones for the camera (Section 6.1)."""
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    if not cam:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    zones = body.get("zones") or body.get("roiPolygon") or body
+    cam.roi_polygon = zones
+    await session.commit()
+    await cache_service.invalidate("cameras")
+    serialized = serialize_camera(cam)
+    await ws_hub.broadcast_event("camera_status_changed", serialized.model_dump())
+    return {"status": "SUCCESS", "cameraId": camera_id, "zones": zones}
 
 

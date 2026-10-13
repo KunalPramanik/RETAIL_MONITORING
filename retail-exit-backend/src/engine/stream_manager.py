@@ -65,7 +65,7 @@ class CameraStreamSession:
             return "LOW_FPS"
         if self.decode_failure_count > 50:
             return "STREAM_UNDECODABLE"
-        if self.reconnect_count > 5:
+        if self.reconnect_count > 5 and not self.has_real_frame:
             return "DEGRADED"
         return "ONLINE"
 
@@ -352,6 +352,8 @@ class CameraStreamSession:
                 ret, frame = cap.read()
                 if ret and frame is not None and frame.size > 0:
                     consecutive_failures = 0
+                    self.reconnect_count = 0
+                    self.error_count = 0
                     h, w = frame.shape[:2]
                     ret_enc, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
                     if ret_enc:

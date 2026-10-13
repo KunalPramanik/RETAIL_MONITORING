@@ -70,6 +70,7 @@ export default function CameraManagementPage() {
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
   const [viewingPreview, setViewingPreview] = useState<any>(null);
+  const [previewModalNonce, setPreviewModalNonce] = useState<number>(0);
 
   // CC.2.1 Ignored Classes Filter Modal State
   const [selectedCameraForIgnore, setSelectedCameraForIgnore] = useState<CameraItem | null>(null);
@@ -85,6 +86,7 @@ export default function CameraManagementPage() {
 
   const openGateLineModal = async (cam: CameraItem) => {
     setSelectedCameraForGate(cam);
+    setPreviewModalNonce(Date.now());
     setManualDrawMode(false);
     try {
       const res = await safeFetch(`/api/cameras/${cam.cameraId}/suggest-gate-line`);
@@ -466,12 +468,14 @@ export default function CameraManagementPage() {
                         <button
                           onClick={async () => {
                             try {
+                              const nonce = Date.now();
+                              setPreviewModalNonce(nonce);
                               const res = await safeFetch(`/api/cameras/${cam.cameraId}/test-connection`, { method: "POST" });
                               const dat = await res.json();
                               setViewingPreview({
                                 label: cam.label,
                                 cameraId: cam.cameraId,
-                                snapshotUrl: dat.previewImageBase64 || `/snapshots/preview_${cam.cameraId}.jpg?t=${Date.now()}`,
+                                snapshotUrl: dat.previewImageBase64 || `/snapshots/preview_${cam.cameraId}.jpg?t=${nonce}`,
                                 success: Boolean(dat.success),
                                 latencyMs: dat.latencyMs,
                                 errorMessage: dat.errorMessage,
@@ -793,7 +797,7 @@ export default function CameraManagementPage() {
             <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
               {viewingPreview.success ? (
                 <img
-                  src={`/api/cameras/${viewingPreview.cameraId}/stream?raw=false&t=${Date.now()}`}
+                  src={`/api/cameras/${viewingPreview.cameraId}/stream?raw=false&t=${previewModalNonce}`}
                   alt={viewingPreview.label}
                   className="w-full h-full object-contain"
                   onError={(e) => {
@@ -843,7 +847,7 @@ export default function CameraManagementPage() {
 
             <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center select-none">
               <img
-                src={`/snapshots/preview_${selectedCameraForGate.cameraId}.jpg?t=${Date.now()}`}
+                src={`/snapshots/preview_${selectedCameraForGate.cameraId}.jpg?t=${previewModalNonce}`}
                 alt={selectedCameraForGate.label}
                 className="w-full h-full object-cover"
                 onError={(e: any) => {

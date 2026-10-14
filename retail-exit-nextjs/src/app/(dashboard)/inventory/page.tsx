@@ -356,7 +356,7 @@ export default function InventoryDashboardPage() {
                                 : "bg-[#E5484D]/15 text-[#E5484D] border border-[#E5484D]/30"
                             }`}
                           >
-                            {item.stockStatus.replace("_", " ")}
+                            {(item.stockStatus || "UNKNOWN").replace(/_/g, " ")}
                           </span>
                         </td>
                       </tr>
@@ -418,7 +418,7 @@ export default function InventoryDashboardPage() {
                                 : "bg-[#E8A33D]/15 text-[#E8A33D] border border-[#E8A33D]/30 animate-pulse"
                             }`}
                           >
-                            {v.status.replace("_", " ")}
+                            {(v.status || "UNKNOWN").replace(/_/g, " ")}
                           </span>
                         </td>
                         <td className="p-4 font-bold text-[#38BDF8]">{v.skuCode}</td>

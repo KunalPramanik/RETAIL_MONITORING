@@ -224,6 +224,20 @@ class BookAndBookshelfStrategy:
                 explanation="No bookshelf or book instances observed.",
             )
 
+        if shelf_detected and resolved_spines <= 0:
+            return BookshelfCountResult(
+                shelf_detected=True,
+                shelf_levels_count=shelf_levels,
+                visible_books_count=0,
+                dense_row_estimate=False,
+                confidence=0.60,
+                status="COUNT_UNCERTAIN",
+                explanation=(
+                    f"Bookshelf fixture detected ({shelf_levels} level(s)) but individual book spines cannot "
+                    f"be resolved optically. MANUAL_COUNT_REQUIRED: Furniture fixture separated from material inventory."
+                ),
+            )
+
         # Check if books are packed so densely that spine separation hits optical limit
         # Max theoretical books per shelf = shelf_width / min_spine_width
         dense_row = False

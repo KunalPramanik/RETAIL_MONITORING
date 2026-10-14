@@ -142,10 +142,11 @@ class SceneObjectDetector:
                 doors.append({
                     "bbox": cand_box,
                     "class_label": "doorway",
-                    "specific_label": "Doorway / Exit Door",
+                    "specific_label": "Doorway (DOOR DETECTED - STATE UNAVAILABLE)",
                     "confidence": 0.92,
                     "color": "cyan",
                     "type": "DOORWAY",
+                    "status": "DOOR DETECTED - STATE UNAVAILABLE",
                 })
                 break
 

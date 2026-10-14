@@ -295,7 +295,7 @@ export default function AlertsPage() {
                   </div>
 
                   <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-                    {item.alertType.replace(/_/g, " ")}
+                    {(item.alertType || "").replace(/_/g, " ")}
                     {item.deltaUnits !== 0 && (
                       <span className="text-xs font-mono font-normal text-[#E5484D]">
                         (Variance: {item.deltaUnits > 0 ? `+${item.deltaUnits}` : item.deltaUnits} units)

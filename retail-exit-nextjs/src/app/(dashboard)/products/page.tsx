@@ -312,17 +312,17 @@ export default function ProductsPage() {
     ];
 
     const rows = filtered.map((item) => {
-      const stock = stockMap[item.skuCode.toUpperCase()];
+      const stock = stockMap[(item.skuCode || "").toUpperCase()];
       return [
-        `"${item.skuCode}"`,
-        `"${item.name.replace(/"/g, '""')}"`,
-        `"${item.category}"`,
-        item.packSize,
-        item.unitPrice.toFixed(2),
-        item.casePrice.toFixed(2),
+        `"${(item.skuCode || "").replace(/"/g, '""')}"`,
+        `"${(item.name || "").replace(/"/g, '""')}"`,
+        `"${(item.category || "").replace(/"/g, '""')}"`,
+        item.packSize ?? 1,
+        (Number(item.unitPrice) || 0).toFixed(2),
+        (Number(item.casePrice) || 0).toFixed(2),
         stock?.currentStock ?? 0,
         stock?.currentCases ?? 0,
-        item.reorderThreshold,
+        item.reorderThreshold ?? 0,
         stock?.status || "IN_STOCK",
       ];
     });
@@ -591,14 +591,14 @@ export default function ProductsPage() {
                             onClick={() => {
                               setEditingProduct(item);
                               setFormData({
-                                skuCode: item.skuCode,
-                                name: item.name,
-                                category: item.category,
+                                skuCode: item.skuCode || "",
+                                name: item.name || "",
+                                category: item.category || "Building Materials",
                                 customCategory: "",
-                                packSize: item.packSize,
-                                unitPrice: item.unitPrice,
-                                casePrice: item.casePrice,
-                                reorderThreshold: item.reorderThreshold,
+                                packSize: item.packSize ?? 1,
+                                unitPrice: item.unitPrice ?? 0,
+                                casePrice: item.casePrice ?? 0,
+                                reorderThreshold: item.reorderThreshold ?? 0,
                               });
                               setShowAddModal(true);
                             }}
@@ -653,7 +653,7 @@ export default function ProductsPage() {
                   <input
                     type="text"
                     required
-                    value={formData.skuCode}
+                    value={formData.skuCode ?? ""}
                     onChange={(e) => setFormData({ ...formData, skuCode: e.target.value })}
                     placeholder="e.g. MAT-CEM-50KG"
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
@@ -664,7 +664,7 @@ export default function ProductsPage() {
                     CATEGORY
                   </label>
                   <select
-                    value={formData.category}
+                    value={formData.category ?? "Building Materials"}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
                   >
@@ -687,7 +687,7 @@ export default function ProductsPage() {
                   </label>
                   <input
                     type="text"
-                    value={formData.customCategory}
+                    value={formData.customCategory ?? ""}
                     onChange={(e) => setFormData({ ...formData, customCategory: e.target.value })}
                     placeholder="e.g. Building Materials, Hazardous, Logistics"
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
@@ -702,7 +702,7 @@ export default function ProductsPage() {
                 <input
                   type="text"
                   required
-                  value={formData.name}
+                  value={formData.name ?? ""}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="e.g. Cement Bag (50kg)"
                   className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
@@ -718,7 +718,7 @@ export default function ProductsPage() {
                     type="number"
                     min="1"
                     required
-                    value={formData.packSize}
+                    value={formData.packSize ?? 1}
                     onChange={(e) =>
                       setFormData({ ...formData, packSize: parseInt(e.target.value) || 1 })
                     }
@@ -736,7 +736,7 @@ export default function ProductsPage() {
                     type="number"
                     step="0.01"
                     required
-                    value={formData.unitPrice}
+                    value={formData.unitPrice ?? 0}
                     onChange={(e) =>
                       setFormData({ ...formData, unitPrice: parseFloat(e.target.value) || 0 })
                     }
@@ -751,7 +751,7 @@ export default function ProductsPage() {
                     type="number"
                     step="0.01"
                     required
-                    value={formData.casePrice}
+                    value={formData.casePrice ?? 0}
                     onChange={(e) =>
                       setFormData({ ...formData, casePrice: parseFloat(e.target.value) || 0 })
                     }
@@ -766,7 +766,7 @@ export default function ProductsPage() {
                 </label>
                 <input
                   type="number"
-                  value={formData.reorderThreshold}
+                  value={formData.reorderThreshold ?? 0}
                   onChange={(e) =>
                     setFormData({ ...formData, reorderThreshold: parseInt(e.target.value) || 0 })
                   }
@@ -850,7 +850,7 @@ export default function ProductsPage() {
                     type="number"
                     min="1"
                     required
-                    value={adjustData.qtyChange}
+                    value={adjustData.qtyChange ?? 1}
                     onChange={(e) =>
                       setAdjustData({
                         ...adjustData,
@@ -867,7 +867,7 @@ export default function ProductsPage() {
                   REASON / AUDIT NOTE *
                 </label>
                 <select
-                  value={adjustData.reason}
+                  value={adjustData.reason ?? "Cycle count receiving"}
                   onChange={(e) => setAdjustData({ ...adjustData, reason: e.target.value })}
                   className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none mb-2"
                 >
@@ -880,7 +880,7 @@ export default function ProductsPage() {
                 <input
                   type="text"
                   placeholder="Or enter custom reason note..."
-                  value={adjustData.reason}
+                  value={adjustData.reason ?? ""}
                   onChange={(e) => setAdjustData({ ...adjustData, reason: e.target.value })}
                   className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none"
                 />

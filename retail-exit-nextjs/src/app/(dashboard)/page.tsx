@@ -435,7 +435,7 @@ export default function DashboardPage() {
                         : "bg-amber-950 text-amber-300 border border-amber-800 animate-pulse"
                     }`}
                   >
-                    {v.status.replace(/_/g, " ")}
+                    {(v.status || "UNKNOWN").replace(/_/g, " ")}
                   </span>
                 </div>
 
@@ -1040,7 +1040,7 @@ export default function DashboardPage() {
                       >
                         {alt.severity}
                       </span>
-                      <span className="font-bold text-[var(--text-primary)]">{alt.alertType.replace(/_/g, " ")}</span>
+                      <span className="font-bold text-[var(--text-primary)]">{(alt.alertType || "SYSTEM_ALERT").replace(/_/g, " ")}</span>
                     </div>
                     <span className="text-[10px] text-[var(--text-muted)] font-mono">
                       {alt.deltaUnits !== 0 && `Variance: ${alt.deltaUnits} U | `}

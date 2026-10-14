@@ -54,7 +54,7 @@ def generate_diagnostic_preview_frame(
     cv2.rectangle(img, (bx, by), (bx + box_w, by + box_h), (70, 85, 105), 1)
 
     # Status text — reflect actual status so operator knows the true state
-    status_upper = status.upper().replace("_", " ")
+    status_upper = (status or "OFFLINE").upper().replace("_", " ")
     is_offline = status_upper in ("OFFLINE", "CONNECTION_FAILED", "NETWORK_UNREACHABLE", "PENDING SETUP")
     badge_color = (235, 165, 45) if is_offline else (34, 197, 94)
 

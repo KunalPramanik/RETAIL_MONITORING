@@ -35,6 +35,7 @@ export default function VerifyAndSaveModal({
   initialCounts = { packagedBoxes: 0, bulkMaterials: 0, singleUnits: 0 },
   laneId = "LANE-01",
 }: VerifyAndSaveModalProps) {
+  const [lanes, setLanes] = useState<{ laneId: string; name: string; location?: string }[]>([]);
   const [selectedLane, setSelectedLane] = useState(laneId);
   const [packagedBoxes, setPackagedBoxes] = useState(initialCounts.packagedBoxes ?? 0);
   const [bulkMaterials, setBulkMaterials] = useState(initialCounts.bulkMaterials ?? 0);
@@ -45,6 +46,27 @@ export default function VerifyAndSaveModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [commitResult, setCommitResult] = useState<any | null>(null);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    async function loadLanes() {
+      try {
+        const res = await safeFetch("/api/lanes");
+        if (res.ok) {
+          const data = await res.json();
+          if (isMounted && Array.isArray(data) && data.length > 0) {
+            setLanes(data);
+          }
+        }
+      } catch (e) {
+        console.warn("Failed to load lanes in verify modal:", e);
+      }
+    }
+    loadLanes();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   if (!isOpen) return null;
 
@@ -158,14 +180,24 @@ export default function VerifyAndSaveModal({
                   EXIT / LOADING BAY LANE
                 </label>
                 <select
-                  value={selectedLane}
+                  value={selectedLane ?? "LANE-01"}
                   onChange={(e) => setSelectedLane(e.target.value)}
                   className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none text-xs"
                 >
-                  <option value="LANE-01">Lane 01 (Main Exit)</option>
-                  <option value="LANE-02">Lane 02 (Secondary Exit)</option>
-                  <option value="LANE-03">Lane 03 (Goods Dispatch)</option>
-                  <option value="LANE-04">Lane 04 (Warehouse Loading)</option>
+                  {lanes.length > 0 ? (
+                    lanes.map((l) => (
+                      <option key={l.laneId} value={l.laneId}>
+                        {l.name || l.laneId} {l.location ? `(${l.location})` : ""}
+                      </option>
+                    ))
+                  ) : (
+                    <>
+                      <option value="LANE-01">Lane 01 (Main Exit)</option>
+                      <option value="LANE-02">Lane 02 (Secondary Exit)</option>
+                      <option value="LANE-03">Lane 03 (Goods Dispatch)</option>
+                      <option value="LANE-04">Lane 04 (Warehouse Loading)</option>
+                    </>
+                  )}
                 </select>
               </div>
               <div>
@@ -176,7 +208,7 @@ export default function VerifyAndSaveModal({
                   <UserCheck size={14} className="text-[#38BDF8]" />
                   <input
                     type="text"
-                    value={badgeId}
+                    value={badgeId ?? ""}
                     onChange={(e) => setBadgeId(e.target.value)}
                     placeholder="e.g. EMP-9021"
                     className="w-full bg-transparent text-[var(--text-primary)] font-mono outline-none text-xs"
@@ -209,7 +241,7 @@ export default function VerifyAndSaveModal({
                     <input
                       type="number"
                       min={0}
-                      value={packagedBoxes}
+                      value={packagedBoxes ?? 0}
                       onChange={(e) => setPackagedBoxes(Math.max(0, parseInt(e.target.value) || 0))}
                       className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded px-2.5 py-1.5 text-center font-mono text-base font-bold text-[var(--text-primary)] outline-none"
                     />
@@ -228,7 +260,7 @@ export default function VerifyAndSaveModal({
                     <input
                       type="number"
                       min={0}
-                      value={bulkMaterials}
+                      value={bulkMaterials ?? 0}
                       onChange={(e) => setBulkMaterials(Math.max(0, parseInt(e.target.value) || 0))}
                       className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded px-2.5 py-1.5 text-center font-mono text-base font-bold text-[var(--text-primary)] outline-none"
                     />
@@ -247,7 +279,7 @@ export default function VerifyAndSaveModal({
                     <input
                       type="number"
                       min={0}
-                      value={singleUnits}
+                      value={singleUnits ?? 0}
                       onChange={(e) => setSingleUnits(Math.max(0, parseInt(e.target.value) || 0))}
                       className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded px-2.5 py-1.5 text-center font-mono text-base font-bold text-[var(--text-primary)] outline-none"
                     />
@@ -263,7 +295,7 @@ export default function VerifyAndSaveModal({
                   <AlertTriangle size={13} /> MANUAL OVERRIDE REASON (REQUIRED)
                 </label>
                 <select
-                  value={overrideReason}
+                  value={overrideReason ?? ""}
                   onChange={(e) => setOverrideReason(e.target.value)}
                   className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded p-2 text-xs text-[var(--text-primary)] outline-none"
                 >
@@ -283,7 +315,7 @@ export default function VerifyAndSaveModal({
                 SUPERVISOR AUDIT NOTES (OPTIONAL)
               </label>
               <textarea
-                value={notes}
+                value={notes ?? ""}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Optional notes regarding pallet integrity, seal tags, or carrier details..."
                 rows={2}

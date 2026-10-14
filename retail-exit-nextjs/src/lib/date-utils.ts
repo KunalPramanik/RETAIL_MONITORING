@@ -5,14 +5,16 @@
  * full original dates and timestamps instead of truncating or displaying raw UTC.
  */
 
-export function formatLocalDateTime(isoOrTime?: string | null): string {
-  if (!isoOrTime) return "--";
+export function formatLocalDateTime(isoOrTime?: any): string {
+  if (isoOrTime === null || isoOrTime === undefined) return "--";
   try {
-    let dateStr = isoOrTime;
+    let dateStr = typeof isoOrTime === "string" ? isoOrTime.trim() : String(isoOrTime).trim();
+    if (!dateStr || dateStr === "--" || dateStr === "null" || dateStr === "undefined") return "--";
+
     // Handle bare time format "HH:MM:SS" by prepending today's date in UTC
-    if (/^\d{2}:\d{2}(:\d{2})?$/.test(isoOrTime)) {
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(dateStr)) {
       const today = new Date().toISOString().split("T")[0];
-      dateStr = `${today}T${isoOrTime}Z`;
+      dateStr = `${today}T${dateStr}Z`;
     } else {
       if (dateStr.includes(" ") && /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(dateStr)) {
         dateStr = dateStr.replace(" ", "T");
@@ -34,13 +36,15 @@ export function formatLocalDateTime(isoOrTime?: string | null): string {
       }).format(d);
     }
   } catch (_) {}
-  return String(isoOrTime);
+  return String(isoOrTime || "--");
 }
 
-export function formatLocalDateOnly(isoOrTime?: string | null): string {
-  if (!isoOrTime) return "--";
+export function formatLocalDateOnly(isoOrTime?: any): string {
+  if (isoOrTime === null || isoOrTime === undefined) return "--";
   try {
-    let dateStr = isoOrTime;
+    let dateStr = typeof isoOrTime === "string" ? isoOrTime.trim() : String(isoOrTime).trim();
+    if (!dateStr || dateStr === "--" || dateStr === "null" || dateStr === "undefined") return "--";
+
     if (dateStr.includes(" ") && /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(dateStr)) {
       dateStr = dateStr.replace(" ", "T");
     }
@@ -56,16 +60,18 @@ export function formatLocalDateOnly(isoOrTime?: string | null): string {
       }).format(d);
     }
   } catch (_) {}
-  return String(isoOrTime);
+  return String(isoOrTime || "--");
 }
 
-export function formatLocalTimeOnly(isoOrTime?: string | null): string {
-  if (!isoOrTime) return "--:--:--";
+export function formatLocalTimeOnly(isoOrTime?: any): string {
+  if (isoOrTime === null || isoOrTime === undefined) return "--:--:--";
   try {
-    let dateStr = isoOrTime;
-    if (/^\d{2}:\d{2}(:\d{2})?$/.test(isoOrTime)) {
+    let dateStr = typeof isoOrTime === "string" ? isoOrTime.trim() : String(isoOrTime).trim();
+    if (!dateStr || dateStr === "--:--:--" || dateStr === "null" || dateStr === "undefined") return "--:--:--";
+
+    if (/^\d{2}:\d{2}(:\d{2})?$/.test(dateStr)) {
       const today = new Date().toISOString().split("T")[0];
-      dateStr = `${today}T${isoOrTime}Z`;
+      dateStr = `${today}T${dateStr}Z`;
     } else {
       if (dateStr.includes(" ") && /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}/.test(dateStr)) {
         dateStr = dateStr.replace(" ", "T");
@@ -84,6 +90,6 @@ export function formatLocalTimeOnly(isoOrTime?: string | null): string {
       }).format(d);
     }
   } catch (_) {}
-  return String(isoOrTime);
+  return String(isoOrTime || "--:--:--");
 }
 

@@ -258,8 +258,8 @@ class IntraCameraObjectTracker:
         for det_idx in list(unmatched_dets):
             det = detections[det_idx]
             det_box = det.get("box", det.get("bbox", [0, 0, 0, 0]))
-            det_cls = det.get("type", det.get("class_label", ""))
-            det_spec = det.get("label", det.get("specific_label", det_cls))
+            det_cls = det.get("entity", det.get("type", det.get("class_label", "")))
+            det_spec = det.get("specific_label", det.get("entity", det_cls))
 
             best_tid = None
             best_iou = self.iou_threshold
@@ -267,6 +267,10 @@ class IntraCameraObjectTracker:
             for tid, tr in tracks.items():
                 if tid in matched_track_ids:
                     continue
+                # Direct match if track ID already assigned to this detection
+                if det.get("track_id") and det.get("track_id") == tid:
+                    best_tid = tid
+                    break
                 # Match if class compatible or specific label compatible
                 if tr.class_label != det_cls and tr.specific_label != det_spec:
                     continue

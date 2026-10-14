@@ -335,13 +335,15 @@ async def register_camera(
 
     now = get_utc_now()
     # Auto-normalise: ensure rtsp_path always has a leading slash (unless it is a full URL)
-    rtsp_path_norm = body.rtspPath
-    if rtsp_path_norm and not rtsp_path_norm.startswith(("/", "http://", "https://", "rtsp://")):
-        rtsp_path_norm = "/" + rtsp_path_norm
+    raw_rtsp = body.rtspPath or ""
+    if raw_rtsp and not raw_rtsp.startswith(("/", "http://", "https://", "rtsp://")):
+        rtsp_path_norm = "/" + raw_rtsp
+    else:
+        rtsp_path_norm = raw_rtsp
 
     if body.streamUrl:
         stream_url = body.streamUrl
-    elif rtsp_path_norm.startswith("http://") or rtsp_path_norm.startswith("https://") or rtsp_path_norm.startswith("rtsp://"):
+    elif rtsp_path_norm.startswith(("http://", "https://", "rtsp://")):
         stream_url = rtsp_path_norm
     elif ":8080" in rtsp_path_norm or rtsp_path_norm.endswith("/video"):
         stream_url = f"http://{body.ipAddress}:8080/video"
@@ -417,7 +419,7 @@ async def register_camera(
         lane_id=body.laneId,
         ip_address=body.ipAddress,
         rtsp_path=rtsp_path_norm,
-        sub_stream_path=body.subStreamPath or (rtsp_path_norm.replace("101", "102") if "101" in rtsp_path_norm else None),
+        sub_stream_path=body.subStreamPath or (rtsp_path_norm.replace("101", "102") if (rtsp_path_norm and "101" in rtsp_path_norm) else None),
         credentials_ref=f"secops/cameras/{cam_id}" if body.credentials else None,
         stream_url=stream_url,
         pairing_method=body.pairingMethod or "MANUAL",
@@ -481,7 +483,8 @@ async def test_camera_connection(
             latencyMs=0.0,
         )
 
-    if not rtsp.startswith("/") and not rtsp.startswith(("http://", "https://", "rtsp://")):
+    rtsp = rtsp or ""
+    if rtsp and not rtsp.startswith("/") and not rtsp.startswith(("http://", "https://", "rtsp://")):
         # Auto-correct: silently prepend the required leading slash
         rtsp = "/" + rtsp
 
@@ -489,7 +492,7 @@ async def test_camera_connection(
     sub_stream_path = (
         req.subStreamPath if req and req.subStreamPath else (cam.sub_stream_path if cam else None)
     )
-    if not sub_stream_path:
+    if not sub_stream_path and rtsp:
         if "101" in rtsp:
             sub_stream_path = rtsp.replace("101", "102")
         elif "ch0" in rtsp:

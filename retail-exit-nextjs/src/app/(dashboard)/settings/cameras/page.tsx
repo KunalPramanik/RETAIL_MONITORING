@@ -127,6 +127,7 @@ export default function CameraManagementPage() {
     }
   };
 
+  const [lanes, setLanes] = useState<{ laneId: string; name: string; location?: string }[]>([]);
   const [formData, setFormData] = useState({
     connectionType: "LAN_RTSP",
     label: "",
@@ -138,6 +139,23 @@ export default function CameraManagementPage() {
     resolution: "1920x1080",
     fps: 30,
   });
+
+  const fetchLanes = async () => {
+    try {
+      const res = await safeFetch("/api/lanes");
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          setLanes(data);
+          if (!formData.laneId && data[0]?.laneId) {
+            setFormData((prev) => ({ ...prev, laneId: data[0].laneId }));
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to fetch lanes:", e);
+    }
+  };
 
   const fetchCameras = async () => {
     try {
@@ -164,6 +182,7 @@ export default function CameraManagementPage() {
   };
 
   useEffect(() => {
+    fetchLanes();
     fetchCameras();
     fetchDiscovery();
     const interval = setInterval(fetchCameras, 10000);
@@ -550,7 +569,7 @@ export default function CameraManagementPage() {
                 <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">CAMERA LABEL</label>
                 <input
                   type="text"
-                  value={formData.label}
+                  value={formData.label ?? ""}
                   onChange={(e) => setFormData({ ...formData, label: e.target.value })}
                   placeholder="e.g. Exit Lane 1 — High Angle"
                   className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] focus:border-[#38BDF8] outline-none"
@@ -563,7 +582,7 @@ export default function CameraManagementPage() {
                     <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">IP ADDRESS</label>
                     <input
                       type="text"
-                      value={formData.ipAddress}
+                      value={formData.ipAddress ?? ""}
                       onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })}
                       placeholder="192.168.1.101"
                       className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
@@ -573,7 +592,7 @@ export default function CameraManagementPage() {
                     <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">RTSP STREAM PATH</label>
                     <input
                       type="text"
-                      value={formData.rtspPath}
+                      value={formData.rtspPath ?? ""}
                       onChange={(e) => setFormData({ ...formData, rtspPath: e.target.value })}
                       placeholder="/live/ch0 or /h264Preview_01"
                       className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
@@ -587,7 +606,7 @@ export default function CameraManagementPage() {
                   <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">STREAM URL (MJPEG / HLS)</label>
                   <input
                     type="text"
-                    value={formData.streamUrl}
+                    value={formData.streamUrl ?? ""}
                     onChange={(e) => setFormData({ ...formData, streamUrl: e.target.value })}
                     placeholder="http://192.168.1.50:8080/video"
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
@@ -599,7 +618,7 @@ export default function CameraManagementPage() {
                 <div>
                   <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">DEVICE INDEX</label>
                   <select
-                    value={formData.ipAddress}
+                    value={formData.ipAddress ?? "0"}
                     onChange={(e) => setFormData({ ...formData, ipAddress: e.target.value })}
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
                   >
@@ -614,21 +633,31 @@ export default function CameraManagementPage() {
                 <div>
                   <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">ASSIGN TO EXIT LANE</label>
                   <select
-                    value={formData.laneId}
+                    value={formData.laneId ?? "LANE-01"}
                     onChange={(e) => setFormData({ ...formData, laneId: e.target.value })}
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
                   >
-                    <option value="LANE-01">Lane 01 (Main Exit)</option>
-                    <option value="LANE-02">Lane 02 (Secondary Exit)</option>
-                    <option value="LANE-03">Lane 03 (Goods Dispatch)</option>
-                    <option value="LANE-04">Lane 04 (Warehouse Loading)</option>
+                    {lanes.length > 0 ? (
+                      lanes.map((l) => (
+                        <option key={l.laneId} value={l.laneId}>
+                          {l.name || l.laneId} {l.location ? `(${l.location})` : ""}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="LANE-01">Lane 01 (Main Exit)</option>
+                        <option value="LANE-02">Lane 02 (Secondary Exit)</option>
+                        <option value="LANE-03">Lane 03 (Goods Dispatch)</option>
+                        <option value="LANE-04">Lane 04 (Warehouse Loading)</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">CREDENTIALS (OPTIONAL)</label>
                   <input
                     type="password"
-                    value={formData.credentials}
+                    value={formData.credentials ?? ""}
                     onChange={(e) => setFormData({ ...formData, credentials: e.target.value })}
                     placeholder="admin:password"
                     className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"

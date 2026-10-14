@@ -611,7 +611,7 @@ export default function StreamPlayer({
                   ? `${(b.confidence * 100).toFixed(0)}%`
                   : "";
               const trackId = b.track_id ? ` ID:${b.track_id}` : ` ID:${idx + 1}`;
-              const baseName = cleanTag.replace(/\s*\(\d+%\)/g, "").trim();
+              const baseName = String(cleanTag || "").replace(/\s*\(\d+%\)/g, "").trim();
               cleanTag = `[${baseName} ${confPct}${trackId}]`;
             }
             const badgePlacement = b.box[1] < 0.08 ? "top-0 left-0" : "-top-5 left-0";

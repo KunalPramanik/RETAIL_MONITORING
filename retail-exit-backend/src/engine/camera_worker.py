@@ -79,6 +79,7 @@ class CameraIngestionWorker:
         self._camera_logs: Dict[str, deque] = {}
         self._active_transactions: Dict[str, Dict[str, Any]] = {}
         self._track_history: Dict[str, Dict[str, Tuple[float, float]]] = {}
+        self._last_crossing_dir: Dict[str, str] = {}
         self._cached_catalog: List[Dict[str, Any]] = []
         self._cached_catalog_ts: float = 0.0
         self._cached_roster: List[Dict[str, Any]] = []
@@ -1025,12 +1026,13 @@ class CameraIngestionWorker:
             if not overlay_boxes:
                 return active_carriers
 
-            updated_boxes = intra_camera_tracker.update_tracks(
-                camera_id=cam.camera_id,
-                detections=overlay_boxes,
-                timestamp=now.timestamp(),
-            )
-            overlay_boxes[:] = updated_boxes
+            if not any(ob.get("track_id") for ob in overlay_boxes):
+                updated_boxes = intra_camera_tracker.update_tracks(
+                    camera_id=cam.camera_id,
+                    detections=overlay_boxes,
+                    timestamp=now.timestamp(),
+                )
+                overlay_boxes[:] = updated_boxes
 
             cam_tracks = self._track_history.setdefault(cam.camera_id, {})
             for b_idx, ob in enumerate(overlay_boxes):
@@ -1096,6 +1098,7 @@ class CameraIngestionWorker:
                             )
                             if has_crossed and (tw.direction_mode in ("BOTH", tw_direction)):
                                 person_dir = tw_direction
+                                self._last_crossing_dir[cam.camera_id] = tw_direction
                                 if TripwireEngine.should_allow_crossing(tw.tripwire_id, track_id, tw_direction):
                                     emp_match = None
                                     if face_res.decision == "MATCHED":
@@ -1163,7 +1166,11 @@ class CameraIngestionWorker:
     ) -> None:
         """Assembles taxonomy report, updates cache and broadcasts over WebSocket."""
         active_tx = self._active_transactions.get(cam.camera_id)
-        if active_tx is None and (vis_res.vision_count > 0 or len(vis_res.detections) > 0 or face_res.matched_employee_id):
+        if (vis_res.vision_count == 0 and len(vis_res.detections) == 0 and not getattr(face_res, "matched_employee_id", None)):
+            if active_tx and active_tx.get("status") == "RESOLVED":
+                self._active_transactions.pop(cam.camera_id, None)
+                active_tx = None
+        elif active_tx is None and (vis_res.vision_count > 0 or len(vis_res.detections) > 0 or face_res.matched_employee_id):
             active_tx = {
                 "eventId": f"TX-{cam.camera_id[:4]}",
                 "status": "CONSENSUS_PENDING",
@@ -1253,9 +1260,18 @@ class CameraIngestionWorker:
 
                 saved_boxes = set()
                 for d in vis_res.detections:
-                    det_cat = "PERSON" if d.class_label == "person" else (
-                        "MATERIAL" if (d.is_inventory_relevant or d.class_label in ("case_full", "single_unit")) else "GENERAL_OBJECT"
-                    )
+                    lbl_lower = (d.class_label or "").lower()
+                    spec_lower = (d.specific_label or "").lower()
+                    if "person" in lbl_lower:
+                        det_cat = "PERSON"
+                    elif any(k in lbl_lower or k in spec_lower for k in ("shelf", "bookshelf", "doorway", "picture frame", "wall picture", "ceiling", "floor tile")):
+                        det_cat = "FIXTURE"
+                    elif any(b in lbl_lower or b in spec_lower for b in ("book", "document")):
+                        det_cat = "MERCHANDISE" if d.product_id else "GENERAL_OBJECT"
+                    elif d.is_inventory_relevant or d.class_label in ("case_full", "single_unit"):
+                        det_cat = "MATERIAL_MOVEMENT"
+                    else:
+                        det_cat = "LIVE_SCENE"
                     matched_tid = None
                     matched_dir = "IN"
                     for ob in overlay_boxes:
@@ -1452,11 +1468,23 @@ class CameraIngestionWorker:
         cam_role = getattr(cam, "camera_role", "GENERAL_MONITORING") or "GENERAL_MONITORING"
         if inference_succeeded and self._check_motion(cam.camera_id, frame_bytes) and vis_res is not None:
             if cam_role in ("ENTRY_EXIT", "DISPATCH"):
+                resolved_dir = self._last_crossing_dir.get(cam.camera_id)
+                if not resolved_dir:
+                    exit_votes = 0
+                    entry_votes = 0
+                    for ob in overlay_boxes:
+                        ob_dir = str(ob.get("direction", "")).upper()
+                        if "EXIT" in ob_dir or "OUT" in ob_dir:
+                            exit_votes += 1
+                        elif "ENTRY" in ob_dir or "IN" in ob_dir:
+                            entry_votes += 1
+                    resolved_dir = "EXIT" if exit_votes >= entry_votes and exit_votes > 0 else "ENTRY"
+
                 await self.process_camera_frame(
                     cam=cam,
                     frame_bytes=frame_bytes,
                     session=session,
-                    trigger_reason="MOTION_TRAVERSAL",
+                    trigger_reason=f"MOTION_TRAVERSAL_{resolved_dir}",
                     precomputed_vision=vis_res,
                     precomputed_face=face_res,
                     precomputed_annotated_bytes=annotated_bytes,
@@ -1823,10 +1851,25 @@ class CameraIngestionWorker:
         await session.flush()
 
         # 8. Record Real Vision Detections
+        is_security_alert = (
+            (verdict_result and getattr(verdict_result, "verdict", "CLEARED") != "CLEARED")
+            or ("ALERT" in trigger_reason.upper() or "THEFT" in trigger_reason.upper())
+        )
         for d in vision_result.detections:
-            det_cat = "PERSON" if d.class_label == "person" else (
-                "MATERIAL" if (d.is_inventory_relevant or d.class_label in ("case_full", "single_unit")) else "GENERAL_OBJECT"
-            )
+            lbl_lower = (d.class_label or "").lower()
+            spec_lower = (d.specific_label or "").lower()
+            if "person" in lbl_lower:
+                det_cat = "PERSON"
+            elif any(k in lbl_lower or k in spec_lower for k in ("shelf", "bookshelf", "doorway", "picture frame", "wall picture", "ceiling", "floor tile")):
+                det_cat = "FIXTURE"
+            elif any(b in lbl_lower or b in spec_lower for b in ("book", "document")):
+                det_cat = "MERCHANDISE" if d.product_id else "GENERAL_OBJECT"
+            elif is_security_alert:
+                det_cat = "SECURITY_ALERT"
+            elif d.is_inventory_relevant or d.class_label in ("case_full", "single_unit"):
+                det_cat = "MATERIAL_MOVEMENT"
+            else:
+                det_cat = "LIVE_SCENE"
             det = VisionDetection(
                 event_id=event_id,
                 camera_id=cam.camera_id,
@@ -1865,13 +1908,14 @@ class CameraIngestionWorker:
                     existing_by_sku = {p.sku_code.upper(): p for p in products}
 
                     for mat_name, count in mat_seg_res.counts_by_class.items():
+                        # Exclude any furniture, shelves, or books from material inventory matching without explicit catalog SKU
+                        if any(k in mat_name.lower() for k in ("bookshelf", "shelf", "bookcase", "book", "doorway")):
+                            continue
+
+                        # Strictly check explicit catalog registration; no loose substring fuzzy matching
                         target_prod = existing_prods.get(mat_name.lower())
                         if not target_prod:
-                            # Search partial or category match in registered database catalog
-                            for p in products:
-                                if p.name.lower() in mat_name.lower() or mat_name.lower() in p.name.lower():
-                                    target_prod = p
-                                    break
+                            target_prod = existing_by_sku.get(mat_name.upper())
 
                         if target_prod:
                             line_item = ExitEventLineItem(

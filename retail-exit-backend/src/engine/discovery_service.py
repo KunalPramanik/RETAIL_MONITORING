@@ -217,7 +217,8 @@ class NetworkDiscoveryService:
         if not lane_obj:
             raise ValueError(f"Target Lane '{lane_id}' does not exist.")
 
-        cam_id = f"CAM-LANE-{lane_id.replace('LANE-', '')}-AUTO"
+        clean_lane = (lane_id or "01").replace('LANE-', '')
+        cam_id = f"CAM-LANE-{clean_lane}-AUTO"
         cam_label = label or f"{lane_obj.label} — {dev.manufacturer} Auto-Link"
 
         # Check if camera already exists for this IP

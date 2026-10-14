@@ -107,8 +107,15 @@ retail-exit-backend/scripts/bootstrap_*.py
 # Exclude non-README markdown files from Git repository
 *.md
 !README.md
+!BUG_ROOT_CAUSE_AND_FIX_PLAN.md
+!DETECTION_CONFUSION_AND_ACCURACY_REPORT.md
+!ROLE_AND_ACCOUNT_MAPPING_REPORT.md
+!SNAPSHOT_EVENT_TRACEABILITY_REPORT.md
+!INVENTORY_COUNTING_AND_MOVEMENT_REPORT.md
+!FINAL_REGRESSION_TEST_REPORT.md
 docs/*.md
 retail-exit-backend/*.md
 !retail-exit-backend/README.md
 retail-exit-nextjs/*.md
 !retail-exit-nextjs/README.md
+

@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from src.db.models import ThresholdConfig, AppUser, Store
 from src.security import get_password_hash
 import uuid
@@ -88,6 +88,34 @@ async def init_baseline_configuration(session: AsyncSession):
             is_active=True,
         )
         session.add(admin_user)
+
+    # 2b. Ensure platform owner / store admin user ces@gmail.com exists with Ces@1234
+    ces_user_res = await session.execute(
+        select(AppUser).where(
+            or_(
+                AppUser.email == "ces@gmail.com",
+                AppUser.username == "ces@gmail.com",
+                AppUser.username == "ces",
+            )
+        )
+    )
+    ces_user = ces_user_res.scalars().first()
+    if not ces_user:
+        ces_user = AppUser(
+            user_id=str(uuid.uuid4()),
+            email="ces@gmail.com",
+            username="ces",
+            password_hash=get_password_hash("Ces@1234"),
+            role="ADMIN",
+            store_id=store.store_id,
+            mfa_enabled=False,
+            is_active=True,
+        )
+        session.add(ces_user)
+    else:
+        ces_user.password_hash = get_password_hash("Ces@1234")
+        ces_user.is_active = True
+        ces_user.role = "ADMIN"
 
     # 3. Base Threshold Config
     cfg = await session.execute(select(ThresholdConfig).limit(1))

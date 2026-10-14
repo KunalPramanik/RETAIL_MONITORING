@@ -206,7 +206,7 @@ class DeskManifestScanner:
     def parse_manifest_text(cls, raw_text: str) -> ExtractedManifestDocument:
         """Parses Bill of Lading / Invoice text into structured line items and quantities."""
         # Clean text
-        text = raw_text.replace("\r", " ")
+        text = (raw_text or "").replace("\r", " ")
         lines = [line.strip() for line in text.split("\n") if line.strip()]
 
         # 1. Extract BOL / Invoice number

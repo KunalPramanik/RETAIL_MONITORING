@@ -43,7 +43,23 @@ export default function SettingsPage() {
       if (resU.ok) setUsbStatus(await resU.json());
 
       const resTh = await safeFetch("/api/settings/thresholds");
-      if (resTh.ok) setThresholds(await resTh.json());
+      if (resTh.ok) {
+        const data = await resTh.json();
+        setThresholds((prev: any) => ({
+          ...prev,
+          unitTolerance: data.unitTolerance ?? prev.unitTolerance ?? 0,
+          pctTolerance: data.pctTolerance ?? prev.pctTolerance ?? 0,
+          lowSeverityThreshold: data.lowSeverityThreshold ?? prev.lowSeverityThreshold ?? 1,
+          medSeverityThreshold: data.medSeverityThreshold ?? prev.medSeverityThreshold ?? 3,
+          highSeverityThreshold: data.highSeverityThreshold ?? prev.highSeverityThreshold ?? 6,
+          repeatOffenderThreshold: data.repeatOffenderThreshold ?? prev.repeatOffenderThreshold ?? 3,
+          repeatOffenderCountTrigger: data.repeatOffenderCountTrigger ?? data.repeatOffenderThreshold ?? prev.repeatOffenderCountTrigger ?? 3,
+          repeatOffenderWindowDays: data.repeatOffenderWindowDays ?? prev.repeatOffenderWindowDays ?? 30,
+          cameraOfflineAlertAfterSec: data.cameraOfflineAlertAfterSec ?? prev.cameraOfflineAlertAfterSec ?? 60,
+          audioAlarmEnabled: data.audioAlarmEnabled ?? prev.audioAlarmEnabled ?? true,
+          turnstileAutoLockOnHigh: data.turnstileAutoLockOnHigh ?? prev.turnstileAutoLockOnHigh ?? true,
+        }));
+      }
     } catch (e) {
       console.warn("Failed to fetch settings status:", e);
     }
@@ -226,7 +242,7 @@ export default function SettingsPage() {
               <input
                 type="number"
                 min="0"
-                value={thresholds.unitTolerance}
+                value={thresholds.unitTolerance ?? 0}
                 onChange={(e) => setThresholds({ ...thresholds, unitTolerance: parseInt(e.target.value) || 0 })}
                 className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
               />
@@ -239,7 +255,7 @@ export default function SettingsPage() {
                 type="number"
                 step="0.5"
                 min="0"
-                value={thresholds.pctTolerance}
+                value={thresholds.pctTolerance ?? 0}
                 onChange={(e) => setThresholds({ ...thresholds, pctTolerance: parseFloat(e.target.value) || 0 })}
                 className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
               />
@@ -251,7 +267,7 @@ export default function SettingsPage() {
               <input
                 type="number"
                 min="10"
-                value={thresholds.cameraOfflineAlertAfterSec}
+                value={thresholds.cameraOfflineAlertAfterSec ?? 60}
                 onChange={(e) =>
                   setThresholds({ ...thresholds, cameraOfflineAlertAfterSec: parseInt(e.target.value) || 60 })
                 }
@@ -267,7 +283,7 @@ export default function SettingsPage() {
               <input
                 type="number"
                 min="1"
-                value={thresholds.repeatOffenderWindowDays}
+                value={thresholds.repeatOffenderWindowDays ?? 30}
                 onChange={(e) =>
                   setThresholds({ ...thresholds, repeatOffenderWindowDays: parseInt(e.target.value) || 30 })
                 }
@@ -279,7 +295,7 @@ export default function SettingsPage() {
               <input
                 type="number"
                 min="1"
-                value={thresholds.repeatOffenderCountTrigger}
+                value={thresholds.repeatOffenderCountTrigger ?? 3}
                 onChange={(e) =>
                   setThresholds({ ...thresholds, repeatOffenderCountTrigger: parseInt(e.target.value) || 3 })
                 }

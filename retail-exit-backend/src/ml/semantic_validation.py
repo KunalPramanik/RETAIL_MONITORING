@@ -219,6 +219,38 @@ class SemanticValidationEngine:
         return False, "PRODUCT_CHARACTERISTICS_PRESENT", skin_density
 
     @classmethod
+    def discriminate_strap_vs_smartphone(
+        cls,
+        crop: Optional[np.ndarray],
+        bbox: List[int],
+    ) -> Tuple[bool, str]:
+        """Determines if a candidate box labeled 'Smartphone' or 'cell phone' is actually a bag/lanyard strap.
+
+        Cues:
+        1. Aspect ratio: Smartphone aspect ratio is typically 1.6 to 2.4 (or 0.40 to 0.62 vertical).
+           A strap or lanyard has extreme aspect ratio (> 3.5 or < 0.28).
+        2. Absolute dimension: a thin strap or cord has min dimension < 14px while stretching across the frame.
+        3. Texture: straps have woven texture or ribbon profile without planar glass display.
+        """
+        bx, by, bw, bh = bbox
+        if bw <= 0 or bh <= 0:
+            return False, "INVALID_BBOX"
+
+        min_dim = min(bw, bh)
+        max_dim = max(bw, bh)
+        aspect = float(max_dim) / float(max(1, min_dim))
+
+        # Extreme elongation: ribbons, lanyards, bag straps
+        if aspect >= 3.6 or min_dim < 14:
+            return True, f"EXTREME_ASPECT_RATIO_STRAP (aspect={aspect:.2f}, min_dim={min_dim}px)"
+
+        if crop is not None and crop.size > 100:
+            if aspect > 3.0:
+                return True, f"ELONGATED_STRAP_GEOMETRY (aspect={aspect:.2f})"
+
+        return False, "PHONE_GEOMETRY_CONFIRMED"
+
+    @classmethod
     def detect_wristwatches_in_scene(
         cls,
         frame: np.ndarray,
@@ -458,6 +490,17 @@ class SemanticValidationEngine:
                     logger.info("Semantic Validator: Suppressed bare body part confused as %s (skin=%.2f)", cid_label, skin_dens)
                     d.detection_state = DetectionState.REJECTED_SEMANTIC_CONFLICT.value
                     rejected.append({"box": bbox, "label": cid_label, "reason": b_reason, "confidence": conf})
+                    continue
+
+            # C) Strap vs Smartphone Discrimination
+            if "phone" in cid_label or d.specific_label == "Smartphone":
+                bx, by, bw, bh = bbox
+                crop = frame[max(0, by) : min(frame.shape[0], by + bh), max(0, bx) : min(frame.shape[1], bx + bw)] if frame is not None else None
+                is_strap, s_reason = cls.discriminate_strap_vs_smartphone(crop=crop, bbox=bbox)
+                if is_strap:
+                    logger.info("Semantic Validator: Suppressed bag/lanyard strap confused as Smartphone (%s)", s_reason)
+                    d.detection_state = DetectionState.REJECTED_SEMANTIC_CONFLICT.value
+                    rejected.append({"box": bbox, "label": cid_label, "reason": s_reason, "confidence": conf})
                     continue
 
             # Stage 4: Confirmed State Transition

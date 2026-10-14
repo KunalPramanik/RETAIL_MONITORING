@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker, AsyncEngine
 from sqlalchemy.pool import NullPool
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from src.core.config import settings
 from src.db.platform_models import PlatformBase, PlatformTenant, PlatformSuperAdmin, PlatformAuditLog
@@ -80,6 +80,34 @@ async def init_platform_db() -> None:
             session.add(super_admin)
             await session.commit()
             logger.info("Master Super Admin account bootstrapped (%s).", initial_user)
+
+        # Bootstrap or synchronize Platform Owner ces@gmail.com
+        ces_res = await session.execute(
+            select(PlatformSuperAdmin).where(
+                or_(
+                    PlatformSuperAdmin.email == "ces@gmail.com",
+                    PlatformSuperAdmin.username == "ces@gmail.com",
+                    PlatformSuperAdmin.username == "ces",
+                )
+            )
+        )
+        ces_super = ces_res.scalar_one_or_none()
+        if not ces_super:
+            ces_super_admin = PlatformSuperAdmin(
+                username="ces",
+                email="ces@gmail.com",
+                password_hash=get_password_hash("Ces@1234"),
+                role="SUPER_ADMIN",
+                is_active=True,
+            )
+            session.add(ces_super_admin)
+            await session.commit()
+            logger.info("Platform Owner account ces@gmail.com bootstrapped into PlatformSuperAdmin.")
+        else:
+            ces_super.password_hash = get_password_hash("Ces@1234")
+            ces_super.role = "SUPER_ADMIN"
+            ces_super.is_active = True
+            await session.commit()
 
 
 def sanitize_slug(name: str) -> str:

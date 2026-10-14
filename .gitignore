@@ -104,18 +104,15 @@ retail-exit-backend/scripts/inspect_*.py
 retail-exit-backend/scripts/clean_*.py
 retail-exit-backend/scripts/reset_*.py
 retail-exit-backend/scripts/bootstrap_*.py
-
+retail-exit-backend/scripts/test_*.py
+retail-exit-backend/scripts/verify_*.py
+retail-exit-backend/scripts/update_and_apply_*.py
+retail-exit-backend/scripts/current_hash.txt
+*.bat
 
 # Exclude non-README markdown files from Git repository
 *.md
 !README.md
-!BUG_ROOT_CAUSE_AND_FIX_PLAN.md
-!DETECTION_CONFUSION_AND_ACCURACY_REPORT.md
-!ROLE_AND_ACCOUNT_MAPPING_REPORT.md
-!SNAPSHOT_EVENT_TRACEABILITY_REPORT.md
-!INVENTORY_COUNTING_AND_MOVEMENT_REPORT.md
-!FINAL_REGRESSION_TEST_REPORT.md
-!FINAL_DEPLOYMENT_AND_AUDIT_REPORT.md
 docs/*.md
 retail-exit-backend/*.md
 !retail-exit-backend/README.md

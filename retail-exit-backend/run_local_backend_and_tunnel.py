@@ -24,6 +24,23 @@ os.chdir(SCRIPT_DIR)
 
 CLOUDFLARED_BIN = os.path.join(SCRIPT_DIR, "cloudflared.exe")
 
+def cleanup_lingering_processes():
+    """Frees port 8000 and kills any stale cloudflared or uvicorn instances."""
+    try:
+        subprocess.run(["taskkill", "/F", "/IM", "cloudflared.exe"], capture_output=True)
+    except Exception:
+        pass
+    try:
+        output = subprocess.check_output('netstat -ano | findstr :8000', shell=True).decode(errors='ignore')
+        for line in output.strip().split('\n'):
+            parts = line.split()
+            if len(parts) >= 5 and "LISTENING" in line:
+                pid = parts[-1]
+                if int(pid) != os.getpid():
+                    subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+    except Exception:
+        pass
+
 def main():
     print("=" * 80)
     print("   SEC-OPS V8 -- HYBRID LOCAL BACKEND + SUPABASE + CLOUD TUNNEL LAUNCHER")
@@ -32,6 +49,10 @@ def main():
     if not os.path.exists(CLOUDFLARED_BIN):
         print(f"[-] Error: cloudflared.exe not found in {SCRIPT_DIR}")
         sys.exit(1)
+
+    print("[*] Checking and freeing port 8000...")
+    cleanup_lingering_processes()
+    time.sleep(1)
 
     print("[*] 1. Launching FastAPI backend (uvicorn on port 8000)...")
     venv_python = os.path.join(SCRIPT_DIR, ".venv", "Scripts", "python.exe")

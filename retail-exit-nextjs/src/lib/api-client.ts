@@ -5,9 +5,9 @@
  */
 
 export const API_BASE = 
-  typeof window !== "undefined"
-    ? "" // Client-side uses Next.js rewrites /api/... directly to avoid CORS
-    : process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+  process.env.NEXT_PUBLIC_API_URL
+    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "")
+    : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
 
 export function getWsUrl(path: string = "/ws/live"): string {
   if (process.env.NEXT_PUBLIC_WS_URL) {

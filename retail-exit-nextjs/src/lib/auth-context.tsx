@@ -137,10 +137,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (!res.ok) {
         setIsLoading(false);
-        if (res.status === 503 || data?.status === "OFFLINE") {
+        if (res.status === 502 || res.status === 503 || res.status === 504 || data?.status === "OFFLINE") {
           return {
             success: false,
-            error: "Backend service is offline (port 8000). Please ensure 'retail-exit-backend' is started.",
+            error: "Backend service is offline or unreachable. Please ensure 'retail-exit-backend' and tunnel are running.",
           };
         }
         if (res.status === 401) {

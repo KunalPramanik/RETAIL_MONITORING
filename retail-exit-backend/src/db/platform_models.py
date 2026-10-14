@@ -12,7 +12,7 @@ Enforces Section 3 of the V8 Master Prompt.
 from typing import Any, Optional
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, Boolean, DateTime, Text, JSON, CheckConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, Text, JSON, CheckConstraint, Integer
 from sqlalchemy.orm import declarative_base
 
 def get_utc_now() -> datetime:
@@ -73,4 +73,65 @@ class PlatformAuditLog(PlatformBase):
     details: Any = Column(JSON, nullable=True)
     ip_address: Any = Column(String(64), nullable=True)
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
+
+
+class PlatformSubscriptionTier(PlatformBase):
+    """Platform subscription tier / plan definition."""
+    __tablename__ = "platform_subscription_tier"
+
+    tier_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    name: Any = Column(String(64), unique=True, nullable=False)
+    max_cameras: Any = Column(Integer, nullable=False, default=4)
+    price_cents: Any = Column(Integer, nullable=False, default=0)
+    currency: Any = Column(String(16), nullable=False, default="INR")
+    billing_cycle: Any = Column(String(16), nullable=False, default="MONTHLY")
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+
+
+class PlatformStoreSubscription(PlatformBase):
+    """Store tenant subscription and payment verification record."""
+    __tablename__ = "platform_store_subscription"
+
+    subscription_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    tenant_id: Any = Column(String(36), unique=True, nullable=False, index=True)
+    tier_id: Any = Column(String(36), nullable=False)
+    status: Any = Column(String(32), nullable=False, default="ACTIVE", index=True)
+    current_period_start: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    current_period_end: Any = Column(DateTime(timezone=True), nullable=False)
+    grace_period_days: Any = Column(Integer, nullable=False, default=7)
+    payment_verified: Any = Column(Boolean, nullable=False, default=True)
+    auto_renew: Any = Column(Boolean, nullable=False, default=True)
+    last_payment_at: Any = Column(DateTime(timezone=True), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+    updated_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, onupdate=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('ACTIVE', 'PAST_DUE', 'SUSPENDED', 'CANCELLED')",
+            name="chk_platform_sub_status",
+        ),
+    )
+
+
+class PlatformBillingInvoice(PlatformBase):
+    """Platform billing invoice record for store subscriptions."""
+    __tablename__ = "platform_billing_invoice"
+
+    invoice_id: Any = Column(String(36), primary_key=True, default=generate_uuid)
+    tenant_id: Any = Column(String(36), nullable=False, index=True)
+    subscription_id: Any = Column(String(36), nullable=True)
+    amount_cents: Any = Column(Integer, nullable=False, default=0)
+    currency: Any = Column(String(16), nullable=False, default="INR")
+    status: Any = Column(String(32), nullable=False, default="PAID", index=True)
+    due_date: Any = Column(DateTime(timezone=True), nullable=False)
+    paid_at: Any = Column(DateTime(timezone=True), nullable=True)
+    created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PAID', 'UNPAID', 'DELINQUENT', 'VOID')",
+            name="chk_platform_invoice_status",
+        ),
+    )
+
 

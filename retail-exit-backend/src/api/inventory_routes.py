@@ -108,7 +108,25 @@ async def get_inventory_stock(
 
         bal = balances_by_mat.get(str(mat.material_id)) or balances_by_mat.get(str(p.product_id))
         if not bal:
-            base_opening = (p.pack_size or 1) * 20
+            # Enforce human-verified opening stock baseline (Section 10 & 11.5)
+            # Only verified baselines set opening stock; otherwise defaults to 0 until verified by human operator
+            verif_stmt = (
+                select(InitialStockVerification)
+                .where(
+                    and_(
+                        or_(
+                            InitialStockVerification.product_id == str(p.product_id),
+                            InitialStockVerification.sku_code == p.sku_code,
+                        ),
+                        InitialStockVerification.status.in_(["VERIFIED_ACCURATE", "CORRECTED"]),
+                    )
+                )
+                .order_by(desc(InitialStockVerification.verified_at))
+            )
+            verif_res = await session.execute(verif_stmt)
+            verif_record = verif_res.scalars().first()
+            base_opening = int(verif_record.verified_count) if (verif_record and verif_record.verified_count is not None) else 0
+
             bal = MaterialInventoryBalance(
                 balance_id=f"bal_{uuid.uuid4().hex[:12]}",
                 material_id=str(mat.material_id),

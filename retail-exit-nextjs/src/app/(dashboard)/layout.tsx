@@ -74,22 +74,25 @@ export default function DashboardLayout({
     };
   }, []);
 
-  const isSoftwareOwner = user?.role === "SUPER_ADMIN";
+  const role = (user?.role || "OPERATOR").toUpperCase();
+  const isSoftwareOwner = role === "SUPER_ADMIN";
 
-  const navItems = [
-    { label: "Dashboard", href: "/", icon: Activity },
-    { label: "Store Onboarding", href: "/onboarding", icon: Sparkles },
-    { label: "Cameras & Fleet", href: "/settings/cameras", icon: Camera },
-    { label: "Security Alerts", href: "/alerts", icon: AlertTriangle },
-    { label: "Inventory & Ledger", href: "/inventory", icon: Box },
-    { label: "Products & Pack Math", href: "/products", icon: Layers },
-    { label: "Employees & Face ID", href: "/employees", icon: Users },
-    { label: "Invoices & OCR", href: "/invoices", icon: FileText },
-    { label: "Exit Events", href: "/events", icon: Layers },
-    { label: "Reports & PDF", href: "/reports", icon: FileSpreadsheet },
-    ...(isSoftwareOwner ? [{ label: "Platform Fleet", href: "/platform", icon: ShieldAlert }] : []),
-    { label: "Settings & Sensors", href: "/settings", icon: Settings },
+  const allNavItems = [
+    { label: "Dashboard", href: "/", icon: Activity, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "SECURITY", "AUDITOR", "VIEWER"] },
+    { label: "Platform Fleet", href: "/platform", icon: ShieldAlert, roles: ["SUPER_ADMIN"] },
+    { label: "Store Onboarding", href: "/onboarding", icon: Sparkles, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { label: "Cameras & Fleet", href: "/settings/cameras", icon: Camera, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "SECURITY"] },
+    { label: "Security Alerts", href: "/alerts", icon: AlertTriangle, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "SECURITY"] },
+    { label: "Inventory & Ledger", href: "/inventory", icon: Box, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "AUDITOR", "VIEWER"] },
+    { label: "Products & Pack Math", href: "/products", icon: Layers, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"] },
+    { label: "Employees & Face ID", href: "/employees", icon: Users, roles: ["SUPER_ADMIN", "ADMIN", "SECURITY"] },
+    { label: "Invoices & OCR", href: "/invoices", icon: FileText, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "AUDITOR", "VIEWER"] },
+    { label: "Exit Events", href: "/events", icon: Layers, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "SECURITY", "AUDITOR", "VIEWER"] },
+    { label: "Reports & PDF", href: "/reports", icon: FileSpreadsheet, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "AUDITOR", "VIEWER"] },
+    { label: "Settings & Sensors", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN", "ADMIN"] },
   ];
+
+  const navItems = allNavItems.filter((item) => item.roles.includes(role));
 
   if (isLoading) {
     return (

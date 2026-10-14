@@ -88,8 +88,10 @@ desktop.ini
 .gemini/
 .gsd/
 
-# Test Suites & Offline Training (excluded from production repository)
-retail-exit-backend/tests/
+# Test SQLite DB and Pytest Cache
+retail-exit-backend/tests/test_temp.db
+retail-exit-backend/tests/__pycache__/
+.pytest_cache/
 retail-exit-backend/ml/
 retail-exit-backend/src/ml/weights/checkpoints/*.onnx
 !retail-exit-backend/src/ml/weights/checkpoints/.gitkeep
@@ -113,6 +115,7 @@ retail-exit-backend/scripts/bootstrap_*.py
 !SNAPSHOT_EVENT_TRACEABILITY_REPORT.md
 !INVENTORY_COUNTING_AND_MOVEMENT_REPORT.md
 !FINAL_REGRESSION_TEST_REPORT.md
+!FINAL_DEPLOYMENT_AND_AUDIT_REPORT.md
 docs/*.md
 retail-exit-backend/*.md
 !retail-exit-backend/README.md

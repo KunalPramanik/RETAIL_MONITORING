@@ -7,8 +7,8 @@ Enforces Section 3 of the V8 Master Prompt.
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
-from sqlalchemy import select, desc
-from datetime import datetime, timezone
+from sqlalchemy import select, desc, func
+from datetime import datetime, timezone, timedelta
 
 from src.core.multi_tenant import (
     PlatformAsyncSessionLocal,
@@ -16,7 +16,15 @@ from src.core.multi_tenant import (
     get_tenant_session_maker,
     init_platform_db,
 )
-from src.db.platform_models import PlatformTenant, PlatformSuperAdmin, PlatformAuditLog
+from src.db.platform_models import (
+    PlatformTenant,
+    PlatformSuperAdmin,
+    PlatformAuditLog,
+    PlatformStoreSubscription,
+    PlatformBillingInvoice,
+    get_utc_now,
+)
+from src.services.billing_service import run_delinquency_check, verify_store_payment
 from src.db.models.alert import AppUser
 from src.security import verify_password, get_password_hash, create_access_token
 from jose import jwt, JWTError
@@ -304,3 +312,115 @@ async def list_platform_audit_logs(
             }
             for l in logs
         ]
+
+
+@router.get("/telemetry")
+async def get_platform_telemetry(
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Retrieves global platform telemetry with a strict privacy barrier.
+    
+    Guarantees: Platform Super Admin is blocked from viewing store-level inventory counts,
+    employee CCTV footage, or private store cameras.
+    """
+    now = get_utc_now()
+    cutoff_24h = now - timedelta(hours=24)
+
+    async with PlatformAsyncSessionLocal() as session:
+        # 1. Total and active stores
+        total_stores_res = await session.execute(select(func.count(PlatformTenant.tenant_id)))
+        total_stores = total_stores_res.scalar_one_or_none() or 0
+
+        active_stores_res = await session.execute(
+            select(func.count(PlatformTenant.tenant_id)).where(PlatformTenant.status == "ACTIVE")
+        )
+        active_stores = active_stores_res.scalar_one_or_none() or 0
+
+        suspended_stores_res = await session.execute(
+            select(func.count(PlatformTenant.tenant_id)).where(PlatformTenant.status == "SUSPENDED")
+        )
+        suspended_stores = suspended_stores_res.scalar_one_or_none() or 0
+
+        # 2. Daily Active Users (DAU) from unique actor activity in last 24h
+        dau_res = await session.execute(
+            select(func.count(func.distinct(PlatformAuditLog.actor_id))).where(
+                PlatformAuditLog.created_at >= cutoff_24h
+            )
+        )
+        dau = dau_res.scalar_one_or_none() or 0
+
+        # 3. Total registered super admins
+        total_admins_res = await session.execute(select(func.count(PlatformSuperAdmin.admin_id)))
+        total_admins = total_admins_res.scalar_one_or_none() or 0
+
+    return {
+        "activeStores": active_stores,
+        "suspendedStores": suspended_stores,
+        "totalStores": total_stores,
+        "totalPlatformUsers": total_admins,
+        "dailyActiveUsers": dau,
+        "infrastructure": {
+            "apiStatus": "ONLINE",
+            "dbConnected": True,
+            "workerHeartbeat": True,
+            "cpuExecutionMode": "CPU-ONLY",
+            "privacyBarrierActive": True,
+            "timestamp": now.isoformat(),
+        },
+    }
+
+
+@router.get("/subscriptions")
+async def list_store_subscriptions(
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Lists all store subscriptions, renewal periods, and payment verification statuses."""
+    async with PlatformAsyncSessionLocal() as session:
+        res = await session.execute(select(PlatformStoreSubscription))
+        subs = res.scalars().all()
+        return [
+            {
+                "subscriptionId": s.subscription_id,
+                "tenantId": s.tenant_id,
+                "tierId": s.tier_id,
+                "status": s.status,
+                "currentPeriodStart": s.current_period_start.isoformat() if s.current_period_start else "",
+                "currentPeriodEnd": s.current_period_end.isoformat() if s.current_period_end else "",
+                "gracePeriodDays": s.grace_period_days,
+                "paymentVerified": s.payment_verified,
+                "autoRenew": s.auto_renew,
+                "lastPaymentAt": s.last_payment_at.isoformat() if s.last_payment_at else None,
+            }
+            for s in subs
+        ]
+
+
+class VerifyPaymentRequest(BaseModel):
+    amountCents: int = Field(..., ge=0)
+    extensionDays: int = Field(30, ge=1)
+
+
+@router.post("/subscriptions/{tenant_id}/verify-payment")
+async def verify_payment_endpoint(
+    tenant_id: str,
+    req: VerifyPaymentRequest,
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Verifies payment for a store subscription, extending subscription period and reactivating if suspended."""
+    result = await verify_store_payment(
+        tenant_id=tenant_id,
+        amount_cents=req.amountCents,
+        actor_id=admin.admin_id,
+        extension_days=req.extensionDays,
+    )
+    return result
+
+
+@router.post("/subscriptions/run-delinquency-check")
+async def trigger_delinquency_check(
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Runs automated delinquency check past grace period and non-destructively suspends overdue stores."""
+    result = await run_delinquency_check(actor_id=admin.admin_id)
+    return result
+

@@ -12,7 +12,7 @@ Enforces Master Prompt V9 specification:
 """
 
 from typing import List, Dict, Tuple, Optional, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
 import logging
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -158,6 +158,44 @@ class InventoryLedgerEngine:
         if norm_severity not in ("NONE", "LOW", "MEDIUM", "HIGH", "CRITICAL"):
             norm_severity = "NONE"
 
+        # 4b. Balanced Idempotency Guard (Section 11):
+        # Prevents duplicate postings from the same physical crossing (e.g., repeated detections across adjacent frames)
+        # without blocking subsequent legitimate physical movements of the same item.
+        if camera_id and track_id:
+            epoch_window_sec = 5
+            time_lower = now - timedelta(seconds=epoch_window_sec)
+            time_upper = now + timedelta(seconds=epoch_window_sec)
+
+            dup_stmt = select(MaterialMovementLedger).where(
+                and_(
+                    MaterialMovementLedger.camera_id == camera_id,
+                    MaterialMovementLedger.track_id == str(track_id),
+                    MaterialMovementLedger.material_id == resolved_mat_id,
+                    MaterialMovementLedger.direction == norm_dir,
+                    MaterialMovementLedger.timestamp >= time_lower,
+                    MaterialMovementLedger.timestamp <= time_upper,
+                )
+            )
+            if tripwire_id:
+                dup_stmt = dup_stmt.where(MaterialMovementLedger.tripwire_id == tripwire_id)
+
+            dup_res = await session.execute(dup_stmt)
+            existing_entry = dup_res.scalar_one_or_none()
+            if existing_entry:
+                logger.info(
+                    "Idempotency match: duplicate crossing skipped for camera=%s, track=%s, mat=%s within %ss window.",
+                    camera_id, track_id, resolved_mat_id, epoch_window_sec
+                )
+                bal_stmt = select(MaterialInventoryBalance).where(
+                    and_(
+                        MaterialInventoryBalance.material_id == resolved_mat_id,
+                        MaterialInventoryBalance.location_id == location_id,
+                    )
+                )
+                bal_res = await session.execute(bal_stmt)
+                existing_bal = bal_res.scalar_one_or_none()
+                return (existing_entry, existing_bal, None)
+
         # 5. Create immutable MaterialMovementLedger record
         ledger_entry = MaterialMovementLedger(
             ledger_id=f"mvl_{uuid.uuid4().hex[:12]}",
@@ -187,13 +225,13 @@ class InventoryLedgerEngine:
         )
         session.add(ledger_entry)
 
-        # 6. Fetch or initialize MaterialInventoryBalance
+        # 6. Fetch or initialize MaterialInventoryBalance with row-level locking
         bal_stmt = select(MaterialInventoryBalance).where(
             and_(
                 MaterialInventoryBalance.material_id == resolved_mat_id,
                 MaterialInventoryBalance.location_id == location_id,
             )
-        )
+        ).with_for_update()
         bal_res = await session.execute(bal_stmt)
         balance = bal_res.scalar_one_or_none()
 

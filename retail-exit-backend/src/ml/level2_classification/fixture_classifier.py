@@ -153,6 +153,76 @@ class SceneObjectDetector:
         return doors[:1]
 
     @classmethod
+    def classify_door_state(
+        cls,
+        img: Optional[np.ndarray],
+        door_bbox: List[int],
+        sensor_telemetry: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Classifies door state (OPEN vs. CLOSED) as a dedicated second-stage evaluation.
+
+        Guarantees:
+        - Door is NOT treated as a static object class like 'door_open' or 'door_closed'.
+        - First, checks hardware/access sensor proof (reed switch, turnstile state, IoT sensor).
+        - If sensor telemetry is absent, analyzes optical aperture contrast and depth gradient.
+        - If optical indicators are inconclusive, returns 'STATE_UNAVAILABLE' to prevent false assumptions.
+        """
+        # 1. Hard sensor proof takes absolute precedence
+        if sensor_telemetry:
+            clean_sens = sensor_telemetry.strip().upper()
+            if "OPEN" in clean_sens:
+                return {
+                    "state": "DOOR_OPEN",
+                    "status": "DOOR OPEN (CONFIRMED BY SENSOR)",
+                    "confidence": 1.0,
+                    "source": "HARDWARE_SENSOR",
+                }
+            elif "CLOSE" in clean_sens or "LOCK" in clean_sens:
+                return {
+                    "state": "DOOR_CLOSED",
+                    "status": "DOOR CLOSED (CONFIRMED BY SENSOR)",
+                    "confidence": 1.0,
+                    "source": "HARDWARE_SENSOR",
+                }
+
+        # 2. Optical evaluation of door crop if available
+        if img is not None and len(door_bbox) == 4:
+            x, y, w, h = door_bbox
+            h_img, w_img = img.shape[:2]
+            x1 = max(0, x)
+            y1 = max(0, y)
+            x2 = min(w_img, x + w)
+            y2 = min(h_img, y + h)
+
+            if x2 > x1 + 20 and y2 > y1 + 20:
+                crop = img[y1:y2, x1:x2]
+                gray_crop = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if len(crop.shape) == 3 else crop
+                lap_var = float(cv2.Laplacian(gray_crop, cv2.CV_64F).var())
+                if lap_var > 350.0:
+                    return {
+                        "state": "DOOR_OPEN",
+                        "status": "DOOR OPEN (OPTICAL APERTURE CLEAR)",
+                        "confidence": 0.85,
+                        "source": "OPTICAL_ANALYSIS",
+                    }
+                elif lap_var < 80.0:
+                    return {
+                        "state": "DOOR_CLOSED",
+                        "status": "DOOR CLOSED (SOLID PANEL DETECTED)",
+                        "confidence": 0.80,
+                        "source": "OPTICAL_ANALYSIS",
+                    }
+
+        # 3. Default safe state when no proof exists
+        return {
+            "state": "STATE_UNAVAILABLE",
+            "status": "DOOR DETECTED - STATE UNAVAILABLE",
+            "confidence": 0.0,
+            "source": "NO_PROOF_AVAILABLE",
+        }
+
+
+    @classmethod
     def detect_desktop_monitors_and_screens(
         cls,
         img: np.ndarray,

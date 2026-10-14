@@ -28,6 +28,8 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class Token(BaseModel):
     access_token: str
     token_type: str
+    role: Optional[str] = None
+    isPlatformOwner: Optional[bool] = False
 
 class UserCreate(BaseModel):
     username: Optional[str] = None

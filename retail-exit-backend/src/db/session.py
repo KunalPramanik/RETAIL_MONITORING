@@ -46,6 +46,8 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 
 def _sync_upgrade_sqlite_schema(sync_conn):
     """Ensure newly added columns exist in SQLite tables across migrations without data loss."""
+    if sync_conn.dialect.name != "sqlite":
+        return
     from sqlalchemy import text
     try:
         res = sync_conn.execute(text("PRAGMA table_info(camera)"))

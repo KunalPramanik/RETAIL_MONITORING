@@ -6,6 +6,9 @@
 .env
 .env.*
 !.env.example
+vercel_env_ready.txt
+*.exe
+
 
 # Python Virtual Environments & Packages
 .venv/

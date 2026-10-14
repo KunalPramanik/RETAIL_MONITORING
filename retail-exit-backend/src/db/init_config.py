@@ -6,42 +6,44 @@ import uuid
 import os
 
 async def init_baseline_configuration(session: AsyncSession):
-    # 0. Ensure schema compatibility (auto-migrate missing columns)
-    try:
-        from sqlalchemy import text
-        # Employee table migrations
-        cols_res = await session.execute(text("PRAGMA table_info(employee);"))
-        emp_cols = [r[1] for r in cols_res.fetchall()]
-        if emp_cols and "employee_code" not in emp_cols:
-            await session.execute(text("ALTER TABLE employee ADD COLUMN employee_code VARCHAR(32);"))
+    # 0. Ensure schema compatibility on SQLite (auto-migrate missing columns)
+    bind = session.bind or session.get_bind()
+    if bind and getattr(bind.dialect, "name", None) == "sqlite":
+        try:
+            from sqlalchemy import text
+            # Employee table migrations
+            cols_res = await session.execute(text("PRAGMA table_info(employee);"))
+            emp_cols = [r[1] for r in cols_res.fetchall()]
+            if emp_cols and "employee_code" not in emp_cols:
+                await session.execute(text("ALTER TABLE employee ADD COLUMN employee_code VARCHAR(32);"))
 
-        # Camera table migrations
-        cam_cols_res = await session.execute(text("PRAGMA table_info(camera);"))
-        cam_cols = [r[1] for r in cam_cols_res.fetchall()]
-        if cam_cols:
-            if "degraded_reason" not in cam_cols:
-                await session.execute(text("ALTER TABLE camera ADD COLUMN degraded_reason VARCHAR(255);"))
-            if "last_frame_at" not in cam_cols:
-                await session.execute(text("ALTER TABLE camera ADD COLUMN last_frame_at DATETIME;"))
-            if "last_inference_at" not in cam_cols:
-                await session.execute(text("ALTER TABLE camera ADD COLUMN last_inference_at DATETIME;"))
-            if "inference_latency_ms" not in cam_cols:
-                await session.execute(text("ALTER TABLE camera ADD COLUMN inference_latency_ms NUMERIC(8, 2);"))
+            # Camera table migrations
+            cam_cols_res = await session.execute(text("PRAGMA table_info(camera);"))
+            cam_cols = [r[1] for r in cam_cols_res.fetchall()]
+            if cam_cols:
+                if "degraded_reason" not in cam_cols:
+                    await session.execute(text("ALTER TABLE camera ADD COLUMN degraded_reason VARCHAR(255);"))
+                if "last_frame_at" not in cam_cols:
+                    await session.execute(text("ALTER TABLE camera ADD COLUMN last_frame_at DATETIME;"))
+                if "last_inference_at" not in cam_cols:
+                    await session.execute(text("ALTER TABLE camera ADD COLUMN last_inference_at DATETIME;"))
+                if "inference_latency_ms" not in cam_cols:
+                    await session.execute(text("ALTER TABLE camera ADD COLUMN inference_latency_ms NUMERIC(8, 2);"))
 
-        # VisionDetection table migrations
-        vis_cols_res = await session.execute(text("PRAGMA table_info(vision_detection);"))
-        vis_cols = [r[1] for r in vis_cols_res.fetchall()]
-        if vis_cols:
-            if "track_id" not in vis_cols:
-                await session.execute(text("ALTER TABLE vision_detection ADD COLUMN track_id VARCHAR(64);"))
-            if "category" not in vis_cols:
-                await session.execute(text("ALTER TABLE vision_detection ADD COLUMN category VARCHAR(32) DEFAULT 'GENERAL_OBJECT';"))
-            if "snapshot_url" not in vis_cols:
-                await session.execute(text("ALTER TABLE vision_detection ADD COLUMN snapshot_url TEXT;"))
+            # VisionDetection table migrations
+            vis_cols_res = await session.execute(text("PRAGMA table_info(vision_detection);"))
+            vis_cols = [r[1] for r in vis_cols_res.fetchall()]
+            if vis_cols:
+                if "track_id" not in vis_cols:
+                    await session.execute(text("ALTER TABLE vision_detection ADD COLUMN track_id VARCHAR(64);"))
+                if "category" not in vis_cols:
+                    await session.execute(text("ALTER TABLE vision_detection ADD COLUMN category VARCHAR(32) DEFAULT 'GENERAL_OBJECT';"))
+                if "snapshot_url" not in vis_cols:
+                    await session.execute(text("ALTER TABLE vision_detection ADD COLUMN snapshot_url TEXT;"))
 
-        await session.flush()
-    except Exception:
-        pass
+            await session.flush()
+        except Exception:
+            pass
 
     # 1. Ensure baseline Store exists
     store_res = await session.execute(select(Store).limit(1))
@@ -56,9 +58,9 @@ async def init_baseline_configuration(session: AsyncSession):
         session.add(store)
         await session.flush()
 
-    # 2. Ensure ADMIN user exists
-    result = await session.execute(select(AppUser).where(AppUser.email == "admin@secops.local"))
-    if not result.scalars().first():
+    # 2. Ensure at least one active ADMIN user exists
+    existing_admin = await session.execute(select(AppUser).where(AppUser.role == "ADMIN", AppUser.is_active == True))
+    if not existing_admin.scalars().first():
         initial_pw = os.getenv("ADMIN_INITIAL_PASSWORD")
         if not initial_pw:
             env = os.getenv("ENVIRONMENT", "development").lower()

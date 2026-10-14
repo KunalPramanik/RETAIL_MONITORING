@@ -10,6 +10,10 @@ export const API_BASE =
     : process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
 export function getWsUrl(path: string = "/ws/live"): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) {
+    const base = process.env.NEXT_PUBLIC_WS_URL.replace(/\/+$/, "");
+    return `${base}${path.startsWith("/") ? path : `/${path}`}`;
+  }
   if (typeof window === "undefined") return `ws://127.0.0.1:8000${path}`;
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
   // Use port 8000 directly for WebSockets or current host if reverse proxied

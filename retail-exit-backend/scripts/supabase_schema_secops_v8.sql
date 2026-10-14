@@ -792,3 +792,4 @@ SELECT
     created_at
 FROM public.app_user
 WHERE is_active = TRUE;
+

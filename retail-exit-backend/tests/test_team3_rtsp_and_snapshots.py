@@ -80,3 +80,4 @@ def test_strict_evidence_rule_prohibits_person_and_live_frames():
 
     # BILL_DOCUMENT must be permitted without exception
     SnapshotArchiveService.validate_evidence_policy("BILL_DOCUMENT", purpose="INVOICE_ATTACHMENT")
+

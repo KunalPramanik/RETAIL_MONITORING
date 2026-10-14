@@ -114,3 +114,4 @@ class SnapshotArchiveService:
             "capturedAt": datetime.now(timezone.utc).isoformat(),
             "metadata": metadata or {},
         }
+

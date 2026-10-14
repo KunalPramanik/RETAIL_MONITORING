@@ -34,15 +34,16 @@ def main():
         sys.exit(1)
 
     print("[*] 1. Launching FastAPI backend (uvicorn on port 8000)...")
-    python_bin = sys.executable
+    venv_python = os.path.join(SCRIPT_DIR, ".venv", "Scripts", "python.exe")
+    python_bin = venv_python if os.path.exists(venv_python) else sys.executable
+
+    log_path = os.path.join(SCRIPT_DIR, "backend_service.log")
+    log_file = open(log_path, "w", encoding="utf-8", errors="replace")
     backend_proc = subprocess.Popen(
         [python_bin, "-m", "uvicorn", "src.main:app", "--host", "127.0.0.1", "--port", "8000"],
-        stdout=subprocess.PIPE,
+        stdout=log_file,
         stderr=subprocess.STDOUT,
         text=True,
-        bufsize=1,
-        encoding="utf-8",
-        errors="replace"
     )
 
     # Wait for backend to be fully responsive
@@ -51,11 +52,14 @@ def main():
 
     print("[*] Waiting for backend to initialize and connect to Supabase...")
     backend_ready = False
-    for attempt in range(35):
+    for attempt in range(40):
         if backend_proc.poll() is not None:
-            print("[-] Backend failed to start. Logs:")
-            out, _ = backend_proc.communicate()
-            print(out)
+            print("[-] Backend failed to start. Logs from backend_service.log:")
+            try:
+                with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                    print(f.read())
+            except Exception:
+                pass
             sys.exit(1)
         try:
             with urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=2) as response:

@@ -88,16 +88,19 @@ desktop.ini
 .gemini/
 .gsd/
 
-# Test SQLite DB and Pytest Cache
-retail-exit-backend/tests/test_temp.db
-retail-exit-backend/tests/__pycache__/
+# Test Suites, SQLite DB and Pytest Cache (Production Cleanliness)
+retail-exit-backend/tests/
 .pytest_cache/
 retail-exit-backend/ml/
 retail-exit-backend/src/ml/weights/checkpoints/*.onnx
 !retail-exit-backend/src/ml/weights/checkpoints/.gitkeep
 
-# Hardware Runtime State & Local Diagnostic Scripts
+# Hardware Runtime State, Local Tunnel & Local Dev Scripts
 retail-exit-backend/src/hardware/usb_state.json
+retail-exit-backend/run_local_backend_and_tunnel.py
+retail-exit-backend/scripts/apply_clean_db.py
+retail-exit-backend/scripts/init_db.py
+retail-exit-backend/scripts/set_owner.py
 retail-exit-backend/scripts/view_db.py
 retail-exit-backend/scripts/check_*.py
 retail-exit-backend/scripts/inspect_*.py
@@ -108,6 +111,7 @@ retail-exit-backend/scripts/test_*.py
 retail-exit-backend/scripts/verify_*.py
 retail-exit-backend/scripts/update_and_apply_*.py
 retail-exit-backend/scripts/current_hash.txt
+pyrightconfig.json
 *.bat
 
 # Exclude non-README markdown files from Git repository

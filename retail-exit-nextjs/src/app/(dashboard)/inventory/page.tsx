@@ -71,6 +71,7 @@ export default function InventoryDashboardPage() {
 
   // Manual Adjustment Modal State
   const [showAdjustModal, setShowAdjustModal] = useState(false);
+  const [skuInputMode, setSkuInputMode] = useState<"select" | "custom">("select");
   const [adjustSku, setAdjustSku] = useState("");
   const [adjustQty, setAdjustQty] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
@@ -265,7 +266,7 @@ export default function InventoryDashboardPage() {
           className={`pb-3 font-semibold transition-colors flex items-center gap-2 ${
             activeTab === "STOCK"
               ? "text-[#38BDF8] border-b-2 border-[#38BDF8]"
-              : "text-[var(--text-secondary)] hover:text-white"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           }`}
         >
           <Box size={16} /> Current Stock Ledger ({stockList.length})
@@ -275,7 +276,7 @@ export default function InventoryDashboardPage() {
           className={`pb-3 font-semibold transition-colors flex items-center gap-2 ${
             activeTab === "VERIFICATIONS"
               ? "text-[#38BDF8] border-b-2 border-[#38BDF8]"
-              : "text-[var(--text-secondary)] hover:text-white"
+              : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           }`}
         >
           <FileCheck size={16} /> Opening Stock Census ({verifications.length})
@@ -307,7 +308,13 @@ export default function InventoryDashboardPage() {
           </div>
 
           <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
-            {stockList.length === 0 && !loading ? (
+            {loading ? (
+              <div className="p-12 text-center text-[var(--text-secondary)]">
+                <RefreshCw size={28} className="mx-auto mb-3 text-[#38BDF8] animate-spin" />
+                <h4 className="text-sm font-bold text-[var(--text-primary)]">Loading Inventory Ledger...</h4>
+                <p className="text-xs text-[var(--text-secondary)] mt-1">Calculating real-time on-hand stock and physical balances from ledger.</p>
+              </div>
+            ) : stockList.length === 0 ? (
               <div className="p-12 text-center text-[var(--text-secondary)]">
                 <Box size={40} className="mx-auto mb-3 text-[#2C323D]" />
                 <h4 className="text-base font-bold text-[var(--text-primary)]">No inventory records available</h4>
@@ -343,7 +350,7 @@ export default function InventoryDashboardPage() {
                         <td className="p-4 text-right text-[#4FD1B3]">+{item.incomingConfirmed}</td>
                         <td className="p-4 text-right text-[#E5484D]">−{item.outgoingConfirmed}</td>
                         <td className="p-4 text-right text-[#E8A33D]">{item.adjustedStock >= 0 ? `+${item.adjustedStock}` : item.adjustedStock}</td>
-                        <td className="p-4 text-right font-bold text-lg text-white">{item.currentStock} U</td>
+                        <td className="p-4 text-right font-bold text-lg text-[var(--text-primary)]">{item.currentStock} U</td>
                         <td className="p-4 text-right text-[var(--text-secondary)]">₹ {item.unitPrice?.toFixed(2) || "0.00"}</td>
                         <td className="p-4 text-right font-bold text-[#4FD1B3]">₹ {item.inventoryValue?.toLocaleString() || "0"}</td>
                         <td className="p-4 text-center">
@@ -382,7 +389,13 @@ export default function InventoryDashboardPage() {
           </div>
 
           <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
-            {verifications.length === 0 && !loading ? (
+            {loading ? (
+              <div className="p-12 text-center text-[var(--text-secondary)]">
+                <RefreshCw size={28} className="mx-auto mb-3 text-[#38BDF8] animate-spin" />
+                <h4 className="text-sm font-bold text-[var(--text-primary)]">Loading Opening Stock Census...</h4>
+                <p className="text-xs text-[var(--text-secondary)] mt-1">Retrieving AI proposed baselines and verification audit logs from store database.</p>
+              </div>
+            ) : verifications.length === 0 ? (
               <div className="p-12 text-center text-[var(--text-secondary)]">
                 <FileCheck size={40} className="mx-auto mb-3 text-[#2C323D]" />
                 <h4 className="text-base font-bold text-[var(--text-primary)]">No opening stock verification sessions</h4>
@@ -423,7 +436,7 @@ export default function InventoryDashboardPage() {
                         </td>
                         <td className="p-4 font-bold text-[#38BDF8]">{v.skuCode}</td>
                         <td className="p-4 font-sans font-semibold text-[var(--text-primary)]">{v.productName}</td>
-                        <td className="p-4 text-center font-bold text-white">{v.aiProposedCount} U</td>
+                        <td className="p-4 text-center font-bold text-[var(--text-primary)]">{v.aiProposedCount} U</td>
                         <td className="p-4 text-center">
                           {v.verifiedCount !== undefined && v.verifiedCount !== null ? (
                             <span className="font-bold text-[#4FD1B3]">{v.verifiedCount} U</span>
@@ -487,7 +500,7 @@ export default function InventoryDashboardPage() {
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <FileCheck size={18} className="text-[#E8A33D]" /> Recount Correction: {editingItem.skuCode}
               </h3>
-              <button onClick={() => setEditingItem(null)} className="text-[var(--text-secondary)] hover:text-white">
+              <button onClick={() => setEditingItem(null)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 ✕
               </button>
             </div>
@@ -496,7 +509,7 @@ export default function InventoryDashboardPage() {
               <div className="p-3 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)] text-xs space-y-1">
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Material:</span>
-                  <span className="text-white font-bold">{editingItem.productName}</span>
+                  <span className="text-[var(--text-primary)] font-bold">{editingItem.productName}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">AI Proposed Count:</span>
@@ -512,7 +525,7 @@ export default function InventoryDashboardPage() {
                   required
                   value={correctedCount}
                   onChange={(e) => setCorrectedCount(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white font-mono outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -524,7 +537,7 @@ export default function InventoryDashboardPage() {
                   placeholder="e.g. 3 cases obscured behind pillar; manual verification done."
                   value={correctionReason}
                   onChange={(e) => setCorrectionReason(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white font-sans text-xs outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-sans text-xs outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)]"
                 />
               </div>
 
@@ -557,65 +570,151 @@ export default function InventoryDashboardPage() {
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Plus size={18} className="text-[#38BDF8]" /> Manual Stock Adjustment
               </h3>
-              <button onClick={() => setShowAdjustModal(false)} className="text-[var(--text-secondary)] hover:text-white">
+              <button onClick={() => setShowAdjustModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 ✕
               </button>
             </div>
 
             <form onSubmit={handleManualAdjustment} className="space-y-4 text-sm font-mono">
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">SELECT SKU / PRODUCT *</label>
-                <select
-                  required
-                  value={adjustSku}
-                  onChange={(e) => setAdjustSku(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white outline-none"
-                >
-                  <option value="">Select a material...</option>
-                  {stockList.map((s) => (
-                    <option key={s.skuCode} value={s.skuCode}>
-                      {s.skuCode} — {s.productName} (Current: {s.currentStock} U)
-                    </option>
-                  ))}
-                </select>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="text-xs text-[var(--text-secondary)] font-semibold">SKU / MATERIAL IDENTIFIER *</label>
+                  <div className="flex items-center gap-1 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setSkuInputMode("select")}
+                      className={`px-2 py-0.5 rounded transition-colors ${
+                        skuInputMode === "select"
+                          ? "bg-[#38BDF8]/20 text-[#38BDF8] font-bold border border-[#38BDF8]/40"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      }`}
+                    >
+                      Pick SKU
+                    </button>
+                    <span className="text-[var(--border-hairline)]">|</span>
+                    <button
+                      type="button"
+                      onClick={() => setSkuInputMode("custom")}
+                      className={`px-2 py-0.5 rounded transition-colors ${
+                        skuInputMode === "custom"
+                          ? "bg-[#38BDF8]/20 text-[#38BDF8] font-bold border border-[#38BDF8]/40"
+                          : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                      }`}
+                    >
+                      Custom SKU
+                    </button>
+                  </div>
+                </div>
+
+                {skuInputMode === "select" && stockList.length > 0 ? (
+                  <select
+                    required
+                    value={adjustSku}
+                    onChange={(e) => setAdjustSku(e.target.value)}
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  >
+                    <option value="" className="bg-[var(--bg-panel)] text-[var(--text-secondary)]">-- Select registered material --</option>
+                    {stockList.map((s) => (
+                      <option key={s.skuCode} value={s.skuCode} className="bg-[var(--bg-panel)] text-[var(--text-primary)]">
+                        {s.skuCode} — {s.productName} ({s.currentStock} Units on hand)
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    required
+                    placeholder="Enter any SKU Code (e.g. SKU-WAT-500 or RAW-MAT-01)"
+                    value={adjustSku}
+                    onChange={(e) => setAdjustSku(e.target.value)}
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)] font-mono"
+                  />
+                )}
               </div>
 
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">QUANTITY DELTA (+ to Add, − to Deduct) *</label>
+                <label className="block text-xs text-[var(--text-secondary)] font-semibold mb-1">
+                  QUANTITY DELTA (+ to Add, − to Deduct) *
+                </label>
                 <input
                   type="number"
+                  step="1"
                   required
                   placeholder="e.g. +10 or -5"
                   value={adjustQty}
                   onChange={(e) => setAdjustQty(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)] font-mono text-base font-bold"
                 />
+
+                {/* Quick Delta Chips */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-2 text-[11px] font-mono">
+                  <span className="text-[var(--text-muted)] text-[10px] mr-1">Quick:</span>
+                  {[1, 5, 10, 50, 100].map((num) => (
+                    <button
+                      key={`pos-${num}`}
+                      type="button"
+                      onClick={() => setAdjustQty(String(num))}
+                      className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                    >
+                      +{num}
+                    </button>
+                  ))}
+                  {[-1, -5, -10, -50].map((num) => (
+                    <button
+                      key={`neg-${num}`}
+                      type="button"
+                      onClick={() => setAdjustQty(String(num))}
+                      className="px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500/20 transition-colors"
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs text-[var(--text-secondary)] mb-1">ADJUSTMENT REASON *</label>
+                <label className="block text-xs text-[var(--text-secondary)] font-semibold mb-1">ADJUSTMENT REASON *</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Warehouse intake receipt, damaged pallet write-off"
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-white font-sans text-xs outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-sans text-xs outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)]"
                 />
+
+                {/* Quick Reason Chips */}
+                <div className="flex flex-wrap gap-1.5 mt-2 font-sans text-[11px]">
+                  {[
+                    "Warehouse Intake Receipt",
+                    "Physical Recount Correction",
+                    "Damaged Pallet Write-off",
+                    "Customer Return Intake",
+                  ].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setAdjustReason(r)}
+                      className="px-2 py-0.5 rounded bg-[var(--bg-panel-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)] transition-colors"
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
                   onClick={() => setShowAdjustModal(false)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs"
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-mono"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold font-mono shadow-lg shadow-blue-900/30 disabled:opacity-50"
                 >
                   {submitting ? "Posting..." : "Post Adjustment"}
                 </button>

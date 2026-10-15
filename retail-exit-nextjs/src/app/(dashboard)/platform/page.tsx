@@ -137,7 +137,7 @@ export default function PlatformFleetPage() {
     }
   };
 
-  if (user && user.role !== "SUPER_ADMIN") {
+  if (!user || user.role !== "SUPER_ADMIN") {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] text-center p-8 bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl my-6">
         <div className="w-16 h-16 rounded-full bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 mb-4">

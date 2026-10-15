@@ -215,7 +215,13 @@ export default function EmployeesPage() {
 
       {/* Employees Table */}
       <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
-        {employees.length === 0 && !loading ? (
+        {loading ? (
+          <div className="p-12 text-center text-[var(--text-secondary)]">
+            <RefreshCw size={28} className="mx-auto mb-3 text-[#38BDF8] animate-spin" />
+            <h4 className="text-sm font-bold text-[var(--text-primary)]">Loading Warehouse Personnel...</h4>
+            <p className="text-xs text-[var(--text-secondary)] mt-1">Retrieving employee roster and RFID credentials from store database.</p>
+          </div>
+        ) : employees.length === 0 ? (
           <div className="p-12 text-center text-[var(--text-secondary)]">
             <ShieldCheck size={40} className="mx-auto mb-3 text-[#2C323D]" />
             <h4 className="text-base font-bold text-[var(--text-primary)]">No employees registered</h4>
@@ -318,7 +324,7 @@ export default function EmployeesPage() {
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Users size={18} className="text-[#4FD1B3]" /> Register New Employee
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-[var(--text-secondary)] hover:text-white">
+              <button onClick={() => setShowAddModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 ✕
               </button>
             </div>
@@ -401,7 +407,7 @@ export default function EmployeesPage() {
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Camera size={18} className="text-[#38BDF8]" /> Biometric Enrollment: {enrollEmployee.name}
               </h3>
-              <button onClick={() => setEnrollEmployee(null)} className="text-[var(--text-secondary)] hover:text-white">
+              <button onClick={() => setEnrollEmployee(null)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 ✕
               </button>
             </div>
@@ -464,7 +470,7 @@ export default function EmployeesPage() {
               </h3>
               <button
                 onClick={() => setEnroll360Employee(null)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 ✕
               </button>

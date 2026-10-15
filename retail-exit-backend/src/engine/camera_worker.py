@@ -1235,7 +1235,7 @@ class CameraIngestionWorker:
             logger.debug("Failed to push annotated frame to stream_manager: %s", push_err)
 
         # Persist live VisionDetection records with immutable annotated evidence snapshot
-        if vis_res.detections:
+        if vis_res.detections or overlay_boxes:
             snap_time_str = now.strftime('%Y%m%d_%H%M%S')
             batch_snap_name = f"det_{cam.camera_id}_{snap_time_str}_{uuid.uuid4().hex[:4]}.jpg"
             batch_snap_path = os.path.join("snapshots", batch_snap_name)
@@ -1253,76 +1253,90 @@ class CameraIngestionWorker:
 
             now_epoch = now.timestamp()
             last_save_ts = getattr(self, "_last_det_save_ts", {}).get(cam.camera_id, 0.0)
-            if (now_epoch - last_save_ts) >= 2.0:
+            if (now_epoch - last_save_ts) >= 1.0:
                 if not hasattr(self, "_last_det_save_ts"):
                     self._last_det_save_ts = {}
                 self._last_det_save_ts[cam.camera_id] = now_epoch
 
                 saved_boxes = set()
-                for d in vis_res.detections:
-                    lbl_lower = (d.class_label or "").lower()
-                    spec_lower = (d.specific_label or "").lower()
-                    if "person" in lbl_lower:
-                        det_cat = "PERSON"
-                    elif any(k in lbl_lower or k in spec_lower for k in ("shelf", "bookshelf", "doorway", "picture frame", "wall picture", "ceiling", "floor tile")):
-                        det_cat = "FIXTURE"
-                    elif any(b in lbl_lower or b in spec_lower for b in ("book", "document")):
-                        det_cat = "MERCHANDISE" if d.product_id else "GENERAL_OBJECT"
-                    elif d.is_inventory_relevant or d.class_label in ("case_full", "single_unit"):
-                        det_cat = "MATERIAL_MOVEMENT"
-                    else:
-                        det_cat = "LIVE_SCENE"
-                    matched_tid = None
-                    matched_dir = "IN"
-                    for ob in overlay_boxes:
-                        ob_box = ob.get("box", [])
-                        if len(ob_box) == 4 and d.bbox:
-                            if abs(ob_box[0] - d.bbox[0]) < 15 and abs(ob_box[1] - d.bbox[1]) < 15:
-                                matched_tid = ob.get("track_id")
-                                matched_dir = ob.get("direction", "IN")
-                                break
-                    if not matched_tid and d.track_id is not None:
-                        matched_tid = str(d.track_id)
+                if vis_res.detections:
+                    for d in vis_res.detections:
+                        lbl_lower = (d.class_label or "").lower()
+                        spec_lower = (d.specific_label or "").lower()
+                        if "person" in lbl_lower:
+                            det_cat = "PERSON"
+                        elif any(k in lbl_lower or k in spec_lower for k in ("shelf", "bookshelf", "doorway", "picture frame", "wall picture", "ceiling", "floor tile")):
+                            det_cat = "FIXTURE"
+                        elif any(b in lbl_lower or b in spec_lower for b in ("book", "document")):
+                            det_cat = "MERCHANDISE" if d.product_id else "GENERAL_OBJECT"
+                        elif d.is_inventory_relevant or d.class_label in ("case_full", "single_unit"):
+                            det_cat = "MATERIAL_MOVEMENT"
+                        else:
+                            det_cat = "LIVE_SCENE"
+                        matched_tid = None
+                        matched_dir = "IN"
+                        for ob in overlay_boxes:
+                            ob_box = ob.get("box", [])
+                            if len(ob_box) == 4 and d.bbox:
+                                if abs(ob_box[0] - d.bbox[0]) < 15 and abs(ob_box[1] - d.bbox[1]) < 15:
+                                    matched_tid = ob.get("track_id")
+                                    matched_dir = ob.get("direction", "IN")
+                                    break
+                        if not matched_tid and d.track_id is not None:
+                            matched_tid = str(d.track_id)
 
-                    if d.bbox and len(d.bbox) == 4:
-                        saved_boxes.add((d.bbox[0], d.bbox[1], d.bbox[2], d.bbox[3]))
+                        if d.bbox and len(d.bbox) == 4:
+                            saved_boxes.add((d.bbox[0], d.bbox[1], d.bbox[2], d.bbox[3]))
 
-                    vdet = VisionDetection(
-                        event_id=None,
-                        camera_id=cam.camera_id,
-                        frame_ts=now,
-                        model_version=vis_res.model_version,
-                        class_label=d.class_label,
-                        confidence=d.confidence,
-                        bbox=d.bbox,
-                        product_id=d.product_id,
-                        track_id=matched_tid,
-                        category=det_cat,
-                        snapshot_url=batch_snap_url,
-                        direction=matched_dir,
-                    )
-                    session.add(vdet)
+                        vdet = VisionDetection(
+                            event_id=None,
+                            camera_id=cam.camera_id,
+                            frame_ts=now,
+                            model_version=vis_res.model_version,
+                            class_label=d.class_label,
+                            confidence=d.confidence,
+                            bbox=d.bbox,
+                            product_id=d.product_id,
+                            track_id=matched_tid,
+                            category=det_cat,
+                            snapshot_url=batch_snap_url,
+                            direction=matched_dir,
+                        )
+                        session.add(vdet)
 
-                # Capture any person from overlay_boxes not already stored
+                # Capture any detections from overlay_boxes not already stored
                 for ob in overlay_boxes:
-                    if "PERSON" in ob.get("type", ""):
-                        ob_b = tuple(ob.get("box", [0, 0, 0, 0]))
-                        if ob_b not in saved_boxes and len(ob_b) == 4 and ob_b[2] > 0 and ob_b[3] > 0:
-                            saved_boxes.add(ob_b)
-                            session.add(VisionDetection(
-                                event_id=None,
-                                camera_id=cam.camera_id,
-                                frame_ts=now,
-                                model_version=vis_res.model_version if vis_res else "yolox_nano_v1",
-                                class_label="person",
-                                confidence=ob.get("confidence", 0.90),
-                                bbox=list(ob_b),
-                                product_id=None,
-                                track_id=ob.get("track_id"),
-                                category="PERSON",
-                                snapshot_url=batch_snap_url,
-                                direction=ob.get("direction", "IN"),
-                            ))
+                    ob_b = tuple(ob.get("box", [0, 0, 0, 0]))
+                    if ob_b not in saved_boxes and len(ob_b) == 4 and ob_b[2] > 0 and ob_b[3] > 0:
+                        saved_boxes.add(ob_b)
+                        ob_type = ob.get("type", "").upper()
+                        ob_lbl = ob.get("label", "Object")
+                        lbl_clean = ob_lbl.split(" [")[0].split(" (")[0]
+                        if "PERSON" in ob_type or "PERSON" in ob_lbl.upper():
+                            ob_cat = "PERSON"
+                        elif any(k in ob_type or k in ob_lbl.upper() for k in ("ELECTRONICS", "PHONE", "LAPTOP")):
+                            ob_cat = "GENERAL_OBJECT"
+                        elif any(k in ob_type or k in ob_lbl.upper() for k in ("CASE", "CARTON", "STOCK", "UNIT")):
+                            ob_cat = "MATERIAL_MOVEMENT"
+                        elif any(k in ob_type or k in ob_lbl.upper() for k in ("DOOR", "SHELF", "GATE")):
+                            ob_cat = "FIXTURE"
+                        else:
+                            ob_cat = "LIVE_SCENE"
+
+                        session.add(VisionDetection(
+                            event_id=None,
+                            camera_id=cam.camera_id,
+                            frame_ts=now,
+                            model_version=vis_res.model_version if vis_res else "yolox_nano_v1",
+                            class_label=lbl_clean,
+                            confidence=ob.get("confidence", 0.90),
+                            bbox=list(ob_b),
+                            product_id=None,
+                            track_id=ob.get("track_id"),
+                            category=ob_cat,
+                            snapshot_url=batch_snap_url,
+                            direction=ob.get("direction", "IN"),
+                        ))
 
         def _persist_to_disk(c_id: str, raw_b: bytes, ann_b: bytes):
             try:

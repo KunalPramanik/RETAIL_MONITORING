@@ -414,7 +414,7 @@ export default function StreamPlayer({
   const videoSrc = `/api/cameras/${cameraId}/stream?raw=true&stream=${streamQuality}`;
   const currentSnapshotUrl = `/api/cameras/${cameraId}/snapshot?t=${snapshotKey}`;
 
-  // Helper to match Part P.1 and CC.2 color & styling system
+  // Helper to match Part P.1 and CC.2 color & styling system with explicit object shapes
   const getBoxStyle = (b: DetectionBox) => {
     const rawType = (b.type || "").toUpperCase();
     const rawLabel = (b.label || "").toUpperCase();
@@ -428,14 +428,14 @@ export default function StreamPlayer({
       rawType.includes("SUSPICIOUS") ||
       rawType.includes("HAZARD")
     ) {
-      return { border: "#EF4444", bg: "#EF4444", text: "#FFFFFF" }; // Red
+      return { border: "#EF4444", bg: "#EF4444", text: "#FFFFFF", shape: "hazard", category: "ALERT" };
     }
     if (
       rawType.includes("STATIC") ||
       rawLabel.includes("STATIC ARTIFACT") ||
       rawLabel.includes("IGNORED")
     ) {
-      return { border: "#64748B", bg: "#1E293B", text: "#94A3B8" }; // Slate Gray
+      return { border: "#64748B", bg: "#1E293B", text: "#94A3B8", shape: "static", category: "FIXTURE" };
     }
     if (
       rawLabel.includes("SMARTPHONE") ||
@@ -443,34 +443,51 @@ export default function StreamPlayer({
       rawLabel.includes("LAPTOP") ||
       rawType.includes("ELECTRONICS")
     ) {
-      return { border: "#F97316", bg: "#F97316", text: "#000000" }; // Orange
+      return { border: "#F97316", bg: "#F97316", text: "#000000", shape: "electronics", category: "DEVICE" };
+    }
+    if (
+      rawLabel.includes("DOOR") ||
+      rawLabel.includes("GATE") ||
+      rawType.includes("DOOR") ||
+      rawLabel.includes("DOORWAY")
+    ) {
+      return { border: "#06B6D4", bg: "#06B6D4", text: "#000000", shape: "door", category: "PORTAL" };
+    }
+    if (
+      rawLabel.includes("CASE") ||
+      rawType.includes("CASE") ||
+      rawLabel.includes("CARTON") ||
+      rawLabel.includes("PALLET")
+    ) {
+      return { border: "#A855F7", bg: "#A855F7", text: "#FFFFFF", shape: "case", category: "CASE" };
     }
     if (
       rawLabel.includes("SHELF") ||
       rawLabel.includes("BOOKCASE") ||
       rawLabel.includes("CAR") ||
       rawLabel.includes("VEHICLE") ||
-      rawType.includes("VEHICLE") ||
-      rawLabel.includes("DOORWAY")
+      rawType.includes("VEHICLE")
     ) {
-      return { border: "#06B6D4", bg: "#06B6D4", text: "#000000" }; // Cyan
+      return { border: "#0EA5E9", bg: "#0EA5E9", text: "#FFFFFF", shape: "fixture", category: "FIXTURE" };
     }
     if (
       rawType.includes("MATCHED") ||
       rawLabel.includes("AUTHORIZED") ||
       rawLabel.includes("KNOWN")
     ) {
-      return { border: "#10B981", bg: "#10B981", text: "#FFFFFF" }; // Confirmed Match (Emerald)
+      return { border: "#10B981", bg: "#10B981", text: "#FFFFFF", shape: "person_matched", category: "STAFF" };
     }
     if (
       rawType.includes("UNMATCHED") ||
       rawLabel.includes("UNKNOWN") ||
-      rawLabel.includes("UNAUTHORIZED")
+      rawLabel.includes("UNAUTHORIZED") ||
+      rawType.includes("PERSON") ||
+      rawLabel.includes("PERSON")
     ) {
-      return { border: "#EF4444", bg: "#DC2626", text: "#FFFFFF" }; // Unknown Person
+      return { border: "#EF4444", bg: "#DC2626", text: "#FFFFFF", shape: "person_unmatched", category: "PERSON" };
     }
     // Default retail item styling (Lime Green matching industrial spec)
-    return { border: "#84CC16", bg: "#84CC16", text: "#000000" };
+    return { border: "#84CC16", bg: "#84CC16", text: "#000000", shape: "unit", category: "STOCK" };
   };
 
   return (
@@ -592,6 +609,7 @@ export default function StreamPlayer({
           </svg>
 
           {boxes.map((b, idx) => {
+            if (!b.box || b.box.length < 4) return null;
             const rawType = (b.type || "").toUpperCase();
             const rawLabel = (b.label || "").toUpperCase();
             if (rawType === "WALL_PICTURE" && !rawLabel.includes("STATIC ARTIFACT")) {
@@ -599,44 +617,100 @@ export default function StreamPlayer({
             }
 
             const style = getBoxStyle(b);
-            const leftPct = `${b.box[0] * 100}%`;
-            const topPct = `${b.box[1] * 100}%`;
-            const widthPct = `${b.box[2] * 100}%`;
-            const heightPct = `${b.box[3] * 100}%`;
+            const isNorm = b.box.every((v) => typeof v === "number" && v >= 0 && v <= 1.0);
+            const frameW = resolution?.includes("1920") ? 1920 : 1280;
+            const frameH = resolution?.includes("1080") ? 1080 : 720;
+
+            let left = isNorm ? b.box[0] * 100 : (b.box[0] / frameW) * 100;
+            let top = isNorm ? b.box[1] * 100 : (b.box[1] / frameH) * 100;
+            let width = isNorm ? b.box[2] * 100 : (b.box[2] / frameW) * 100;
+            let height = isNorm ? b.box[3] * 100 : (b.box[3] / frameH) * 100;
+
+            // Handle [x1, y1, x2, y2] coordinate format safely
+            if (!isNorm && width > left && (left + width) > 105) {
+              width = width - left;
+              height = height - top;
+            }
+
+            left = Math.max(0, Math.min(98, left));
+            top = Math.max(0, Math.min(98, top));
+            width = Math.max(1.5, Math.min(100 - left, width));
+            height = Math.max(1.5, Math.min(100 - top, height));
+
+            const isPerson = style.shape === "person_matched" || style.shape === "person_unmatched";
+            const isCase = style.shape === "case";
+            const isDevice = style.shape === "electronics";
+            const isDoor = style.shape === "door";
+            const isHazard = style.shape === "hazard";
 
             let cleanTag = (b.label || "").trim();
             if (!cleanTag.startsWith("[")) {
-              const confPct =
-                typeof b.confidence === "number"
-                  ? `${(b.confidence * 100).toFixed(0)}%`
-                  : "";
-              const trackId = b.track_id ? ` ID:${b.track_id}` : ` ID:${idx + 1}`;
-              const baseName = String(cleanTag || "").replace(/\s*\(\d+%\)/g, "").trim();
+              const confVal = typeof b.confidence === "number"
+                ? (b.confidence <= 1.0 ? b.confidence * 100 : b.confidence).toFixed(0)
+                : "";
+              const confPct = confVal ? `${confVal}%` : "";
+              const trackId = b.track_id ? ` ID:${b.track_id}` : ` #${idx + 1}`;
+              const baseName = String(cleanTag || style.category).replace(/\s*\(\d+%\)/g, "").trim();
               cleanTag = `[${baseName} ${confPct}${trackId}]`;
             }
-            const badgePlacement = b.box[1] < 0.08 ? "top-0 left-0" : "-top-5 left-0";
+            const badgePlacement = top < 7 ? "top-0 left-0" : "-top-5 left-0";
+
+            // Shape border classes
+            let shapeBorderClass = "rounded-md border-2";
+            if (isPerson) shapeBorderClass = "rounded-2xl border-2 shadow-[0_0_12px_rgba(16,185,129,0.3)]";
+            else if (isCase) shapeBorderClass = "rounded-none border-2 shadow-[0_0_8px_rgba(168,85,247,0.3)]";
+            else if (isDevice) shapeBorderClass = "rounded-md border-2 border-dashed";
+            else if (isDoor) shapeBorderClass = "rounded-t-xl border-2 border-dashed";
+            else if (isHazard) shapeBorderClass = "rounded-sm border-2 animate-pulse";
 
             return (
               <div
                 key={idx}
-                className="absolute transition-all duration-100 ease-out"
+                className={`absolute transition-all duration-100 ease-out pointer-events-none ${shapeBorderClass}`}
                 style={{
-                  left: leftPct,
-                  top: topPct,
-                  width: widthPct,
-                  height: heightPct,
-                  border: `2px solid ${style.border}`,
+                  left: `${left}%`,
+                  top: `${top}%`,
+                  width: `${width}%`,
+                  height: `${height}%`,
+                  borderColor: style.border,
                 }}
               >
+                {/* Corner reticles for industrial cases/merchandise */}
+                {isCase && (
+                  <>
+                    <div className="absolute -top-1 -left-1 w-2.5 h-2.5 border-t-2 border-l-2 border-white" />
+                    <div className="absolute -top-1 -right-1 w-2.5 h-2.5 border-t-2 border-r-2 border-white" />
+                    <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 border-b-2 border-l-2 border-white" />
+                    <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 border-b-2 border-r-2 border-white" />
+                  </>
+                )}
+
+                {/* Primary Object Detection & Category Badge */}
                 <div
-                  className={`absolute ${badgePlacement} px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider font-mono shadow-md flex items-center gap-1 whitespace-nowrap rounded-sm`}
+                  className={`absolute ${badgePlacement} px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider font-mono shadow-md flex items-center gap-1 whitespace-nowrap rounded-sm z-30`}
                   style={{
                     backgroundColor: style.bg,
                     color: style.text,
                   }}
                 >
+                  {isPerson && <Users size={10} className="shrink-0" />}
+                  {isCase && <Package size={10} className="shrink-0" />}
+                  {isHazard && <AlertCircle size={10} className="shrink-0" />}
                   <span>{cleanTag}</span>
                 </div>
+
+                {/* Optional Traversal Direction Pill */}
+                {b.direction && (
+                  <div
+                    className={`absolute -bottom-5 right-0 px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase tracking-wider shadow rounded z-30 ${
+                      b.direction === "IN"
+                        ? "bg-emerald-600 text-white"
+                        : "bg-blue-600 text-white"
+                    }`}
+                  >
+                    {b.direction === "IN" ? "IN ↑" : "OUT ↓"}
+                  </div>
+                )}
               </div>
             );
           })}

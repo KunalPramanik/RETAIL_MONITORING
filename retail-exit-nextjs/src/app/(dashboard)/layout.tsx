@@ -80,7 +80,7 @@ export default function DashboardLayout({
   const allNavItems = [
     { label: "Dashboard", href: "/", icon: Activity, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "SECURITY", "AUDITOR", "VIEWER"] },
     { label: "Platform Fleet", href: "/platform", icon: ShieldAlert, roles: ["SUPER_ADMIN"] },
-    { label: "Store Onboarding", href: "/onboarding", icon: Sparkles, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { label: "Store Onboarding", href: "/onboarding", icon: Sparkles, roles: ["SUPER_ADMIN"] },
     { label: "Cameras & Fleet", href: "/settings/cameras", icon: Camera, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "SECURITY"] },
     { label: "Security Alerts", href: "/alerts", icon: AlertTriangle, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "SECURITY"] },
     { label: "Inventory & Ledger", href: "/inventory", icon: Box, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "AUDITOR", "VIEWER"] },

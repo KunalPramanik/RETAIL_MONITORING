@@ -164,7 +164,7 @@ export default function EventsPage() {
               className={`px-2.5 py-1 rounded text-xs font-mono transition-colors ${
                 datePreset === preset.id
                   ? "bg-[#38BDF8] text-black font-bold"
-                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-white border border-[var(--border-hairline)]"
+                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
               }`}
             >
               {preset.label}
@@ -193,7 +193,13 @@ export default function EventsPage() {
 
       {/* Events Table */}
       <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
-        {filtered.length === 0 && !loading ? (
+        {loading ? (
+          <div className="p-12 text-center text-[var(--text-secondary)]">
+            <RefreshCw size={28} className="mx-auto mb-3 text-[#38BDF8] animate-spin" />
+            <h4 className="text-sm font-bold text-[var(--text-primary)]">Loading Exit Traversal Events...</h4>
+            <p className="text-xs text-[var(--text-secondary)] mt-1">Retrieving latest multi-sensor audit telemetry from store database.</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="p-12 text-center text-[var(--text-secondary)]">
             <Activity size={40} className="mx-auto mb-3 text-[#2C323D]" />
             <h4 className="text-base font-bold text-[var(--text-primary)]">No exit events recorded yet</h4>

@@ -114,9 +114,12 @@ interface AuditLogItem {
 }
 
 function PlatformControlPanelInner() {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  const role = (user?.role || "ADMIN").toUpperCase();
+  const isSoftwareOwner = role === "SUPER_ADMIN" || user?.isPlatformOwner === true;
 
   const tabParam = searchParams.get("tab") || "tenants";
   const [activeTab, setActiveTab] = useState<"tenants" | "stores" | "billing" | "cameras" | "audit">(
@@ -227,8 +230,13 @@ function PlatformControlPanelInner() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!isSoftwareOwner) {
+      router.replace("/");
+      return;
+    }
     fetchAllData();
-  }, []);
+  }, [authLoading, isSoftwareOwner]);
 
   // Handlers
   const handleCreateTenant = async (e: React.FormEvent) => {
@@ -447,6 +455,15 @@ function PlatformControlPanelInner() {
       return c.status === cameraStatusFilter;
     });
   }, [cameras, cameraStatusFilter]);
+
+  if (authLoading || !isSoftwareOwner) {
+    return (
+      <div className="flex h-64 items-center justify-center font-mono text-xs text-[var(--text-muted)] gap-2">
+        <RefreshCw size={16} className="animate-spin text-[#38BDF8]" />
+        Verifying software owner authorization...
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">

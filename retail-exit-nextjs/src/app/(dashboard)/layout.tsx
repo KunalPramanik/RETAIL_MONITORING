@@ -131,20 +131,35 @@ export default function DashboardLayout({
     };
   }, []);
 
-  const role = (user?.role || "SUPER_ADMIN").toUpperCase();
-  const isSoftwareOwner = role === "SUPER_ADMIN";
+  const role = (user?.role || "ADMIN").toUpperCase();
+  const isSoftwareOwner = role === "SUPER_ADMIN" || user?.isPlatformOwner === true;
 
-  const allNavItems = [
-    { label: "Platform Overview", href: "/", icon: Activity, roles: ["SUPER_ADMIN", "ADMIN"] },
-    { label: "Companies & Tenants", href: "/platform?tab=tenants", icon: ShieldAlert, roles: ["SUPER_ADMIN"] },
-    { label: "Stores Fleet", href: "/platform?tab=stores", icon: Sparkles, roles: ["SUPER_ADMIN"] },
-    { label: "Subscriptions & Billing", href: "/platform?tab=billing", icon: FileSpreadsheet, roles: ["SUPER_ADMIN"] },
-    { label: "Camera Fleet Health", href: "/platform?tab=cameras", icon: Camera, roles: ["SUPER_ADMIN"] },
-    { label: "Platform Audit Logs", href: "/platform?tab=audit", icon: AlertTriangle, roles: ["SUPER_ADMIN"] },
-    { label: "Owner Settings & Security", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN", "ADMIN"] },
+  const softwareOwnerNavItems = [
+    { label: "Platform Overview", href: "/", icon: Activity },
+    { label: "Companies & Tenants", href: "/platform?tab=tenants", icon: ShieldAlert },
+    { label: "Stores Fleet", href: "/platform?tab=stores", icon: Sparkles },
+    { label: "Subscriptions & Billing", href: "/platform?tab=billing", icon: FileSpreadsheet },
+    { label: "Camera Fleet Health", href: "/platform?tab=cameras", icon: Camera },
+    { label: "Platform Audit Logs", href: "/platform?tab=audit", icon: AlertTriangle },
+    { label: "Owner Settings & Security", href: "/settings", icon: Settings },
   ];
 
-  const navItems = allNavItems.filter((item) => item.roles.includes(role));
+  const storeAdminNavItems = [
+    { label: "Dashboard", href: "/", icon: Activity, roles: ["ADMIN", "SUPERVISOR", "OPERATOR", "SECURITY", "AUDITOR", "VIEWER"] },
+    { label: "Exit Events", href: "/events", icon: Layers, roles: ["ADMIN", "SUPERVISOR", "OPERATOR", "SECURITY", "AUDITOR", "VIEWER"] },
+    { label: "Security Alerts", href: "/alerts", icon: AlertTriangle, roles: ["ADMIN", "SUPERVISOR", "SECURITY"] },
+    { label: "Inventory & Ledger", href: "/inventory", icon: Box, roles: ["ADMIN", "SUPERVISOR", "OPERATOR", "AUDITOR", "VIEWER"] },
+    { label: "Products & Catalog", href: "/products", icon: Layers, roles: ["ADMIN", "SUPERVISOR"] },
+    { label: "Cameras & Streams", href: "/settings/cameras", icon: Camera, roles: ["ADMIN", "SUPERVISOR", "SECURITY"] },
+    { label: "Invoices & OCR", href: "/invoices", icon: FileText, roles: ["ADMIN", "SUPERVISOR", "OPERATOR", "AUDITOR", "VIEWER"] },
+    { label: "Reports & PDF", href: "/reports", icon: FileSpreadsheet, roles: ["ADMIN", "SUPERVISOR", "AUDITOR", "VIEWER"] },
+    { label: "Employees & Staff", href: "/employees", icon: Users, roles: ["ADMIN", "SECURITY"] },
+    { label: "Store Settings", href: "/settings", icon: Settings, roles: ["ADMIN"] },
+  ];
+
+  const navItems = isSoftwareOwner
+    ? softwareOwnerNavItems
+    : storeAdminNavItems.filter((item) => item.roles.includes(role));
 
   if (isLoading) {
     return (
@@ -168,8 +183,8 @@ export default function DashboardLayout({
   }
 
   const userInitial = (user?.username?.[0] || user?.email?.[0] || "O").toUpperCase();
-  const displayName = user?.email || user?.username || "Software Owner";
-  const userRole = role === "SUPER_ADMIN" ? "SOFTWARE OWNER" : role;
+  const displayName = user?.email || user?.username || (isSoftwareOwner ? "Software Owner" : "Store Administrator");
+  const userRole = isSoftwareOwner ? "SOFTWARE OWNER" : role === "ADMIN" ? "STORE OWNER / ADMIN" : role;
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] select-none transition-colors duration-200">
@@ -186,7 +201,7 @@ export default function DashboardLayout({
                 SEC-OPS <span className="text-[#38BDF8] text-xs font-mono">V8</span>
               </span>
               <span className="text-[10px] font-mono text-[#38BDF8] tracking-wider block mt-0.5 uppercase font-semibold">
-                Software Owner Control
+                {isSoftwareOwner ? "Software Owner Control" : "Store Monitoring AI"}
               </span>
             </div>
           </Link>
@@ -233,7 +248,9 @@ export default function DashboardLayout({
         {/* Top Control Room Header */}
         <header className="px-6 py-3 border-b border-[var(--border-hairline)] flex justify-between items-center bg-[var(--header-bg)] z-10 sticky top-0 shadow-sm transition-colors duration-200">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-mono text-[var(--text-muted)]">SOFTWARE OWNER CONSOLE //</span>
+            <span className="text-xs font-mono text-[var(--text-muted)]">
+              {isSoftwareOwner ? "SOFTWARE OWNER CONSOLE //" : "STORE OPERATIONS CONSOLE //"}
+            </span>
             <Suspense fallback={<span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">Control Console</span>}>
               <HeaderTitle navItems={navItems} pathname={pathname} />
             </Suspense>

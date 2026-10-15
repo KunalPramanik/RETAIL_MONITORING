@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { safeFetch } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
+import StoreDashboard from "@/components/dashboard/store-dashboard";
 import {
   ShieldAlert,
   Building,
@@ -75,7 +76,7 @@ interface DashboardSummary {
   };
 }
 
-export default function SoftwareOwnerDashboardPage() {
+function SoftwareOwnerDashboardView() {
   const { user } = useAuth();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -509,3 +510,25 @@ export default function SoftwareOwnerDashboardPage() {
     </div>
   );
 }
+
+export default function DashboardRouterPage() {
+  const { user, isLoading } = useAuth();
+  const role = (user?.role || "ADMIN").toUpperCase();
+  const isSoftwareOwner = role === "SUPER_ADMIN" || user?.isPlatformOwner === true;
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center font-mono text-xs text-[var(--text-muted)] gap-2">
+        <RefreshCw size={16} className="animate-spin text-[#38BDF8]" />
+        Loading console...
+      </div>
+    );
+  }
+
+  if (isSoftwareOwner) {
+    return <SoftwareOwnerDashboardView />;
+  }
+
+  return <StoreDashboard />;
+}
+

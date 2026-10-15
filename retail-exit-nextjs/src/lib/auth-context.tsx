@@ -9,7 +9,8 @@ export interface AuthUser {
   user_id: string;
   email: string;
   username: string;
-  role: "ADMIN" | "SUPERVISOR" | "VIEWER" | string;
+  role: "ADMIN" | "SUPERVISOR" | "VIEWER" | "SUPER_ADMIN" | string;
+  isPlatformOwner?: boolean;
 }
 
 interface AuthContextType {

@@ -1,0 +1,1272 @@
+"use client";
+
+import { safeFetch, getWsUrl } from "@/lib/api-client";
+import { formatLocalDateTime } from "@/lib/date-utils";
+import React, { useState, useEffect } from "react";
+import VerifyAndSaveModal from "@/components/dispatch/verify-and-save-modal";
+import StreamPlayer from "@/components/cameras/stream-player";
+import {
+  Activity,
+  AlertTriangle,
+  Box,
+  Camera,
+  Layers,
+  ArrowRight,
+  CheckCircle,
+  Plus,
+  FileCheck,
+  Check,
+  Edit2,
+  Sliders,
+  Eye,
+  RefreshCw,
+  X,
+  ShieldCheck,
+  UserCheck,
+  FileText,
+  Clock,
+  TrendingUp,
+  ArrowDownLeft,
+  ArrowUpRight,
+  Maximize2,
+  Video,
+} from "lucide-react";
+import Link from "next/link";
+
+interface LiveDetectionRow {
+  detectionId: string;
+  cameraId: string;
+  cameraLabel: string;
+  timestamp: string;
+  isoTimestamp?: string;
+  objectClass: string;
+  direction?: string;
+  quantity: number;
+  confidence: number;
+  personIdentity: string;
+  status: string;
+  snapshotUrl?: string;
+}
+
+interface StockVerificationItem {
+  verificationId: string;
+  productId: string;
+  skuCode: string;
+  productName: string;
+  cameraId?: string;
+  aiProposedCount: number;
+  verifiedCount?: number;
+  difference?: number;
+  status: string;
+  verifiedBy?: string;
+  correctionReason?: string;
+  snapshotUrl?: string;
+  modelVersion?: string;
+  createdAt?: string;
+  verifiedAt?: string;
+}
+
+interface MovementMonitorRow {
+  movementId: string;
+  eventId: string;
+  timestamp: string;
+  isoTimestamp?: string;
+  personName: string;
+  billNumber: string;
+  productName: string;
+  skuCode: string;
+  authorizedQty: number;
+  actualQty: number;
+  remainingQty: number;
+  progressPct: number;
+  status: string;
+  verdict: string;
+  cameraLabel: string;
+  snapshotUrl?: string;
+  notes?: string;
+}
+
+export default function StoreDashboard() {
+  const [cameras, setCameras] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [events, setEvents] = useState<any[]>([]);
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
+  const [kpis, setKpis] = useState({
+    todayThroughput: 0,
+    openAlerts: 0,
+    criticalAlerts: 0,
+    accuracyRate: 100.0,
+    camerasOnline: 0,
+    camerasTotal: 0,
+  });
+
+  // V8 Addendum: Live Detections, Stock Baseline Verifications & Movement Monitor
+  const [liveDetections, setLiveDetections] = useState<LiveDetectionRow[]>([]);
+  const [detectionsLoading, setDetectionsLoading] = useState<boolean>(true);
+  const [detectionsError, setDetectionsError] = useState<string | null>(null);
+  const [verifications, setVerifications] = useState<StockVerificationItem[]>([]);
+  const [movementMonitor, setMovementMonitor] = useState<MovementMonitorRow[]>([]);
+  const [previewSnapshot, setPreviewSnapshot] = useState<{ url: string; fallbackUrl?: string; title: string } | null>(null);
+  const [snapshotLoadFailed, setSnapshotLoadFailed] = useState(false);
+
+  // Real-Time Fleet Streaming State
+  const [streamViewMode, setStreamViewMode] = useState<"grid" | "single">("grid");
+  const [selectedCamId, setSelectedCamId] = useState<string | null>(null);
+  const [streamIsRaw, setStreamIsRaw] = useState<boolean>(false);
+  const [inspectingCamera, setInspectingCamera] = useState<any | null>(null);
+  const [streamNonce, setStreamNonce] = useState<number>(0);
+
+  const formatLocalTime = (isoOrTime?: string) => {
+    return formatLocalDateTime(isoOrTime);
+  };
+
+  // Edit Correction Modal State
+  const [editingVerif, setEditingVerif] = useState<StockVerificationItem | null>(null);
+  const [correctionQty, setCorrectionQty] = useState<number>(0);
+  const [correctionReason, setCorrectionReason] = useState("");
+  const [submittingCorrection, setSubmittingCorrection] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      // 1. Fetch Live KPIs directly from database
+      const resKpi = await safeFetch("/api/kpis/live");
+      if (resKpi.ok) {
+        const kData = await resKpi.json();
+        setKpis({
+          todayThroughput: kData.todayThroughputUnits || 0,
+          openAlerts: kData.openAlertsCount || 0,
+          criticalAlerts: kData.openAlertsBySeverity?.high || 0,
+          accuracyRate:
+            kData.consensusAccuracyRate !== undefined
+              ? Number(kData.consensusAccuracyRate.toFixed(1))
+              : 100.0,
+          camerasOnline: kData.camerasOnlineCount || 0,
+          camerasTotal: kData.camerasTotalCount || 0,
+        });
+      }
+
+      // 2. Fetch Cameras Fleet
+      const resCam = await safeFetch("/api/cameras");
+      if (resCam.ok) {
+        const camData = await resCam.json();
+        setCameras(camData);
+      }
+
+      // 3. Fetch Alerts
+      const resAlt = await safeFetch("/api/alerts?limit=5");
+      if (resAlt.ok) {
+        const altData = await resAlt.json();
+        setAlerts(altData.slice(0, 5));
+      }
+
+      // 4. Fetch Events
+      const resEv = await safeFetch("/api/events?limit=5");
+      if (resEv.ok) {
+        const evData = await resEv.json();
+        setEvents(evData.slice(0, 5));
+      }
+
+      // 5. Fetch Live Camera Detections Table (Section 2)
+      setDetectionsLoading(true);
+      setDetectionsError(null);
+      try {
+        const resLiveDet = await safeFetch("/api/cameras/detections/live?limit=15");
+        if (resLiveDet.ok) {
+          const detData = await resLiveDet.json();
+          setLiveDetections(detData);
+        } else if (resLiveDet.status === 403) {
+          setDetectionsError("Access denied");
+        } else if (resLiveDet.status === 503) {
+          setDetectionsError("AI model unavailable");
+        } else {
+          setDetectionsError("Could not load detections ΓÇö retry");
+        }
+      } catch {
+        setDetectionsError("Could not load detections ΓÇö retry");
+      } finally {
+        setDetectionsLoading(false);
+      }
+
+      // 6. Fetch Initial Stock Count Baseline Verifications (Section 5)
+      const resVerif = await safeFetch("/api/inventory/verification");
+      if (resVerif.ok) {
+        const verifData = await resVerif.json();
+        setVerifications(verifData);
+      }
+
+      // 7. Fetch Movement Monitor (Section 7, 8, 9, 11)
+      const resMov = await safeFetch("/api/events/movement-monitor?limit=10");
+      if (resMov.ok) {
+        const movData = await resMov.json();
+        setMovementMonitor(movData);
+      }
+    } catch (e) {
+      console.warn("Dashboard polling warning:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+
+    // Real-time WebSocket subscription to /ws/live
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    let pingTimer: any = null;
+
+    const connectWs = () => {
+      try {
+        const wsUrl = getWsUrl("/ws/live");
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          pingTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            }
+          }, 10000);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            if (event.data === "pong") return;
+            const data = JSON.parse(event.data);
+            if (data.type === "pong") return;
+
+            if (data.type === "camera_status_changed" && data.payload) {
+              const updatedCam = data.payload;
+              setCameras((prev) =>
+                prev.map((c) =>
+                  c.cameraId === updatedCam.cameraId ? { ...c, ...updatedCam } : c
+                )
+              );
+              setStreamNonce(Date.now());
+              fetchData();
+              return;
+            }
+
+            if (
+              data.type === "new_alert" ||
+              data.type === "alert_resolved" ||
+              data.type === "exit_event" ||
+              data.type === "camera_status_changed" ||
+              data.type === "lane_status_changed" ||
+              data.type === "detection_update" ||
+              data.type === "inventory_update" ||
+              data.type === "heartbeat"
+            ) {
+              fetchData();
+            }
+          } catch (err) {
+            console.debug("WS parse error:", err);
+          }
+        };
+
+        ws.onclose = () => {
+          if (pingTimer) clearInterval(pingTimer);
+          reconnectTimeout = setTimeout(connectWs, 5000);
+        };
+
+        ws.onerror = () => {
+          if (ws) ws.close();
+        };
+      } catch (err) {
+        console.debug("WS connection error:", err);
+      }
+    };
+
+    setStreamNonce(Date.now());
+    connectWs();
+    const fallbackInterval = setInterval(fetchData, 15000);
+
+    return () => {
+      if (pingTimer) clearInterval(pingTimer);
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
+      }
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      clearInterval(fallbackInterval);
+    };
+  }, []);
+
+  // Handle Initial Stock YES Confirmation
+  const handleConfirmStock = async (verifId: string, isCorrect: boolean, correctedQty?: number, reason?: string) => {
+    try {
+      setSubmittingCorrection(true);
+      const res = await safeFetch(`/api/inventory/verification/${verifId}/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          is_correct: isCorrect,
+          corrected_count: correctedQty,
+          reason: reason || (isCorrect ? "Confirmed accurate by operator" : "Recount override"),
+          verified_by: "OPERATOR",
+        }),
+      });
+
+      if (res.ok) {
+        setEditingVerif(null);
+        await fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Verification failed");
+      }
+    } catch (e: any) {
+      alert(e.message || "Request failed");
+    } finally {
+      setSubmittingCorrection(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* 1. Live KPI Top Strip (All Cards Clickable Links per User Feedback) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Active Cameras Fleet -> Navigates to /settings/cameras */}
+        <Link
+          href="/settings/cameras"
+          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-[#38BDF8] hover:shadow-md cursor-pointer block group"
+          title="Click to manage and inspect camera fleet"
+        >
+          <div>
+            <span className="text-xs font-mono text-[var(--text-muted)] group-hover:text-[#38BDF8] transition-colors">
+              CAMERAS ONLINE / TOTAL
+            </span>
+            <div className="text-2xl font-bold font-mono text-[var(--text-primary)] mt-1">
+              <span className="text-[var(--status-ok)]">{kpis.camerasOnline}</span>
+              <span className="text-[var(--text-muted)]"> / </span>
+              <span>{kpis.camerasTotal}</span>
+            </div>
+            <span className="text-[11px] text-[var(--status-ok)] font-mono mt-0.5 block flex items-center gap-1">
+              Live Edge Stream <ArrowRight size={11} className="inline opacity-0 group-hover:opacity-100 transition-opacity" />
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-[var(--bg-panel-raised)] text-[#38BDF8] group-hover:bg-blue-900/30 transition-colors">
+            <Camera size={20} />
+          </div>
+        </Link>
+
+        {/* Open Loss-Prevention Alerts -> Navigates to /alerts */}
+        <Link
+          href="/alerts"
+          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-rose-500 hover:shadow-md cursor-pointer block group"
+          title="Click to view and resolve security alarms queue"
+        >
+          <div>
+            <span className="text-xs font-mono text-[var(--text-muted)] group-hover:text-rose-400 transition-colors">
+              OPEN ALARMS (QUEUE)
+            </span>
+            <div className="text-2xl font-bold font-mono text-[var(--status-high)] mt-1">
+              {kpis.openAlerts}
+            </div>
+            <span className="text-[11px] text-[var(--signal-amber)] font-mono mt-0.5 block flex items-center gap-1">
+              {kpis.criticalAlerts} Critical High Priority <ArrowRight size={11} className="inline opacity-0 group-hover:opacity-100 transition-opacity" />
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-[var(--bg-panel-raised)] text-[var(--status-high)] group-hover:bg-rose-950/40 transition-colors">
+            <AlertTriangle size={20} />
+          </div>
+        </Link>
+
+        {/* Throughput Items Verified -> Navigates to /events */}
+        <Link
+          href="/events"
+          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-amber-500 hover:shadow-md cursor-pointer block group"
+          title="Click to inspect audited exit event records"
+        >
+          <div>
+            <span className="text-xs font-mono text-[var(--text-muted)] group-hover:text-amber-400 transition-colors">
+              AUDITED THROUGHPUT
+            </span>
+            <div className="text-2xl font-bold font-mono text-[var(--text-primary)] mt-1">
+              {kpis.todayThroughput}{" "}
+              <span className="text-xs font-normal text-[var(--text-muted)]">units</span>
+            </div>
+            <span className="text-[11px] text-[var(--status-ok)] font-mono mt-0.5 block flex items-center gap-1">
+              100% Sensor Verified <ArrowRight size={11} className="inline opacity-0 group-hover:opacity-100 transition-opacity" />
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-[var(--bg-panel-raised)] text-[var(--signal-amber)] group-hover:bg-amber-950/40 transition-colors">
+            <Box size={20} />
+          </div>
+        </Link>
+
+        {/* Fusion Consensus Accuracy -> Navigates to /reports */}
+        <Link
+          href="/reports"
+          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-emerald-500 hover:shadow-md cursor-pointer block group"
+          title="Click to view sensor fusion analytics & reports"
+        >
+          <div>
+            <span className="text-xs font-mono text-[var(--text-muted)] group-hover:text-emerald-400 transition-colors">
+              CONSENSUS FUSION ACCURACY
+            </span>
+            <div className="text-2xl font-bold font-mono text-[var(--status-ok)] mt-1">
+              {kpis.accuracyRate}%
+            </div>
+            <span className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5 block flex items-center gap-1">
+              Vision + RFID + Weight <ArrowRight size={11} className="inline opacity-0 group-hover:opacity-100 transition-opacity" />
+            </span>
+          </div>
+          <div className="p-2.5 rounded-lg bg-[var(--bg-panel-raised)] text-[var(--status-ok)] group-hover:bg-emerald-950/40 transition-colors">
+            <Activity size={20} />
+          </div>
+        </Link>
+      </div>
+
+      {/* 2. INITIAL STOCK COUNT VERIFICATION WORKFLOW (Section 5 & 18 Addendum) */}
+      <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl p-5 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-[var(--border-hairline)] pb-3">
+          <div>
+            <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <Sliders size={18} className="text-[#38BDF8]" /> Initial Stock Baseline Verification Workflow
+            </h2>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+              Authorized operators review and baseline initial physical inventory scans. Preserves both AI Proposed and Verified counts.
+            </p>
+          </div>
+          <Link href="/products" className="text-xs font-mono text-[#38BDF8] hover:underline flex items-center gap-1">
+            Product Catalog &rarr;
+          </Link>
+        </div>
+
+        {verifications.length === 0 ? (
+          <div className="p-8 text-center text-[var(--text-muted)] text-xs font-mono bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)]">
+            No inventory records available.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {verifications.slice(0, 6).map((v) => {
+            const isPending = v.status === "PENDING_VERIFICATION";
+            return (
+              <div
+                key={v.verificationId}
+                className={`p-4 rounded-xl border transition-all ${
+                  isPending
+                    ? "bg-[var(--bg-canvas)] border-amber-500/40 shadow-sm"
+                    : "bg-[var(--bg-canvas)] border-[var(--border-hairline)]"
+                }`}
+              >
+                <div className="flex justify-between items-start">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold text-[#38BDF8] block">{v.skuCode}</span>
+                    <h4 className="text-sm font-bold text-[var(--text-primary)] mt-0.5">{v.productName}</h4>
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                      v.status === "VERIFIED_ACCURATE"
+                        ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                        : v.status === "CORRECTED"
+                        ? "bg-blue-950 text-blue-300 border border-blue-800"
+                        : "bg-amber-950 text-amber-300 border border-amber-800 animate-pulse"
+                    }`}
+                  >
+                    {(v.status || "UNKNOWN").replace(/_/g, " ")}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs font-mono bg-[var(--bg-panel)] p-2.5 rounded-lg border border-[var(--border-hairline)]">
+                  <div>
+                    <span className="text-[10px] text-[var(--text-muted)] block">AI PROPOSED COUNT</span>
+                    <span className="text-sm font-bold text-[#E8A33D]">{v.aiProposedCount} units</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-[var(--text-muted)] block">VERIFIED STOCK</span>
+                    <span className="text-sm font-bold text-[var(--text-primary)]">
+                      {v.verifiedCount !== null && v.verifiedCount !== undefined ? `${v.verifiedCount} units` : "Pending Review"}
+                    </span>
+                  </div>
+                </div>
+
+                {isPending ? (
+                  <div className="mt-3 pt-3 border-t border-[var(--border-hairline)] space-y-2">
+                    <span className="text-[11px] font-mono text-[var(--text-secondary)] block">
+                      Is this AI count correct?
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleConfirmStock(v.verificationId, true)}
+                        disabled={submittingCorrection}
+                        className="flex-1 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-xs font-bold font-mono flex items-center justify-center gap-1 shadow transition-colors"
+                      >
+                        <Check size={13} /> YES (Accept {v.aiProposedCount})
+                      </button>
+                      <button
+                        onClick={() => {
+                          setEditingVerif(v);
+                          setCorrectionQty(v.aiProposedCount);
+                          setCorrectionReason("Manual physical recount correction");
+                        }}
+                        className="flex-1 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-bold font-mono border border-[var(--border-hairline)] flex items-center justify-center gap-1 transition-colors"
+                      >
+                        <Edit2 size={12} /> NO / EDIT
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-[10px] font-mono text-[var(--text-muted)] flex justify-between items-center">
+                    <span>By: {v.verifiedBy || "Supervisor"}</span>
+                    <span>Diff: {v.difference ?? 0} U</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        )}
+      </div>
+
+      {/* 3. Edge Camera Fleet Overview (Video Player Hidden per Section A-2 Addendum) */}
+      <div className="space-y-3">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+            <Camera size={18} className="text-[#38BDF8]" /> Active Edge Surveillance Fleet
+          </h2>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowVerifyModal(true)}
+              className="px-3 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-xs font-semibold font-mono flex items-center gap-1.5 shadow-md shadow-emerald-900/30 transition-all"
+            >
+              <FileCheck size={14} /> Verify & Save (DD.3)
+            </button>
+            <Link
+              href="/settings/cameras"
+              className="text-xs font-mono text-[#38BDF8] hover:underline flex items-center gap-1"
+            >
+              Manage Camera Fleet <ArrowRight size={13} />
+            </Link>
+          </div>
+        </div>
+
+        {cameras.length === 0 ? (
+          <div className="bg-[var(--bg-panel)] p-12 rounded-xl border border-[var(--border-hairline)] text-center flex flex-col items-center justify-center space-y-3 shadow-sm">
+            <div className="p-4 rounded-full bg-[var(--bg-panel-raised)] text-[var(--text-muted)]">
+              <Camera size={36} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-[var(--text-primary)]">No cameras configured</h3>
+              <p className="text-xs text-[var(--text-secondary)] max-w-sm mt-1">
+                Connect your IP RTSP surveillance cameras, USB direct devices, or WiFi feeds to enable real-time tracking.
+              </p>
+            </div>
+            <Link
+              href="/settings/cameras"
+              className="mt-2 px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-bold rounded-lg shadow-md transition-colors flex items-center gap-2"
+            >
+              <Plus size={14} /> Onboard Camera
+            </Link>
+          </div>
+        ) : (
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl p-5 shadow-sm space-y-4 transition-colors">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-[var(--border-hairline)] pb-3">
+              <div>
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
+                    <Video size={18} className="text-[#38BDF8]" /> Real-Time Fleet Camera Streaming Monitor
+                  </h3>
+                  <span className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold font-mono bg-emerald-950 text-emerald-300 border border-emerald-800">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    {cameras.filter((c) => c.status === "ONLINE").length} / {cameras.length} DEVICES STREAMING LIVE
+                  </span>
+                </div>
+                <p className="text-xs text-[var(--text-secondary)] mt-1 font-mono">
+                  Active edge CCTV streaming with real-time YOLO vision detection, ByteTrack pedestrian tracking, and spatial zone footfall monitoring.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Stream Raw vs Annotated Toggle */}
+                <button
+                  onClick={() => setStreamIsRaw(!streamIsRaw)}
+                  className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors flex items-center gap-1.5 ${
+                    !streamIsRaw
+                      ? "bg-[#38BDF8]/15 text-[#38BDF8] border-[#38BDF8]/40"
+                      : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:text-white"
+                  }`}
+                  title="Toggle between AI Overlays and Raw Camera Stream"
+                >
+                  <Eye size={13} />
+                  {!streamIsRaw ? "AI Overlays ON" : "Raw Video"}
+                </button>
+
+                {/* Grid vs Single View Toggle */}
+                {cameras.length > 1 && (
+                  <div className="flex items-center bg-[var(--bg-canvas)] rounded border border-[var(--border-hairline)] p-0.5">
+                    <button
+                      onClick={() => setStreamViewMode("grid")}
+                      className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
+                        streamViewMode === "grid"
+                          ? "bg-[var(--bg-panel-raised)] text-[#38BDF8] font-bold"
+                          : "text-[var(--text-secondary)] hover:text-white"
+                      }`}
+                    >
+                      Grid ({cameras.length})
+                    </button>
+                    <button
+                      onClick={() => {
+                        setStreamViewMode("single");
+                        if (!selectedCamId && cameras.length > 0) setSelectedCamId(cameras[0].cameraId);
+                      }}
+                      className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
+                        streamViewMode === "single"
+                          ? "bg-[var(--bg-panel-raised)] text-[#38BDF8] font-bold"
+                          : "text-[var(--text-secondary)] hover:text-white"
+                      }`}
+                    >
+                      Single
+                    </button>
+                  </div>
+                )}
+
+                {/* Single Camera Selector Dropdown if in single mode */}
+                {streamViewMode === "single" && cameras.length > 1 && (
+                  <select
+                    value={selectedCamId || cameras[0]?.cameraId}
+                    onChange={(e) => setSelectedCamId(e.target.value)}
+                    className="px-2 py-1 text-xs font-mono bg-[var(--bg-canvas)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded"
+                  >
+                    {cameras.map((c) => (
+                      <option key={c.cameraId} value={c.cameraId}>
+                        {c.label || c.cameraId} ({c.status})
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                {/* Refresh Streams */}
+                <button
+                  onClick={() => {
+                    setStreamNonce(Date.now());
+                    fetchData();
+                  }}
+                  className="p-1.5 text-xs font-mono bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-white rounded border border-[var(--border-hairline)] transition-colors"
+                  title="Reload Streams"
+                >
+                  <RefreshCw size={13} />
+                </button>
+
+                <Link
+                  href="/settings/cameras"
+                  className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] border border-[var(--border-hairline)] rounded text-xs font-mono flex items-center gap-1 transition-colors"
+                >
+                  Fleet Settings <ArrowRight size={12} />
+                </Link>
+              </div>
+            </div>
+
+            {/* Active Camera Video Streams */}
+            <div
+              className={`grid gap-4 ${
+                streamViewMode === "single" || cameras.length === 1
+                  ? "grid-cols-1"
+                  : cameras.length === 2
+                  ? "grid-cols-1 lg:grid-cols-2"
+                  : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
+              }`}
+            >
+              {(streamViewMode === "single"
+                ? cameras.filter((c) => c.cameraId === (selectedCamId || cameras[0]?.cameraId))
+                : cameras
+              ).map((cam) => {
+                const isOnline = cam.status === "ONLINE";
+                const videoSrc = `/api/cameras/${cam.cameraId}/stream?raw=${streamIsRaw}&t=${streamNonce}`;
+                return (
+                  <div
+                    key={cam.cameraId}
+                    className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl overflow-hidden flex flex-col group hover:border-[#38BDF8]/40 transition-all shadow-md"
+                  >
+                    {/* Stream Header Bar */}
+                    <div className="bg-[var(--bg-panel)] px-3 py-2 border-b border-[var(--border-hairline)] flex items-center justify-between text-xs font-mono">
+                      <div className="flex items-center gap-2 truncate">
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            isOnline ? "bg-emerald-400 shadow-[0_0_6px_#34D399]" : "bg-rose-500"
+                          }`}
+                        />
+                        <span className="font-bold text-[var(--text-primary)] truncate">
+                          {cam.label || `Camera ${cam.cameraId}`}
+                        </span>
+                        <span className="text-[10px] text-[var(--text-secondary)]">({cam.cameraId})</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-canvas)] text-[#38BDF8] border border-[var(--border-hairline)]">
+                          {cam.laneId || "LANE-01"}
+                        </span>
+                        <button
+                          onClick={() => setInspectingCamera(cam)}
+                          className="p-1 hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-[#38BDF8] rounded transition-colors"
+                          title="Open Full Camera Inspector (PTZ & Controls)"
+                        >
+                          <Maximize2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Video Player Display Container */}
+                    <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden select-none">
+                      {isOnline ? (
+                        <img
+                          src={videoSrc}
+                          alt={cam.label}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `/api/cameras/${cam.cameraId}/snapshot?t=${Date.now()}`;
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-[#12151A] text-[#8B93A1] font-mono text-xs select-none p-4 text-center">
+                          <Video size={36} className="mb-2 text-[#E5484D] animate-pulse" />
+                          <span className="tracking-widest text-[#E5484D] font-bold text-xs">CAMERA OFFLINE // NO SIGNAL</span>
+                          <span className="text-[#8B93A1] text-[10px] mt-1 font-mono">
+                            {cam.ipAddress ? `ENDPOINT: ${cam.ipAddress} (PORT 554)` : "RTSP EDGE STREAM"}
+                          </span>
+                          <span className="text-[#E8A33D] text-[10px] mt-1.5 font-mono animate-pulse">
+                            ΓùÅ POLLING HARDWARE // AUTO-RECONNECTING...
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Live Surveillance HUD Badges */}
+                      <div className="absolute top-2 left-2 z-20 pointer-events-none flex items-center gap-1.5">
+                        <span className="bg-black/75 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono font-bold text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5 shadow">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          LIVE REC
+                        </span>
+                        <span className="bg-black/75 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono font-bold text-slate-300 border border-white/10 shadow">
+                          {cam.fps || 25} FPS
+                        </span>
+                      </div>
+
+                      <div className="absolute top-2 right-2 z-20 pointer-events-none">
+                        <span className="bg-black/75 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono font-bold text-amber-300 border border-amber-500/30 shadow">
+                          {cam.resolution || "1080p"}
+                        </span>
+                      </div>
+
+                      {/* Bottom Floating Bar */}
+                      <div className="absolute bottom-2 left-2 right-2 z-20 flex items-center justify-between pointer-events-none">
+                        <span className="bg-black/70 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono text-slate-400 border border-white/10 truncate max-w-[200px]">
+                          {cam.ipAddress ? `IP: ${cam.ipAddress}` : "RTSP EDGE"}
+                        </span>
+                        <button
+                          onClick={() => setInspectingCamera(cam)}
+                          className="pointer-events-auto px-2 py-0.5 bg-black/80 hover:bg-[#38BDF8] text-white hover:text-black rounded text-[10px] font-mono font-bold border border-white/20 transition-colors shadow flex items-center gap-1"
+                        >
+                          <Maximize2 size={10} /> Inspect
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. REAL-TIME CAMERA DETECTION TABLE (Section 2 & 18 Addendum) */}
+      <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+        <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+          <div>
+            <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
+              <Eye size={18} className="text-[#38BDF8]" /> Live Real-Time Camera Detection Table
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+              Dynamically displays real detected objects from live edge camera streams (Real Camera &rarr; AI Detection &rarr; Tracking &rarr; Database &rarr; Frontend).
+            </p>
+          </div>
+          <button
+            onClick={fetchData}
+            className="px-2.5 py-1 text-xs font-mono bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-white rounded border border-[var(--border-hairline)] flex items-center gap-1.5 transition-colors"
+          >
+            <RefreshCw size={12} /> Refresh
+          </button>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-mono">
+            <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
+              <tr>
+                <th className="p-3">CAMERA</th>
+                <th className="p-3">DATE & TIME</th>
+                <th className="p-3">OBJECT / CLASS</th>
+                <th className="p-3 text-center">DIRECTION</th>
+                <th className="p-3 text-right">QUANTITY</th>
+                <th className="p-3 text-right">CONFIDENCE</th>
+                <th className="p-3">PERSON ASSOCIATION</th>
+                <th className="p-3">STATUS</th>
+                <th className="p-3 text-right">SNAPSHOT</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
+              {detectionsLoading && liveDetections.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                    Loading detectionsΓÇª
+                  </td>
+                </tr>
+              ) : detectionsError ? (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-amber-400 font-mono text-xs">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <span>{detectionsError}</span>
+                      <button
+                        onClick={fetchData}
+                        className="px-2.5 py-1 text-[11px] bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] border border-[var(--border-hairline)] rounded text-[#38BDF8] transition-colors"
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ) : liveDetections.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                    No detections available
+                  </td>
+                </tr>
+              ) : (
+                liveDetections.map((row) => (
+                  <tr key={row.detectionId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
+                    <td className="p-3 font-bold text-[#38BDF8]">
+                      {row.cameraLabel && row.cameraLabel !== "Any" ? row.cameraLabel : `Camera ${row.cameraId}`}
+                    </td>
+                    <td className="p-3 text-[var(--text-secondary)] font-mono">{formatLocalTime(row.isoTimestamp || row.timestamp)}</td>
+                    <td className="p-3 font-semibold text-[var(--text-primary)]">{row.objectClass}</td>
+                    <td className="p-3 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold font-mono ${
+                          row.direction === "IN" || row.direction === "ENTRY"
+                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                            : row.direction === "OUT" || row.direction === "EXIT"
+                            ? "bg-blue-950 text-blue-300 border border-blue-800"
+                            : "bg-slate-900 text-slate-300 border border-slate-700"
+                        }`}
+                      >
+                        {row.direction === "IN" || row.direction === "ENTRY" ? (
+                          <ArrowDownLeft size={10} className="text-emerald-400" />
+                        ) : row.direction === "OUT" || row.direction === "EXIT" ? (
+                          <ArrowUpRight size={10} className="text-blue-400" />
+                        ) : null}
+                        {row.direction || "IN"}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right font-bold text-[#E8A33D]">{row.quantity}</td>
+                    <td className="p-3 text-right text-[var(--status-ok)]">{(row.confidence * 100).toFixed(1)}%</td>
+                    <td className="p-3 text-[var(--text-secondary)]">{row.personIdentity}</td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          row.status === "APPROVED"
+                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                            : "bg-amber-950 text-amber-300 border border-amber-800"
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => {
+                          setSnapshotLoadFailed(false);
+                          const camName = row.cameraLabel && row.cameraLabel !== "Any" ? row.cameraLabel : `Camera ${row.cameraId}`;
+                          setPreviewSnapshot({
+                            url: row.snapshotUrl || `/snapshots/preview_${row.cameraId}.jpg`,
+                            fallbackUrl: `/api/cameras/${row.cameraId}/snapshot`,
+                            title: `${camName} ΓÇö ${row.objectClass} at ${formatLocalTime(row.isoTimestamp || row.timestamp)}`,
+                          });
+                        }}
+                        className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded border border-[var(--border-hairline)] text-[11px] font-bold transition-colors"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 5. MOVEMENT MONITOR: AUTHORIZED BILL VS ACTUAL ITEM MOVEMENT (Section 7, 8, 9, 11, 18 Addendum) */}
+      <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+        <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+          <div>
+            <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
+              <Layers size={18} className="text-[#10B981]" /> Material Movement Monitor & Authorization Comparison
+            </h3>
+            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+              Tracks actual physical goods egress against scanned bills/challans (Authorized vs Detected, Progress Counter, and Discrepancy Checks).
+            </p>
+          </div>
+          <Link href="/events" className="text-xs font-mono text-[#38BDF8] hover:underline">
+            All Movement Logs &rarr;
+          </Link>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs font-mono">
+            <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
+              <tr>
+                <th className="p-3">DATE & TIME</th>
+                <th className="p-3">PERSON</th>
+                <th className="p-3">BILL ID</th>
+                <th className="p-3">PRODUCT</th>
+                <th className="p-3 text-right">AUTHORIZED</th>
+                <th className="p-3 text-right">TAKEN / ACTUAL</th>
+                <th className="p-3">PROGRESS</th>
+                <th className="p-3">STATUS</th>
+                <th className="p-3 text-right">EVIDENCE</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
+              {movementMonitor.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="p-8 text-center text-[var(--text-muted)] font-mono text-xs">
+                    No movement events available
+                  </td>
+                </tr>
+              ) : (
+                movementMonitor.map((row, idx) => (
+                  <tr key={`${row.movementId || row.eventId || 'mov'}-${idx}`} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
+                    <td className="p-3 text-[var(--text-secondary)] font-mono">{formatLocalTime(row.isoTimestamp || row.timestamp)}</td>
+                    <td className="p-3 font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                      <UserCheck size={13} className="text-[#38BDF8]" />
+                      <span>{row.personName}</span>
+                    </td>
+                    <td className="p-3 text-[#38BDF8] font-bold">{row.billNumber}</td>
+                    <td className="p-3 font-semibold text-[var(--text-primary)]">{row.productName}</td>
+                    <td className="p-3 text-right text-[var(--text-secondary)] font-bold">{row.authorizedQty} U</td>
+                    <td className="p-3 text-right text-[#E8A33D] font-bold">
+                      {row.actualQty} / {row.authorizedQty}
+                    </td>
+                    <td className="p-3 min-w-[140px]">
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-[10px] text-[var(--text-muted)]">
+                          <span>{row.progressPct}%</span>
+                          <span>{row.remainingQty} left</span>
+                        </div>
+                        <div className="w-full bg-[var(--bg-canvas)] rounded-full h-1.5 border border-[var(--border-hairline)] overflow-hidden">
+                          <div
+                            className="bg-[#10B981] h-1.5 rounded-full transition-all duration-300"
+                            style={{ width: `${Math.min(100, row.progressPct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          row.status === "CORRECT" || row.status === "PASS"
+                            ? "bg-emerald-950 text-emerald-300 border border-emerald-800"
+                            : row.status === "WRONG_ITEM"
+                            ? "bg-rose-950 text-rose-300 border border-rose-800"
+                            : row.status === "OVER_QUANTITY"
+                            ? "bg-amber-950 text-amber-300 border border-amber-800"
+                            : "bg-blue-950 text-blue-300 border border-blue-800"
+                        }`}
+                      >
+                        {row.status}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => {
+                          setSnapshotLoadFailed(false);
+                          setPreviewSnapshot({
+                            url: row.snapshotUrl || `/snapshots/preview_CAM-01.jpg`,
+                            title: `${row.personName} ΓÇö ${row.billNumber} (${row.productName})`,
+                          });
+                        }}
+                        className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded border border-[var(--border-hairline)] text-[11px] font-bold transition-colors"
+                      >
+                        Snapshot
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 6. Bottom Operational Stream: Traversal Events & Critical Alerts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Recent Exit Events */}
+        <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+          <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+            <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
+              <Layers size={16} className="text-[#38BDF8]" /> LIVE EXIT TRAVERSAL LOG
+            </h3>
+            <Link href="/events" className="text-xs font-mono text-[#38BDF8] hover:underline">
+              View All ΓåÆ
+            </Link>
+          </div>
+
+          <div className="space-y-2">
+            {events.length === 0 ? (
+              <div className="p-8 text-center text-[var(--text-muted)] text-xs font-mono">
+                No movement events available
+              </div>
+            ) : (
+              events.map((ev, idx) => (
+                <div
+                  key={`${ev.eventId || 'evt'}-${idx}`}
+                  className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] flex justify-between items-center text-xs"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`font-mono font-bold text-[10px] px-1.5 py-0.5 rounded ${
+                          ev.verdict === "PASS"
+                            ? "bg-[var(--status-ok)]/20 text-[var(--status-ok)]"
+                            : "bg-[var(--status-high)]/20 text-[var(--status-high)]"
+                        }`}
+                      >
+                        {ev.verdict}
+                      </span>
+                      <span className="font-mono text-[var(--text-primary)] font-bold">{ev.eventId}</span>
+                      <span className="text-[var(--text-muted)] font-mono">{ev.laneId}</span>
+                    </div>
+                  </div>
+                  <div className="text-right font-mono">
+                    <span className="font-bold text-[var(--status-ok)]">{ev.consensusUnits} Units</span>
+                    <span className="text-[10px] text-[var(--text-muted)] block">
+                      {formatLocalDateTime(ev.timestamp)}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Active Alarms Queue */}
+        <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl p-5 shadow-sm space-y-3 transition-colors">
+          <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+            <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
+              <AlertTriangle size={16} className="text-[var(--status-high)]" /> ACTIVE DISCREPANCY QUEUE
+            </h3>
+            <Link href="/alerts" className="text-xs font-mono text-[var(--status-high)] hover:underline">
+              Open Full Queue ΓåÆ
+            </Link>
+          </div>
+
+          <div className="space-y-2">
+            {alerts.length === 0 ? (
+              <div className="p-8 text-center text-[var(--text-muted)] text-xs font-mono flex flex-col items-center gap-1">
+                <CheckCircle size={24} className="text-[var(--status-ok)]" />
+                <span>No alerts available</span>
+              </div>
+            ) : (
+              alerts.map((alt) => (
+                <div
+                  key={alt.alertId}
+                  className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] flex justify-between items-center text-xs"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded uppercase ${
+                          alt.severity === "HIGH"
+                            ? "bg-[var(--status-high)] text-white animate-pulse"
+                            : alt.severity === "MEDIUM"
+                            ? "bg-[var(--status-medium)] text-white"
+                            : "bg-[var(--status-low)] text-black"
+                        }`}
+                      >
+                        {alt.severity}
+                      </span>
+                      <span className="font-bold text-[var(--text-primary)]">{(alt.alertType || "SYSTEM_ALERT").replace(/_/g, " ")}</span>
+                    </div>
+                    <span className="text-[10px] text-[var(--text-muted)] font-mono">
+                      {alt.deltaUnits !== 0 && `Variance: ${alt.deltaUnits} U | `}
+                      {formatLocalDateTime(alt.createdAt)}
+                    </span>
+                  </div>
+                  <Link
+                    href="/alerts"
+                    className="px-2.5 py-1 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[#38BDF8] rounded text-xs font-mono border border-[var(--border-hairline)]"
+                  >
+                    Resolve
+                  </Link>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Snapshot Preview Modal */}
+      {previewSnapshot && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-3xl w-full p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-sm font-bold font-mono text-[var(--text-primary)] flex items-center gap-2">
+                <Camera size={16} className="text-[#38BDF8]" />
+                {previewSnapshot.title}
+              </h3>
+              <button
+                onClick={() => setPreviewSnapshot(null)}
+                className="text-[var(--text-secondary)] hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
+              {snapshotLoadFailed ? (
+                <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
+                  <div className="p-3 rounded-full bg-neutral-800 text-neutral-400">
+                    <Camera size={28} />
+                  </div>
+                  <div className="text-sm font-mono font-bold text-neutral-200">Snapshot Unavailable</div>
+                  <p className="text-xs text-neutral-400 max-w-sm">
+                    No visual evidence frame was recorded for this specific event or the edge camera stream was in standby.
+                  </p>
+                </div>
+              ) : (
+                <img
+                  src={previewSnapshot.url}
+                  alt={previewSnapshot.title}
+                  className="w-full h-full object-contain"
+                  onError={() => {
+                    if (previewSnapshot.fallbackUrl && previewSnapshot.url !== previewSnapshot.fallbackUrl) {
+                      setPreviewSnapshot({ ...previewSnapshot, url: previewSnapshot.fallbackUrl });
+                    } else {
+                      setSnapshotLoadFailed(true);
+                    }
+                  }}
+                />
+              )}
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                onClick={() => setPreviewSnapshot(null)}
+                className="px-4 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-mono"
+              >
+                Close Frame
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Initial Stock Count Correction Modal */}
+      {editingVerif && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Edit2 size={16} className="text-[#E8A33D]" /> Correct Stock Count Baseline
+              </h3>
+              <button
+                onClick={() => setEditingVerif(null)}
+                className="text-[var(--text-secondary)] hover:text-white"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs font-mono">
+              <div className="p-3 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)]">
+                <div className="text-[var(--text-muted)]">PRODUCT:</div>
+                <div className="font-bold text-[var(--text-primary)] text-sm">{editingVerif.productName}</div>
+                <div className="text-[var(--text-muted)] mt-1">
+                  AI PROPOSED COUNT: <span className="text-[#E8A33D] font-bold">{editingVerif.aiProposedCount} units</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[var(--text-secondary)] mb-1">ACTUAL PHYSICAL COUNT *</label>
+                <input
+                  type="number"
+                  min="0"
+                  value={correctionQty}
+                  onChange={(e) => setCorrectionQty(parseInt(e.target.value) || 0)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-base font-bold text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[var(--text-secondary)] mb-1">CORRECTION REASON / AUDIT NOTE *</label>
+                <input
+                  type="text"
+                  value={correctionReason}
+                  onChange={(e) => setCorrectionReason(e.target.value)}
+                  placeholder="e.g. Broken packaging pallet, recount override"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-3 border-t border-[var(--border-hairline)]">
+              <button
+                onClick={() => setEditingVerif(null)}
+                className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() =>
+                  handleConfirmStock(editingVerif.verificationId, false, correctionQty, correctionReason)
+                }
+                disabled={submittingCorrection}
+                className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/30 flex items-center gap-1.5"
+              >
+                {submittingCorrection ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
+                Save Correction Baseline
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <VerifyAndSaveModal
+        isOpen={showVerifyModal}
+        onClose={() => setShowVerifyModal(false)}
+        onSuccess={() => fetchData()}
+      />
+
+      {/* Full Camera Inspector Modal with PTZ, ROI and AI Detections */}
+      {inspectingCamera && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-5xl w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-[#38BDF8]/10 text-[#38BDF8] rounded-lg">
+                  <Video size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-[var(--text-primary)] font-mono">
+                    {inspectingCamera.label || `Camera ${inspectingCamera.cameraId}`}
+                  </h3>
+                  <span className="text-xs font-mono text-[var(--text-secondary)]">
+                    ID: {inspectingCamera.cameraId} | Lane: {inspectingCamera.laneId || "LANE-01"} | Source: {inspectingCamera.ipAddress || "RTSP"}
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setInspectingCamera(null)}
+                className="p-1.5 text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-panel-hover)] rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="rounded-lg overflow-hidden border border-[var(--border-hairline)]">
+              <StreamPlayer
+                cameraId={inspectingCamera.cameraId}
+                cameraName={inspectingCamera.label}
+                cameraIp={inspectingCamera.ipAddress}
+                laneId={inspectingCamera.laneId}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -33,6 +33,9 @@ interface SoftwareOwnerProfile {
 
 export default function SoftwareOwnerSettingsPage() {
   const { user } = useAuth();
+  const role = (user?.role || "ADMIN").toUpperCase();
+  const isSoftwareOwner = role === "SUPER_ADMIN" || user?.isPlatformOwner === true;
+
   const [profile, setProfile] = useState<SoftwareOwnerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,23 +54,34 @@ export default function SoftwareOwnerSettingsPage() {
   const fetchProfile = async (isManual = false) => {
     try {
       if (isManual) setRefreshing(true);
-      const res = await safeFetch("/api/platform/settings/profile");
-      if (res.ok) {
-        const data = await res.json();
-        setProfile(data);
-      } else {
-        // Fallback to auth context
-        setProfile({
-          email: user?.email || "ces@gmail.com",
-          role: "SUPER_ADMIN",
-          accountStatus: "ACTIVE",
-          isPlatformOwner: true,
-          lastLogin: new Date().toISOString(),
-          activeSessions: 1,
-          systemVersion: "SEC-OPS V8 v2.0.0",
-          dbConnected: true,
-        });
+      if (isSoftwareOwner) {
+        const res = await safeFetch("/api/platform/settings/profile");
+        if (res.ok) {
+          const data = await res.json();
+          setProfile({
+            email: data.email,
+            role: data.role,
+            accountStatus: data.isActive ? "ACTIVE" : "INACTIVE",
+            isPlatformOwner: true,
+            lastLogin: data.lastLoginAt || new Date().toISOString(),
+            activeSessions: 1,
+            systemVersion: "SEC-OPS V8 v2.0.0",
+            dbConnected: true,
+          });
+          return;
+        }
       }
+      // Store owner / user fallback
+      setProfile({
+        email: user?.email || "owner@store.com",
+        role: role,
+        accountStatus: "ACTIVE",
+        isPlatformOwner: isSoftwareOwner,
+        lastLogin: new Date().toISOString(),
+        activeSessions: 1,
+        systemVersion: "SEC-OPS V8 v2.0.0",
+        dbConnected: true,
+      });
     } catch (e) {
       console.warn("Failed to fetch owner profile:", e);
     } finally {
@@ -78,7 +92,7 @@ export default function SoftwareOwnerSettingsPage() {
 
   useEffect(() => {
     fetchProfile();
-  }, []);
+  }, [user]);
 
   const calculatePasswordStrength = (pwd: string) => {
     if (!pwd) return { score: 0, label: "Empty", color: "text-[var(--text-muted)]" };
@@ -115,13 +129,12 @@ export default function SoftwareOwnerSettingsPage() {
 
     setSavingPassword(true);
     try {
-      const res = await safeFetch("/api/platform/auth/change-password", {
+      const res = await safeFetch("/api/auth/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           currentPassword,
           newPassword,
-          confirmPassword,
         }),
       });
 
@@ -158,10 +171,12 @@ export default function SoftwareOwnerSettingsPage() {
             </span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2.5">
-            Software Owner Profile & Security
+            {isSoftwareOwner ? "Software Owner Profile & Security" : "Account Settings & Security"}
           </h1>
           <p className="text-xs text-[var(--text-secondary)] mt-1">
-            Manage your master Software Owner credentials, cryptographic policies, and database connection integrity.
+            {isSoftwareOwner
+              ? "Manage your master Software Owner credentials, cryptographic policies, and database connection integrity."
+              : "Manage your store administrative credentials and operational security settings."}
           </p>
         </div>
 
@@ -182,30 +197,36 @@ export default function SoftwareOwnerSettingsPage() {
           <div className="bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-4">
             <div className="flex items-center gap-3 pb-4 border-b border-[var(--border-hairline)]">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-900/30 font-bold text-lg">
-                SO
+                {isSoftwareOwner ? "SO" : (profile?.email?.[0] || "A").toUpperCase()}
               </div>
               <div>
-                <h3 className="text-sm font-bold text-[var(--text-primary)]">Software Owner</h3>
-                <span className="text-[11px] font-mono text-[#38BDF8]">Root Authority</span>
+                <h3 className="text-sm font-bold text-[var(--text-primary)]">
+                  {isSoftwareOwner ? "Software Owner" : "Store Administrator"}
+                </h3>
+                <span className="text-[11px] font-mono text-[#38BDF8]">
+                  {isSoftwareOwner ? "Root Authority" : "Store Level Authority"}
+                </span>
               </div>
             </div>
 
             <div className="space-y-3 text-xs font-mono">
               <div>
                 <span className="text-[var(--text-muted)] block text-[10px] uppercase">Registered Email</span>
-                <span className="text-[var(--text-primary)] font-bold">{profile?.email || "ces@gmail.com"}</span>
+                <span className="text-[var(--text-primary)] font-bold">{profile?.email || (isSoftwareOwner ? "ces@gmail.com" : "admin@store.com")}</span>
               </div>
 
               <div>
                 <span className="text-[var(--text-muted)] block text-[10px] uppercase">Role Hierarchy</span>
                 <span className="inline-block px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-bold mt-0.5">
-                  SOFTWARE_OWNER (SUPER_ADMIN)
+                  {isSoftwareOwner ? "SOFTWARE_OWNER (SUPER_ADMIN)" : role}
                 </span>
               </div>
 
               <div>
                 <span className="text-[var(--text-muted)] block text-[10px] uppercase">Storage Partition</span>
-                <span className="text-emerald-500 dark:text-emerald-400 font-bold">platform_super_admin (Isolated)</span>
+                <span className="text-emerald-500 dark:text-emerald-400 font-bold">
+                  {isSoftwareOwner ? "platform_super_admin (Isolated)" : "store_tenant_partition (Multi-tenant)"}
+                </span>
               </div>
 
               <div>

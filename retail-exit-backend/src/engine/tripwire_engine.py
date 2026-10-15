@@ -108,6 +108,10 @@ class TripwireEngine:
         dx = p_curr[0] - p_prev[0]
         dy = p_curr[1] - p_prev[1]
 
+        # Velocity/displacement threshold: suppress jitter if entity is stationary / staying in place
+        if math.hypot(dx, dy) < 0.025:
+            return (False, "STATIONARY")
+
         dot = dx * nx + dy * ny
         direction = "ENTRY" if dot >= 0 else "EXIT"
         return (True, direction)

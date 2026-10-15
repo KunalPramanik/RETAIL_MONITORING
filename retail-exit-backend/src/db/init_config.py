@@ -95,5 +95,135 @@ async def init_baseline_configuration(session: AsyncSession):
             label="Express Exit Portal 2",
             status="ONLINE"
         ))
+
+    # 5. Baseline Product & Material Catalog (Cement bags, Iron rods, Heavy cartons, Bookshelf inventory, Single units)
+    from src.db.models import Product, Material, MaterialInventoryBalance, get_utc_now
+    now = get_utc_now()
+    baseline_catalog = [
+        {
+            "sku": "MAT-CEM-50KG",
+            "name": "Portland Construction Cement (50kg Bag)",
+            "category": "STACKED_MATERIAL",
+            "pack_size": 1,
+            "unit_price": 9.50,
+            "case_price": 9.50,
+            "reorder_threshold": 20,
+            "vision_class_id": 101,
+            "count_unit": "bag",
+            "packaging_type": "stack",
+        },
+        {
+            "sku": "MAT-ROD-REBAR",
+            "name": "Structural Steel TMT Rebar Rods",
+            "category": "STACKED_MATERIAL",
+            "pack_size": 1,
+            "unit_price": 45.00,
+            "case_price": 45.00,
+            "reorder_threshold": 15,
+            "vision_class_id": 102,
+            "count_unit": "bundle",
+            "packaging_type": "bundle",
+        },
+        {
+            "sku": "MAT-BOX-HEAVY",
+            "name": "Heavy Corrugated Master Shipping Carton",
+            "category": "DISCRETE_PACKAGE",
+            "pack_size": 1,
+            "unit_price": 25.00,
+            "case_price": 25.00,
+            "reorder_threshold": 10,
+            "vision_class_id": 104,
+            "count_unit": "carton",
+            "packaging_type": "sealed_case",
+        },
+        {
+            "sku": "MAT-BOK-SHELF",
+            "name": "Bookshelf Inventory & Documents (Shelf Row)",
+            "category": "DISCRETE_PACKAGE",
+            "pack_size": 1,
+            "unit_price": 15.00,
+            "case_price": 15.00,
+            "reorder_threshold": 5,
+            "vision_class_id": 108,
+            "count_unit": "piece",
+            "packaging_type": "loose_unit",
+        },
+        {
+            "sku": "SKU-RETAIL-01",
+            "name": "Standard Exposed Retail Item (Single Unit)",
+            "category": "RETAIL_GOODS",
+            "pack_size": 1,
+            "unit_price": 12.00,
+            "case_price": 12.00,
+            "reorder_threshold": 10,
+            "vision_class_id": 1006,
+            "count_unit": "piece",
+            "packaging_type": "loose_unit",
+        },
+    ]
+
+    for item in baseline_catalog:
+        prod_stmt = select(Product).where(Product.sku_code == item["sku"])
+        p_res = await session.execute(prod_stmt)
+        prod = p_res.scalar_one_or_none()
+        if not prod:
+            prod_id = f"prod_{uuid.uuid4().hex[:12]}"
+            prod = Product(
+                product_id=prod_id,
+                sku_code=item["sku"],
+                name=item["name"],
+                category=item["category"],
+                pack_size=item["pack_size"],
+                unit_price=item["unit_price"],
+                case_price=item["case_price"],
+                reorder_threshold=item["reorder_threshold"],
+                vision_class_id=item["vision_class_id"],
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(prod)
+            await session.flush()
+
+        mat_stmt = select(Material).where(Material.sku_code == item["sku"])
+        m_res = await session.execute(mat_stmt)
+        mat = m_res.scalar_one_or_none()
+        if not mat:
+            mat = Material(
+                material_id=str(prod.product_id),
+                name=item["name"],
+                sku_code=item["sku"],
+                category=item["category"],
+                deployment_profile="WAREHOUSE_DISPATCH",
+                count_unit=item["count_unit"],
+                packaging_type=item["packaging_type"],
+                units_per_package=1,
+                counting_tier="SINGLE_UNIT",
+                status="ACTIVE",
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(mat)
+            await session.flush()
+
+        bal_stmt = select(MaterialInventoryBalance).where(MaterialInventoryBalance.material_id == str(mat.material_id))
+        b_res = await session.execute(bal_stmt)
+        bal = b_res.scalar_one_or_none()
+        if not bal:
+            bal = MaterialInventoryBalance(
+                balance_id=f"bal_{uuid.uuid4().hex[:12]}",
+                material_id=str(mat.material_id),
+                location_id="MAIN_WAREHOUSE",
+                opening_stock=0,
+                incoming_confirmed=0,
+                outgoing_confirmed=0,
+                defective_stock=0,
+                adjusted_stock=0,
+                current_stock=0,
+                last_reconciled_at=now,
+                updated_at=now,
+            )
+            session.add(bal)
+            await session.flush()
         
     await session.commit()
+

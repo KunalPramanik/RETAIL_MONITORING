@@ -90,6 +90,19 @@
         "2": "MED",
         "4": "HIGH"
       }
+    },
+    "108": {
+      "name": "Book / Document (Shelf Row)",
+      "sku_prefix": "MAT-BOK-SHELF",
+      "category": "STACKED_MATERIAL",
+      "pipeline": "SEGMENTATION",
+      "unit": "book",
+      "conf_threshold": 0.35,
+      "discrepancy_severity_tier": {
+        "1": "LOW",
+        "3": "MED",
+        "5": "HIGH"
+      }
     }
   },
   "pipeline_routing_defaults": {

@@ -46,6 +46,11 @@ class DetectedBox:
     relation: Optional[str] = None       # e.g. 'worn_by', 'standalone', 'carried_by'
     parent_track_id: Optional[Any] = None
     object_role: Optional[str] = None    # 'physical_object', 'wearable', 'body_part', 'environment'
+    class_id: Optional[int] = None
+
+    @property
+    def box(self) -> List[int]:
+        return self.bbox
 
 
 @dataclass
@@ -60,9 +65,48 @@ class VisionInferenceResult:
     tracking_accuracy_pct: float
     is_ir_mode: bool = False
 
+    @property
+    def detected_boxes(self) -> List[DetectedBox]:
+        return self.detections
+
+    @property
+    def total_units(self) -> int:
+        return self.vision_count
+
+    @property
+    def total_boxes(self) -> int:
+        return self.cases_detected
+
+    @property
+    def total_singles(self) -> int:
+        return self.singles_detected
+
 
 class VisionInferenceService:
     MODEL_VERSION = "yolox-tiny-coco-v0.1.0"
+
+    @classmethod
+    def detect_objects(
+        cls,
+        frame: np.ndarray,
+        confidence_threshold: float = 0.25,
+        camera_id: Optional[str] = None,
+    ) -> "VisionInferenceResult":
+        success, encoded = cv2.imencode(".jpg", frame)
+        if not success:
+            return VisionInferenceResult(
+                model_version=cls.get_model_version(),
+                vision_count=0,
+                cases_detected=0,
+                singles_detected=0,
+                vision_confidence=0.0,
+                detections=[],
+                latency_ms=0.0,
+                tracking_accuracy_pct=0.0,
+            )
+        res, _ = cls.analyze_frame_bytes(encoded.tobytes(), confidence_floor=confidence_threshold, camera_id=camera_id)
+        return res
+
     WEIGHTS_PATH = os.path.join(os.path.dirname(__file__), "..", "weights", "yolox_tiny.onnx")
     INPUT_SIZE = (416, 416)
 
@@ -639,8 +683,48 @@ class VisionInferenceService:
                             is_inventory_relevant=is_inv,
                             is_environment_only=is_env,
                             object_role=obj_role,
+                            class_id=cid,
                         )
                     )
+
+            # Dense Bookshelf & Book Row Counting:
+            # If candidate book(s) or bookshelf objects are detected, or if a dense row exists,
+            # expand to segment and count all individual books along the shelf.
+            try:
+                cand_books = [
+                    d for d in detections
+                    if "book" in (d.specific_label or "").lower() or d.class_label in ("book", "bookshelf", "wall_picture")
+                ]
+                from src.ml.dense_bookshelf_counter import DenseBookshelfCounter
+                cand_b_boxes = [d.bbox for d in cand_books] if cand_books else None
+                shelf_books = DenseBookshelfCounter.detect_and_count_bookshelf(img, candidate_boxes=cand_b_boxes)
+                if shelf_books and len(shelf_books) > len(cand_books):
+                    # Remove sparse initial YOLOX book boxes
+                    detections = [d for d in detections if d not in cand_books]
+                    for b_info in shelf_books:
+                        total_singles += 1
+                        total_units += 1
+                        conf_scores.append(b_info["confidence"])
+                        detections.append(
+                            DetectedBox(
+                                bbox=b_info["bbox"],
+                                class_label="single_unit",
+                                product_id=default_prod_id,
+                                sku_code="MAT-BOK-SHELF",
+                                confidence=b_info["confidence"],
+                                pack_size=1,
+                                track_id=track_id_seq,
+                                exit_vector=(0.0, 15.0),
+                                specific_label="Book / Document",
+                                detection_state="CONFIRMED",
+                                category_family="READING_OFFICE",
+                                is_inventory_relevant=True,
+                                is_environment_only=False,
+                                object_role="physical_object",
+                            )
+                        )
+            except Exception as _bks_err:
+                logger.debug("Bookshelf dense counter error: %s", _bks_err)
             else:
                 # Zero-detection diagnostic: log max per-class scores so operators
                 # can see if the frame had near-threshold detections without silent suppression.
@@ -747,3 +831,6 @@ class VisionInferenceService:
             ),
             annotated_bytes,
         )
+
+
+VisionService = VisionInferenceService

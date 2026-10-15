@@ -402,9 +402,12 @@ class CameraIngestionWorker:
     @staticmethod
     def _determine_box_style(
         is_veh: bool, is_case: bool, is_door: bool, is_screen: bool, is_laptop: bool, is_watch: bool,
-        is_bookshelf: bool, is_book: bool, is_phone: bool, is_clock: bool, is_bottle: bool, is_keyboard: bool, is_mouse: bool, item_label: str
+        is_bookshelf: bool, is_book: bool, is_phone: bool, is_clock: bool, is_bottle: bool, is_keyboard: bool, is_mouse: bool, item_label: str,
+        is_carried: bool = False,
     ) -> Tuple[str, str, str]:
         """Maps detected entity classification into UI badge types and styling."""
+        if is_carried:
+            return "SINGLE_UNIT", "Single Unit", "amber"
         if is_veh:
             return "VEHICLE", item_label, "cyan"
         if is_case:
@@ -576,11 +579,6 @@ class CameraIngestionWorker:
                 if overlaps_bottle:
                     continue
 
-            b_type, b_label, b_color = self._determine_box_style(
-                is_veh, is_case, is_door, is_screen, is_laptop, is_watch,
-                is_bookshelf, is_book, is_phone, is_clock, is_bottle, is_keyboard, is_mouse, item_label
-            )
-
             item_relation = getattr(d, "relation", None)
             parent_tid = getattr(d, "parent_track_id", None)
             if not item_relation and all_person_boxes:
@@ -591,6 +589,22 @@ class CameraIngestionWorker:
                         item_relation = "worn_by" if is_watch else "carried_by"
                         parent_tid = f"person_{p_idx + 1}"
                         break
+
+            # Requirement: If carried by a person or held in hand:
+            # Strictly show SINGLE UNIT - DO NOT show phone, smartphone, or remote control
+            is_carried = (item_relation == "carried_by")
+            if is_carried and not is_case:
+                is_phone = False
+                item_label = "Single Unit"
+                item_lower = "single unit"
+                d.specific_label = "Single Unit"
+                d.class_label = "single_unit"
+
+            b_type, b_label, b_color = self._determine_box_style(
+                is_veh, is_case, is_door, is_screen, is_laptop, is_watch,
+                is_bookshelf, is_book, is_phone, is_clock, is_bottle, is_keyboard, is_mouse, item_label,
+                is_carried=is_carried,
+            )
 
             track_tag = parent_tid or f"TRK-{len(overlay_boxes) + 1}"
             box_label_formatted = f"[{b_label} {int(d.confidence * 100)}% ID:{track_tag}]"
@@ -1089,13 +1103,27 @@ class CameraIngestionWorker:
                 prev_pt = cam_tracks.get(track_id)
                 cam_tracks[track_id] = curr_pt
 
-                person_dir = "IN"
+                if not hasattr(self, "_person_dir_cache"):
+                    self._person_dir_cache = {}
+                dir_cache = self._person_dir_cache.setdefault(cam.camera_id, {})
+                prev_dir = dir_cache.get(track_id, "PRESENT")
+
+                person_dir = prev_dir
                 if prev_pt:
+                    dx = curr_pt[0] - prev_pt[0]
                     dy = curr_pt[1] - prev_pt[1]
-                    if dy < -0.012:
+                    disp = math.hypot(dx, dy)
+                    if disp < 0.020:
+                        # Person is staying in place (stationary)
+                        person_dir = prev_dir if prev_dir != "STATIONARY" else "PRESENT"
+                    elif dy < -0.020:
                         person_dir = "IN"
-                    elif dy > 0.012:
+                    elif dy > 0.020:
                         person_dir = "OUT"
+                    else:
+                        person_dir = prev_dir if prev_dir != "STATIONARY" else "PRESENT"
+
+                dir_cache[track_id] = person_dir
                 ob["direction"] = person_dir
 
                 carried_mats: Dict[str, int] = {}

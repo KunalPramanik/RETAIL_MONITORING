@@ -25,6 +25,7 @@ class WebSocketEnvelope(BaseModel):
         "detection_update",
         "material_movement",
         "inventory_update",
+        "inventory_count_proposed",
     ]
     timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     payload: Dict[str, Any]

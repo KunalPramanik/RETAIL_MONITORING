@@ -16,10 +16,12 @@ import {
   FileCheck,
   TrendingUp,
   TrendingDown,
-  DollarSign,
   Camera,
   ArrowRight,
   ShieldAlert,
+  Upload,
+  Eye,
+  ScanLine,
 } from "lucide-react";
 
 interface VerificationItem {
@@ -75,6 +77,57 @@ export default function InventoryDashboardPage() {
   const [adjustSku, setAdjustSku] = useState("");
   const [adjustQty, setAdjustQty] = useState("");
   const [adjustReason, setAdjustReason] = useState("");
+
+  // AI Scan & Auto-Count Modal State
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [scanCameraId, setScanCameraId] = useState("CAM-01");
+  const [scanTargetSku, setScanTargetSku] = useState("");
+  const [scanMinConf, setScanMinConf] = useState(0.35);
+  const [scanImageBase64, setScanImageBase64] = useState<string | null>(null);
+  const [scanImageName, setScanImageName] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<any | null>(null);
+  const [previewSnapshot, setPreviewSnapshot] = useState<string | null>(null);
+
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setScanImageName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setScanImageBase64(reader.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleTriggerScanAndCount = async () => {
+    try {
+      setScanning(true);
+      setScanResult(null);
+      const res = await safeFetch("/api/inventory/scan-and-count", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cameraId: scanCameraId,
+          imageBase64: scanImageBase64 || undefined,
+          targetMaterialSku: scanTargetSku || undefined,
+          minConfidence: scanMinConf,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setScanResult(data);
+        fetchData();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Scanning and counting failed.");
+      }
+    } catch (e: any) {
+      alert(e.message || "Failed to trigger scan.");
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -225,6 +278,12 @@ export default function InventoryDashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowScanModal(true)}
+            className="px-3.5 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-sky-900/30 transition-all font-mono"
+          >
+            <Camera size={15} /> Scan & Auto-Count
+          </button>
           <button
             onClick={() => setShowAdjustModal(true)}
             className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors font-mono"
@@ -435,7 +494,30 @@ export default function InventoryDashboardPage() {
                           </span>
                         </td>
                         <td className="p-4 font-bold text-[#38BDF8]">{v.skuCode}</td>
-                        <td className="p-4 font-sans font-semibold text-[var(--text-primary)]">{v.productName}</td>
+                        <td className="p-4 font-sans text-[var(--text-primary)]">
+                          <div className="flex items-center gap-2.5">
+                            {v.snapshotUrl && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewSnapshot(v.snapshotUrl!)}
+                                className="relative group shrink-0 w-9 h-9 rounded-md border border-[var(--border-hairline)] overflow-hidden bg-black/40 hover:border-[#38BDF8] transition-all"
+                                title="Click to view camera evidence snapshot"
+                              >
+                                <img src={v.snapshotUrl} alt="Snapshot" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                  <Eye size={12} className="text-white" />
+                                </div>
+                              </button>
+                            )}
+                            <div>
+                              <div className="font-semibold text-sm text-[var(--text-primary)]">{v.productName}</div>
+                              <div className="text-[10px] text-[var(--text-muted)] font-mono flex items-center gap-1.5 mt-0.5">
+                                <span className="text-[var(--text-secondary)]">{v.cameraId}</span>
+                                {v.modelVersion && <span>• {v.modelVersion}</span>}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
                         <td className="p-4 text-center font-bold text-[var(--text-primary)]">{v.aiProposedCount} U</td>
                         <td className="p-4 text-center">
                           {v.verifiedCount !== undefined && v.verifiedCount !== null ? (
@@ -723,7 +805,225 @@ export default function InventoryDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* AI Scan & Auto-Count Modal */}
+      {showScanModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <Camera size={20} className="text-[#38BDF8]" /> AI Vision Scan & Multi-Material Counting
+              </h3>
+              <button
+                onClick={() => {
+                  setShowScanModal(false);
+                  setScanResult(null);
+                  setScanImageBase64(null);
+                  setScanImageName(null);
+                }}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4 text-sm font-mono">
+              <p className="text-xs font-sans text-[var(--text-secondary)]">
+                Scans live exit & storage cameras or uploaded floor photos. Automatically detects and counts:
+                bookshelves, cement bags, iron rebar rods, shipping boxes, and single units without manual entry.
+              </p>
+
+              {/* Source Camera Selection */}
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] font-semibold mb-1">
+                  CAMERA SOURCE / CHANNEL *
+                </label>
+                <select
+                  value={scanCameraId}
+                  onChange={(e) => setScanCameraId(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] text-xs outline-none focus:border-[#38BDF8]"
+                >
+                  <option value="CAM-01">CAM-01: Main Warehouse Exit Portal (Live / Snapshot)</option>
+                  <option value="CAM-02">CAM-02: Express Dispatch & Bookshelf Bay (Live / Snapshot)</option>
+                  <option value="CAM-03">CAM-03: Construction Yard & Cement Stacks (Live / Snapshot)</option>
+                  <option value="CAM-04">CAM-04: Rebar & Heavy Materials Dock (Live / Snapshot)</option>
+                </select>
+              </div>
+
+              {/* Target Material Category */}
+              <div>
+                <label className="block text-xs text-[var(--text-secondary)] font-semibold mb-1">
+                  TARGET MATERIAL (OPTIONAL FILTER)
+                </label>
+                <select
+                  value={scanTargetSku}
+                  onChange={(e) => setScanTargetSku(e.target.value)}
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] text-xs outline-none focus:border-[#38BDF8]"
+                >
+                  <option value="">Auto-Detect All Visible Materials (Recommended)</option>
+                  <option value="MAT-BOK-SHELF">Bookshelf Inventory & Documents (MAT-BOK-SHELF)</option>
+                  <option value="MAT-CEM-50KG">Portland Construction Cement (50kg Bag) (MAT-CEM-50KG)</option>
+                  <option value="MAT-ROD-REBAR">Structural Steel TMT Rebar Rods (MAT-ROD-REBAR)</option>
+                  <option value="MAT-BOX-HEAVY">Heavy Corrugated Master Carton (MAT-BOX-HEAVY)</option>
+                  <option value="SKU-RETAIL-01">Standard Exposed Retail Item (SKU-RETAIL-01)</option>
+                </select>
+              </div>
+
+              {/* Optional Floor Image Upload */}
+              <div className="p-3 bg-[var(--bg-canvas)] rounded-lg border border-[var(--border-hairline)] space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+                    <Upload size={14} className="text-[#38BDF8]" /> Floor Photo / Snapshot Upload (Optional)
+                  </span>
+                  {scanImageBase64 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setScanImageBase64(null);
+                        setScanImageName(null);
+                      }}
+                      className="text-[11px] text-[#E5484D] hover:underline"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageFileChange}
+                  className="text-xs text-[var(--text-secondary)] file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-[#38BDF8]/20 file:text-[#38BDF8] hover:file:bg-[#38BDF8]/30 cursor-pointer w-full"
+                />
+                {scanImageName && (
+                  <div className="text-[11px] text-[#4FD1B3] flex items-center gap-1">
+                    <CheckCircle size={12} /> Loaded: {scanImageName}
+                  </div>
+                )}
+                <span className="text-[10px] text-[var(--text-muted)] block">
+                  Leave empty to capture live frame directly from the selected camera.
+                </span>
+              </div>
+
+              {/* Confidence Threshold */}
+              <div>
+                <div className="flex justify-between text-xs text-[var(--text-secondary)] mb-1">
+                  <span>DETECTION SENSITIVITY FLOOR</span>
+                  <span className="text-[#38BDF8] font-bold">{Math.round(scanMinConf * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.15"
+                  max="0.80"
+                  step="0.05"
+                  value={scanMinConf}
+                  onChange={(e) => setScanMinConf(parseFloat(e.target.value))}
+                  className="w-full accent-[#38BDF8]"
+                />
+              </div>
+
+              {/* Scan Trigger Button */}
+              <button
+                type="button"
+                onClick={handleTriggerScanAndCount}
+                disabled={scanning}
+                className="w-full py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-sky-900/30 transition-all disabled:opacity-50"
+              >
+                {scanning ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" /> Analyzing Image & Counting Seams...
+                  </>
+                ) : (
+                  <>
+                    <ScanLine size={16} /> Run Computer Vision Scan & Count
+                  </>
+                )}
+              </button>
+
+              {/* Scan Results */}
+              {scanResult && (
+                <div className="mt-4 p-4 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-[var(--text-primary)] flex items-center gap-1.5">
+                      <CheckCircle size={15} className="text-[#4FD1B3]" /> Scan Completed Successfully
+                    </span>
+                    <span className="text-xs font-bold text-[#38BDF8] font-mono">
+                      Total: {scanResult.totalDetectedUnits} Units
+                    </span>
+                  </div>
+
+                  {scanResult.snapshotUrl && (
+                    <div className="relative rounded-lg overflow-hidden border border-[var(--border-hairline)] max-h-48 bg-black flex items-center justify-center">
+                      <img
+                        src={scanResult.snapshotUrl}
+                        alt="Scan Detection Overlay"
+                        className="w-full object-contain max-h-48"
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-semibold text-[var(--text-secondary)] uppercase">
+                      Detected Material Proposals:
+                    </span>
+                    {scanResult.scannedMaterials?.map((m: any, idx: number) => (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center p-2 rounded bg-[var(--bg-panel)] border border-[var(--border-hairline)] text-xs"
+                      >
+                        <div>
+                          <span className="font-bold text-[#38BDF8] mr-2">{m.skuCode}</span>
+                          <span className="text-[var(--text-primary)] font-sans">{m.productName}</span>
+                        </div>
+                        <span className="font-bold text-[#4FD1B3] font-mono text-sm">
+                          {m.aiProposedCount} Units
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowScanModal(false);
+                        setActiveTab("VERIFICATIONS");
+                        fetchData();
+                      }}
+                      className="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all font-mono"
+                    >
+                      <FileCheck size={14} /> Review & Confirm in Opening Census
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Full-size Snapshot Evidence Viewer Modal */}
+      {previewSnapshot && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setPreviewSnapshot(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] bg-[var(--bg-panel)] p-2 rounded-xl border border-[var(--border-hairline)] shadow-2xl">
+            <button
+              onClick={() => setPreviewSnapshot(null)}
+              className="absolute top-4 right-4 z-10 p-2 bg-black/70 hover:bg-black text-white rounded-full text-xs"
+            >
+              ✕
+            </button>
+            <img
+              src={previewSnapshot}
+              alt="Evidence Snapshot Full View"
+              className="max-h-[85vh] max-w-full rounded object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
 

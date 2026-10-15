@@ -185,7 +185,7 @@ export default function SoftwareOwnerSettingsPage() {
                 SO
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">Software Owner</h3>
+                <h3 className="text-sm font-bold text-[var(--text-primary)]">Software Owner</h3>
                 <span className="text-[11px] font-mono text-[#38BDF8]">Root Authority</span>
               </div>
             </div>
@@ -193,19 +193,19 @@ export default function SoftwareOwnerSettingsPage() {
             <div className="space-y-3 text-xs font-mono">
               <div>
                 <span className="text-[var(--text-muted)] block text-[10px] uppercase">Registered Email</span>
-                <span className="text-white font-bold">{profile?.email || "ces@gmail.com"}</span>
+                <span className="text-[var(--text-primary)] font-bold">{profile?.email || "ces@gmail.com"}</span>
               </div>
 
               <div>
                 <span className="text-[var(--text-muted)] block text-[10px] uppercase">Role Hierarchy</span>
-                <span className="inline-block px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold mt-0.5">
+                <span className="inline-block px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-bold mt-0.5">
                   SOFTWARE_OWNER (SUPER_ADMIN)
                 </span>
               </div>
 
               <div>
                 <span className="text-[var(--text-muted)] block text-[10px] uppercase">Storage Partition</span>
-                <span className="text-emerald-400 font-bold">platform_super_admin (Isolated)</span>
+                <span className="text-emerald-500 dark:text-emerald-400 font-bold">platform_super_admin (Isolated)</span>
               </div>
 
               <div>
@@ -217,26 +217,26 @@ export default function SoftwareOwnerSettingsPage() {
 
               <div>
                 <span className="text-[var(--text-muted)] block text-[10px] uppercase">Active Sessions</span>
-                <span className="text-white font-bold">{profile?.activeSessions || 1} session</span>
+                <span className="text-[var(--text-primary)] font-bold">{profile?.activeSessions || 1} session</span>
               </div>
             </div>
           </div>
 
           {/* Security & System Health */}
           <div className="bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-4">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
-              <ShieldCheck size={16} className="text-emerald-400" /> Platform Security Telemetry
+            <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+              <ShieldCheck size={16} className="text-emerald-500 dark:text-emerald-400" /> Platform Security Telemetry
             </h3>
 
             <div className="space-y-3 text-xs font-mono">
               <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] space-y-1">
                 <span className="text-[var(--text-muted)] text-[10px] block">PASSWORD HASHING ALGORITHM</span>
-                <span className="text-white font-bold">Argon2id / bcrypt ($2b$12$)</span>
+                <span className="text-[var(--text-primary)] font-bold">Argon2id / bcrypt ($2b$12$)</span>
               </div>
 
               <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] space-y-1">
                 <span className="text-[var(--text-muted)] text-[10px] block">API RATE LIMITING</span>
-                <span className="text-emerald-400 font-bold">ACTIVE (Brute-Force Protected)</span>
+                <span className="text-emerald-500 dark:text-emerald-400 font-bold">ACTIVE (Brute-Force Protected)</span>
               </div>
 
               <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] space-y-1">
@@ -293,12 +293,12 @@ export default function SoftwareOwnerSettingsPage() {
                   placeholder="Enter current password (e.g. Ces@1234)"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowCurrent(!showCurrent)}
-                  className="absolute right-3 top-3 text-[var(--text-muted)] hover:text-white"
+                  className="absolute right-3 top-3 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
                   {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -325,12 +325,12 @@ export default function SoftwareOwnerSettingsPage() {
                   placeholder="Enter new strong password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowNew(!showNew)}
-                  className="absolute right-3 top-3 text-[var(--text-muted)] hover:text-white"
+                  className="absolute right-3 top-3 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
                   {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -353,12 +353,12 @@ export default function SoftwareOwnerSettingsPage() {
                   placeholder="Repeat new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirm(!showConfirm)}
-                  className="absolute right-3 top-3 text-[var(--text-muted)] hover:text-white"
+                  className="absolute right-3 top-3 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                 >
                   {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -378,7 +378,7 @@ export default function SoftwareOwnerSettingsPage() {
 
           {/* Database Health & Schema Information */}
           <div className="mt-8 pt-6 border-t border-[var(--border-hairline)] space-y-3">
-            <h3 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+            <h3 className="text-xs font-bold text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
               <Database size={15} className="text-[#38BDF8]" /> Database Administration & Integrity
             </h3>
             <p className="text-xs text-[var(--text-secondary)]">
@@ -386,7 +386,7 @@ export default function SoftwareOwnerSettingsPage() {
             </p>
             <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] text-xs font-mono flex items-center justify-between">
               <span className="text-[var(--text-secondary)]">Current Schema Revision:</span>
-              <span className="text-white font-bold">4f8910b2c1d3 (Canonical Production V8)</span>
+              <span className="text-[var(--text-primary)] font-bold">4f8910b2c1d3 (Canonical Production V8)</span>
             </div>
           </div>
         </div>

@@ -167,7 +167,7 @@ export default function SoftwareOwnerDashboardPage() {
           </div>
           <button
             onClick={() => fetchSummary(true)}
-            className="underline font-bold hover:text-white"
+            className="underline font-bold hover:text-[var(--text-primary)]"
           >
             Retry
           </button>
@@ -327,7 +327,7 @@ export default function SoftwareOwnerDashboardPage() {
                       {tier.count} {tier.count === 1 ? "Store" : "Stores"}
                     </span>
                   </div>
-                  <div className="text-xl font-bold font-mono text-white">
+                  <div className="text-xl font-bold font-mono text-[var(--text-primary)]">
                     {formatCurrency(tier.priceCents, summary.billing.currency)}
                     <span className="text-[10px] text-[var(--text-muted)] font-normal"> / mo</span>
                   </div>
@@ -372,12 +372,12 @@ export default function SoftwareOwnerDashboardPage() {
 
             <div className="flex justify-between items-center p-3 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)]">
               <span className="text-[var(--text-secondary)]">Identity Provider</span>
-              <span className="text-white font-bold">platform_super_admin (Strict)</span>
+              <span className="text-[var(--text-primary)] font-bold">platform_super_admin (Strict)</span>
             </div>
 
             <div className="flex justify-between items-center p-3 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)]">
               <span className="text-[var(--text-secondary)]">Software Build</span>
-              <span className="text-white font-bold">SEC-OPS V8 (2.0.0)</span>
+              <span className="text-[var(--text-primary)] font-bold">SEC-OPS V8 (2.0.0)</span>
             </div>
 
             <div className="flex justify-between items-center p-3 rounded-xl bg-[var(--bg-canvas)] border border-[var(--border-hairline)]">
@@ -486,7 +486,7 @@ export default function SoftwareOwnerDashboardPage() {
                   </div>
                   {act.tenantId && (
                     <div className="text-[var(--text-secondary)] text-[11px]">
-                      Tenant: <span className="text-white">{act.tenantId}</span>
+                      Tenant: <span className="text-[var(--text-primary)]">{act.tenantId}</span>
                     </div>
                   )}
                 </div>

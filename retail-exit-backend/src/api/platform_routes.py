@@ -613,15 +613,19 @@ async def list_stores(
 
             result.append({
                 "storeId": s.store_id,
+                "storeName": s.name,
                 "name": s.name,
+                "storeCode": s.store_id,
                 "address": s.address,
                 "timezone": s.timezone,
                 "tenantId": t.tenant_id if t else s.store_id,
                 "tenantName": t.name if t else s.name,
                 "status": store_status,
                 "cameraCount": cam_count,
+                "maxCameras": max_cams,
                 "cameraLimit": max_cams,
                 "subscriptionTier": tier.name if tier else "Starter",
+                "billingStatus": sub.status if sub else "ACTIVE",
                 "paymentStatus": sub.status if sub else "ACTIVE",
                 "exceedingLimit": cam_count > max_cams,
             })

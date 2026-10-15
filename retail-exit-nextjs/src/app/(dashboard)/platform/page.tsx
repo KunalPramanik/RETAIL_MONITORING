@@ -44,15 +44,18 @@ interface TenantItem {
 
 interface StoreItem {
   storeId: string;
-  tenantId: string;
-  tenantName: string;
-  storeName: string;
-  storeCode: string;
+  tenantId?: string;
+  tenantName?: string;
+  storeName?: string;
+  name?: string;
+  storeCode?: string;
   address?: string;
   status: "ACTIVE" | "SUSPENDED" | "MAINTENANCE";
   cameraCount: number;
-  maxCameras: number;
-  billingStatus: string;
+  maxCameras?: number;
+  cameraLimit?: number;
+  billingStatus?: string;
+  paymentStatus?: string;
 }
 
 interface PlanItem {
@@ -382,30 +385,29 @@ function PlatformControlPanelInner() {
 
   // Filtered views
   const filteredTenants = useMemo(() => {
-    return tenants.filter((t) => {
-      const q = tenantSearch.toLowerCase();
-      return (
-        t.name.toLowerCase().includes(q) ||
-        t.slug.toLowerCase().includes(q) ||
-        (t.contactEmail && t.contactEmail.toLowerCase().includes(q))
-      );
+    return (tenants || []).filter((t) => {
+      const q = (tenantSearch || "").toLowerCase();
+      const name = String(t.name || "").toLowerCase();
+      const slug = String(t.slug || "").toLowerCase();
+      const email = String(t.contactEmail || "").toLowerCase();
+      return name.includes(q) || slug.includes(q) || email.includes(q);
     });
   }, [tenants, tenantSearch]);
 
   const filteredStores = useMemo(() => {
-    return stores.filter((s) => {
-      const q = storeSearch.toLowerCase();
-      const matchesSearch =
-        s.storeName.toLowerCase().includes(q) ||
-        s.storeCode.toLowerCase().includes(q) ||
-        s.tenantName.toLowerCase().includes(q);
+    return (stores || []).filter((s) => {
+      const q = (storeSearch || "").toLowerCase();
+      const sName = String(s.storeName || s.name || "").toLowerCase();
+      const sCode = String(s.storeCode || s.storeId || "").toLowerCase();
+      const tName = String(s.tenantName || "").toLowerCase();
+      const matchesSearch = sName.includes(q) || sCode.includes(q) || tName.includes(q);
       const matchesStatus = storeStatusFilter === "ALL" || s.status === storeStatusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [stores, storeSearch, storeStatusFilter]);
 
   const filteredCameras = useMemo(() => {
-    return cameras.filter((c) => {
+    return (cameras || []).filter((c) => {
       if (cameraStatusFilter === "ALL") return true;
       return c.status === cameraStatusFilter;
     });
@@ -512,7 +514,7 @@ function PlatformControlPanelInner() {
                 placeholder="Search companies by name or slug..."
                 value={tenantSearch}
                 onChange={(e) => setTenantSearch(e.target.value)}
-                className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
+                className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl pl-9 pr-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
               />
             </div>
 
@@ -560,15 +562,15 @@ function PlatformControlPanelInner() {
                             {t.status}
                           </span>
                         </td>
-                        <td className="p-4 font-sans font-bold text-white">{t.name}</td>
+                        <td className="p-4 font-sans font-bold text-[var(--text-primary)]">{t.name}</td>
                         <td className="p-4 text-[#38BDF8] font-bold">{t.slug}</td>
                         <td className="p-4 text-[var(--text-secondary)]">{t.contactEmail || "—"}</td>
                         <td className="p-4">
-                          <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold">
+                          <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-bold">
                             {t.tierName || "Enterprise"}
                           </span>
                         </td>
-                        <td className="p-4 text-white font-bold">{t.storeCount || 0}</td>
+                        <td className="p-4 text-[var(--text-primary)] font-bold">{t.storeCount || 0}</td>
                         <td className="p-4 text-[var(--text-muted)]">
                           {new Date(t.createdAt).toLocaleDateString()}
                         </td>
@@ -633,14 +635,14 @@ function PlatformControlPanelInner() {
                   placeholder="Search stores by name, code or company..."
                   value={storeSearch}
                   onChange={(e) => setStoreSearch(e.target.value)}
-                  className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-[var(--text-muted)] outline-none focus:border-[#4FD1B3]"
+                  className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl pl-9 pr-3 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#4FD1B3]"
                 />
               </div>
 
               <select
                 value={storeStatusFilter}
                 onChange={(e) => setStoreStatusFilter(e.target.value)}
-                className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl px-3 py-2 text-xs text-white outline-none font-mono"
+                className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] outline-none font-mono"
               >
                 <option value="ALL">All Statuses</option>
                 <option value="ACTIVE">Active</option>
@@ -672,8 +674,13 @@ function PlatformControlPanelInner() {
                   </thead>
                   <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
                     {filteredStores.map((s) => {
-                      const isOverLimit = s.cameraCount > s.maxCameras;
-                      const isNearLimit = s.cameraCount === s.maxCameras;
+                      const displayName = s.storeName || s.name || "Store";
+                      const displayCode = s.storeCode || s.storeId || "-";
+                      const parentCompany = s.tenantName || "Independent";
+                      const maxCams = s.maxCameras ?? s.cameraLimit ?? 4;
+                      const billStatus = s.billingStatus || s.paymentStatus || "ACTIVE";
+                      const isOverLimit = s.cameraCount > maxCams;
+                      const isNearLimit = s.cameraCount === maxCams;
 
                       return (
                         <tr key={s.storeId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
@@ -683,7 +690,7 @@ function PlatformControlPanelInner() {
                                 s.status === "ACTIVE"
                                   ? "bg-[var(--status-ok)]/15 text-[var(--status-ok)] border border-[var(--status-ok)]/30"
                                   : s.status === "MAINTENANCE"
-                                  ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                  ? "bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30"
                                   : "bg-[var(--status-high)]/15 text-[var(--status-high)] border border-[var(--status-high)]/30"
                               }`}
                             >
@@ -691,31 +698,31 @@ function PlatformControlPanelInner() {
                               {s.status}
                             </span>
                           </td>
-                          <td className="p-4 font-sans font-bold text-white">
-                            {s.storeName}
+                          <td className="p-4 font-sans font-bold text-[var(--text-primary)]">
+                            {displayName}
                             {s.address && (
                               <div className="text-[11px] font-mono text-[var(--text-muted)] font-normal truncate max-w-xs">
                                 {s.address}
                               </div>
                             )}
                           </td>
-                          <td className="p-4 text-[#38BDF8] font-bold">{s.storeCode}</td>
-                          <td className="p-4 text-white font-medium">{s.tenantName}</td>
+                          <td className="p-4 text-[#38BDF8] font-bold">{displayCode}</td>
+                          <td className="p-4 text-[var(--text-primary)] font-medium">{parentCompany}</td>
                           <td className="p-4">
                             <div className="flex items-center gap-2">
                               <span
                                 className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono ${
                                   isOverLimit
-                                    ? "bg-rose-500/20 text-rose-400 border border-rose-500/40"
+                                    ? "bg-rose-500/20 text-rose-500 dark:text-rose-400 border border-rose-500/40"
                                     : isNearLimit
-                                    ? "bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                                    : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                    ? "bg-amber-500/20 text-amber-500 dark:text-amber-400 border border-amber-500/40"
+                                    : "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20"
                                 }`}
                               >
-                                {s.cameraCount} / {s.maxCameras} Cams
+                                {s.cameraCount} / {maxCams} Cams
                               </span>
                               {isOverLimit && (
-                                <span className="text-[10px] text-rose-400 font-bold flex items-center gap-0.5" title="Exceeds Subscription Capacity">
+                                <span className="text-[10px] text-rose-500 dark:text-rose-400 font-bold flex items-center gap-0.5" title="Exceeds Subscription Capacity">
                                   <AlertTriangle size={12} /> OVER LIMIT
                                 </span>
                               )}
@@ -724,12 +731,12 @@ function PlatformControlPanelInner() {
                           <td className="p-4">
                             <span
                               className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                s.billingStatus === "CURRENT"
-                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                  : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                billStatus === "CURRENT" || billStatus === "ACTIVE"
+                                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                                  : "bg-rose-500/10 text-rose-500 dark:text-rose-400 border border-rose-500/20"
                               }`}
                             >
-                              {s.billingStatus}
+                              {billStatus}
                             </span>
                           </td>
                           <td className="p-4 text-right">
@@ -738,7 +745,7 @@ function PlatformControlPanelInner() {
                                 setShowStatusReasonModal({
                                   type: "store",
                                   id: s.storeId,
-                                  name: s.storeName,
+                                  name: displayName,
                                   currentStatus: s.status,
                                   targetStatus: s.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE",
                                 });
@@ -786,10 +793,10 @@ function PlatformControlPanelInner() {
                   className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-5 space-y-4"
                 >
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold text-white uppercase tracking-wider">{p.name}</span>
+                    <span className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider">{p.name}</span>
                     <span className="text-xs font-mono text-[var(--text-muted)]">Max {p.maxStores} Stores</span>
                   </div>
-                  <div className="text-2xl font-bold font-mono text-white">
+                  <div className="text-2xl font-bold font-mono text-[var(--text-primary)]">
                     {formatCurrency(p.monthlyPriceCents)}
                     <span className="text-xs text-[var(--text-muted)] font-normal"> / month</span>
                   </div>
@@ -800,7 +807,7 @@ function PlatformControlPanelInner() {
                     </div>
                     {p.features &&
                       p.features.map((f, i) => (
-                        <div key={i} className="flex items-center gap-1.5 text-emerald-400">
+                        <div key={i} className="flex items-center gap-1.5 text-emerald-500 dark:text-emerald-400">
                           <Check size={13} />
                           <span>{f}</span>
                         </div>
@@ -849,21 +856,21 @@ function PlatformControlPanelInner() {
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                               inv.status === "PAID"
-                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
                                 : inv.status === "OVERDUE"
-                                ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
-                                : "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                ? "bg-rose-500/15 text-rose-500 dark:text-rose-400 border border-rose-500/30"
+                                : "bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30"
                             }`}
                           >
                             {inv.status}
                           </span>
                         </td>
-                        <td className="p-4 font-bold text-white">{inv.invoiceNumber}</td>
+                        <td className="p-4 font-bold text-[var(--text-primary)]">{inv.invoiceNumber}</td>
                         <td className="p-4 text-[var(--text-secondary)] font-sans">{inv.tenantName}</td>
                         <td className="p-4 text-[var(--text-muted)]">
                           {new Date(inv.dueDate).toLocaleDateString()}
                         </td>
-                        <td className="p-4 font-bold text-white">
+                        <td className="p-4 font-bold text-[var(--text-primary)]">
                           {formatCurrency(inv.amountCents, inv.currency)}
                         </td>
                         <td className="p-4 text-[var(--text-muted)]">
@@ -910,7 +917,7 @@ function PlatformControlPanelInner() {
               <select
                 value={cameraStatusFilter}
                 onChange={(e) => setCameraStatusFilter(e.target.value)}
-                className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl px-3 py-2 text-xs text-white outline-none font-mono"
+                className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] outline-none font-mono"
               >
                 <option value="ALL">All Camera Statuses</option>
                 <option value="ONLINE">Online</option>
@@ -956,7 +963,7 @@ function PlatformControlPanelInner() {
                               c.status === "ONLINE"
                                 ? "bg-[var(--status-ok)]/15 text-[var(--status-ok)] border border-[var(--status-ok)]/30"
                                 : c.status === "DEGRADED"
-                                ? "bg-amber-500/15 text-amber-400 border border-amber-500/30"
+                                ? "bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30"
                                 : "bg-[var(--status-high)]/15 text-[var(--status-high)] border border-[var(--status-high)]/30"
                             }`}
                           >
@@ -964,10 +971,10 @@ function PlatformControlPanelInner() {
                             {c.status}
                           </span>
                         </td>
-                        <td className="p-4 font-bold text-white">{c.label}</td>
+                        <td className="p-4 font-bold text-[var(--text-primary)]">{c.label}</td>
                         <td className="p-4 text-[var(--text-secondary)] font-sans">{c.storeName}</td>
                         <td className="p-4 text-[#38BDF8]">{c.resolution || "1080p (RTSP)"}</td>
-                        <td className="p-4 text-white">{c.fps || 30} FPS</td>
+                        <td className="p-4 text-[var(--text-primary)]">{c.fps || 30} FPS</td>
                         <td className="p-4 text-[var(--text-muted)]">
                           {c.lastHeartbeatAt ? new Date(c.lastHeartbeatAt).toLocaleTimeString() : "Never"}
                         </td>
@@ -1011,13 +1018,13 @@ function PlatformControlPanelInner() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-[#38BDF8]">{log.action}</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/5 border border-white/10 text-[var(--text-muted)]">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/5 border border-[var(--border-hairline)] text-[var(--text-muted)]">
                         Actor: {log.actor}
                       </span>
                     </div>
                     {log.tenantId && (
                       <div className="text-[var(--text-secondary)] text-[11px]">
-                        Tenant Target: <span className="text-white">{log.tenantId}</span>
+                        Tenant Target: <span className="text-[var(--text-primary)] font-bold">{log.tenantId}</span>
                       </div>
                     )}
                   </div>
@@ -1038,12 +1045,12 @@ function PlatformControlPanelInner() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Building size={18} className="text-[#38BDF8]" /> Register New Company / Tenant
               </h3>
               <button
                 onClick={() => setShowCreateTenantModal(false)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 ✕
               </button>
@@ -1065,7 +1072,7 @@ function PlatformControlPanelInner() {
                       slug: prev.slug || val.toLowerCase().replace(/[^a-z0-9]/g, "-"),
                     }));
                   }}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1095,7 +1102,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setCreateTenantForm((prev) => ({ ...prev, contactEmail: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1106,7 +1113,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setCreateTenantForm((prev) => ({ ...prev, tierId: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 >
                   {plans.map((p) => (
                     <option key={p.tierId} value={p.tierId}>
@@ -1129,7 +1136,7 @@ function PlatformControlPanelInner() {
                       onChange={(e) =>
                         setCreateTenantForm((prev) => ({ ...prev, adminEmail: e.target.value }))
                       }
-                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-white outline-none"
+                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-[var(--text-primary)] outline-none"
                     />
                   </div>
                   <div>
@@ -1140,7 +1147,7 @@ function PlatformControlPanelInner() {
                       onChange={(e) =>
                         setCreateTenantForm((prev) => ({ ...prev, adminPassword: e.target.value }))
                       }
-                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-white outline-none"
+                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-[var(--text-primary)] outline-none"
                     />
                   </div>
                 </div>
@@ -1174,18 +1181,18 @@ function PlatformControlPanelInner() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <AlertTriangle
                   size={18}
                   className={
-                    showStatusReasonModal.targetStatus === "SUSPENDED" ? "text-rose-400" : "text-emerald-400"
+                    showStatusReasonModal.targetStatus === "SUSPENDED" ? "text-rose-500 dark:text-rose-400" : "text-emerald-500 dark:text-emerald-400"
                   }
                 />
                 Confirm {showStatusReasonModal.targetStatus === "SUSPENDED" ? "Suspension" : "Reactivation"}
               </h3>
               <button
                 onClick={() => setShowStatusReasonModal(null)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 ✕
               </button>
@@ -1194,10 +1201,10 @@ function PlatformControlPanelInner() {
             <form onSubmit={handleApplyStatusChange} className="space-y-3 text-xs font-mono">
               <p className="text-[var(--text-secondary)]">
                 You are about to change the status of{" "}
-                <span className="text-white font-bold">{showStatusReasonModal.name}</span> to{" "}
+                <span className="text-[var(--text-primary)] font-bold">{showStatusReasonModal.name}</span> to{" "}
                 <span
                   className={
-                    showStatusReasonModal.targetStatus === "SUSPENDED" ? "text-rose-400" : "text-emerald-400"
+                    showStatusReasonModal.targetStatus === "SUSPENDED" ? "text-rose-500 dark:text-rose-400 font-bold" : "text-emerald-500 dark:text-emerald-400 font-bold"
                   }
                 >
                   {showStatusReasonModal.targetStatus}
@@ -1215,7 +1222,7 @@ function PlatformControlPanelInner() {
                   placeholder="State the commercial or security reason for this action (e.g. Past due payment notice #1024, requested maintenance window)..."
                   value={statusReason}
                   onChange={(e) => setStatusReason(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1251,12 +1258,12 @@ function PlatformControlPanelInner() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <UserPlus size={18} className="text-[#38BDF8]" /> Provision Store Administrator
               </h3>
               <button
                 onClick={() => setShowProvisionOwnerModal(null)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 ✕
               </button>
@@ -1265,7 +1272,7 @@ function PlatformControlPanelInner() {
             <form onSubmit={handleProvisionStoreOwner} className="space-y-3 text-xs font-mono">
               <p className="text-[var(--text-secondary)]">
                 Create a tenant-scoped administrator account for{" "}
-                <span className="text-white font-bold">{showProvisionOwnerModal.name}</span>. This account
+                <span className="text-[var(--text-primary)] font-bold">{showProvisionOwnerModal.name}</span>. This account
                 does NOT grant Software Owner privileges.
               </p>
 
@@ -1278,7 +1285,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setProvisionOwnerForm((prev) => ({ ...prev, email: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1290,7 +1297,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setProvisionOwnerForm((prev) => ({ ...prev, username: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1305,7 +1312,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setProvisionOwnerForm((prev) => ({ ...prev, password: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1337,12 +1344,12 @@ function PlatformControlPanelInner() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <DollarSign size={18} className="text-emerald-400" /> Record Offline Payment
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <DollarSign size={18} className="text-emerald-500 dark:text-emerald-400" /> Record Offline Payment
               </h3>
               <button
                 onClick={() => setShowRecordPaymentModal(null)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 ✕
               </button>
@@ -1352,15 +1359,15 @@ function PlatformControlPanelInner() {
               <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] space-y-1">
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Invoice Number:</span>
-                  <span className="text-white font-bold">{showRecordPaymentModal.invoiceNumber}</span>
+                  <span className="text-[var(--text-primary)] font-bold">{showRecordPaymentModal.invoiceNumber}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Tenant:</span>
-                  <span className="text-white font-bold">{showRecordPaymentModal.tenantName}</span>
+                  <span className="text-[var(--text-primary)] font-bold">{showRecordPaymentModal.tenantName}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Amount Due:</span>
-                  <span className="text-emerald-400 font-bold">
+                  <span className="text-emerald-500 dark:text-emerald-400 font-bold">
                     {formatCurrency(showRecordPaymentModal.amountCents, showRecordPaymentModal.currency)}
                   </span>
                 </div>
@@ -1374,7 +1381,7 @@ function PlatformControlPanelInner() {
                   placeholder="e.g. UTR-9021849102"
                   value={paymentForm.paymentRef}
                   onChange={(e) => setPaymentForm((prev) => ({ ...prev, paymentRef: e.target.value }))}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none focus:border-[#38BDF8]"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1383,7 +1390,7 @@ function PlatformControlPanelInner() {
                 <select
                   value={paymentForm.paymentMethod}
                   onChange={(e) => setPaymentForm((prev) => ({ ...prev, paymentMethod: e.target.value }))}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
                 >
                   <option value="BANK_TRANSFER">Bank Transfer / NEFT / RTGS</option>
                   <option value="UPI">UPI / Digital Gateway</option>
@@ -1400,7 +1407,7 @@ function PlatformControlPanelInner() {
                   placeholder="Optional audit notes regarding offline verification..."
                   value={paymentForm.notes}
                   onChange={(e) => setPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-white outline-none"
+                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
                 />
               </div>
 

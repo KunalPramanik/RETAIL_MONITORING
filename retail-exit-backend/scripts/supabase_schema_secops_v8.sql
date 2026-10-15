@@ -1031,6 +1031,13 @@ VALUES (
 ON CONFLICT (invoice_id) DO UPDATE
 SET status = EXCLUDED.status, paid_at = EXCLUDED.paid_at;
 
+-- 13.10 Ensure Baseline System Lanes exist
+INSERT INTO public.lane (lane_id, store_id, label, camera_ids, status)
+VALUES 
+    ('LANE-01', '0f8248a3-2947-4f6b-871d-5b6cb219e2c1', 'Main Exit Portal 1', '[]'::jsonb, 'ONLINE'),
+    ('LANE-02', '0f8248a3-2947-4f6b-871d-5b6cb219e2c1', 'Express Exit Portal 2', '[]'::jsonb, 'ONLINE')
+ON CONFLICT (lane_id) DO NOTHING;
+
 -- ==============================================================================
 -- 14. VERIFICATION QUERIES
 -- ==============================================================================

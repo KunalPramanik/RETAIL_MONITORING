@@ -36,6 +36,7 @@ def get_password_hash(password: str) -> str:
 def create_access_token(
     subject: Union[str, Any],
     role: Optional[str] = None,
+    email: Optional[str] = None,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """Generates a signed JWT bearer token using the mandatory configured SECRET_KEY."""
@@ -47,4 +48,6 @@ def create_access_token(
     to_encode: dict[str, Any] = {"exp": expire, "sub": str(subject)}
     if role:
         to_encode["role"] = str(role).upper().strip()
+    if email:
+        to_encode["email"] = str(email).lower().strip()
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)

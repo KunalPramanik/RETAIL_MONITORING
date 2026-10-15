@@ -90,6 +90,7 @@ export default function PlatformFleetPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          companyName: tenantName.trim(),
           name: tenantName.trim(),
           slug: tenantSlug.trim(),
           adminEmail: adminEmail.trim(),

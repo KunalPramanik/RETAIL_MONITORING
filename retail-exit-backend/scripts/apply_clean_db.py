@@ -56,8 +56,7 @@ async def apply_clean_db():
         "alert",
         "alarm_dispatch",
         "vision_detection",
-        "camera",
-        "lane"
+        "camera"
     ]
     all_zero = True
     for tbl in operational_tables:
@@ -67,7 +66,7 @@ async def apply_clean_db():
             all_zero = False
 
     print("\nSystem Config Tables:")
-    for sys_tbl in ["store", "threshold_config", "platform_subscription_tier", "platform_tenant", "platform_store_subscription", "platform_billing_invoice"]:
+    for sys_tbl in ["store", "lane", "threshold_config", "platform_subscription_tier", "platform_tenant", "platform_store_subscription", "platform_billing_invoice"]:
         cnt = await conn.fetchval(f'SELECT count(*) FROM public."{sys_tbl}"')
         print(f"  - public.{sys_tbl}: {cnt} rows")
 

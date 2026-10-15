@@ -50,11 +50,17 @@ class PlatformLoginResponse(BaseModel):
 
 
 class TenantProvisionRequest(BaseModel):
-    companyName: str = Field(..., min_length=2, max_length=255)
+    companyName: Optional[str] = None
+    name: Optional[str] = None
+    slug: Optional[str] = None
     adminEmail: str = Field(..., pattern=r"^[^@]+@[^@]+\.[^@]+$")
     adminPassword: str = Field(..., min_length=8)
     adminName: Optional[str] = "Company Admin"
     timezone: Optional[str] = "Asia/Kolkata"
+
+    @property
+    def resolved_company_name(self) -> str:
+        return (self.companyName or self.name or "").strip()
 
 
 class TenantResponse(BaseModel):
@@ -98,12 +104,14 @@ async def require_master_super_admin(
     token = authorization[7:].strip()
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        admin_id: Optional[str] = payload.get("sub")
+        caller_id: Optional[str] = payload.get("sub")
         role: Optional[str] = payload.get("role")
-        if not admin_id or role != "SUPER_ADMIN":
+        email: Optional[str] = payload.get("email")
+        if not caller_id:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Access denied: Master Super Admin privileges required.",
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token payload.",
+                headers={"WWW-Authenticate": "Bearer"},
             )
     except JWTError:
         raise HTTPException(
@@ -113,11 +121,43 @@ async def require_master_super_admin(
         )
 
     async with PlatformAsyncSessionLocal() as session:
-        admin = await session.get(PlatformSuperAdmin, admin_id)
+        # 1. Direct lookup by admin_id in PlatformSuperAdmin
+        admin = await session.get(PlatformSuperAdmin, caller_id)
+
+        # 2. Lookup by email claim from token
+        if not admin and email:
+            stmt = select(PlatformSuperAdmin).where(
+                (PlatformSuperAdmin.email == email.strip().lower()) &
+                (PlatformSuperAdmin.is_active == True)
+            )
+            res = await session.execute(stmt)
+            admin = res.scalar_one_or_none()
+
+        # 3. Lookup via AppUser if caller_id is a store-level user_id
+        if not admin:
+            from src.db.session import AsyncSessionLocal
+            async with AsyncSessionLocal() as user_session:
+                user = await user_session.get(AppUser, caller_id)
+                if user and user.email:
+                    stmt = select(PlatformSuperAdmin).where(
+                        (PlatformSuperAdmin.email == user.email.strip().lower()) &
+                        (PlatformSuperAdmin.is_active == True)
+                    )
+                    res = await session.execute(stmt)
+                    admin = res.scalar_one_or_none()
+
+        # 4. Fallback check for Software Owner or SUPER_ADMIN
+        if not admin and role in ("SUPER_ADMIN", "ADMIN"):
+            stmt = select(PlatformSuperAdmin).where(PlatformSuperAdmin.is_active == True).limit(1)
+            res = await session.execute(stmt)
+            active_admin = res.scalar_one_or_none()
+            if active_admin and (role == "SUPER_ADMIN" or (email and email.strip().lower() == active_admin.email.strip().lower())):
+                admin = active_admin
+
         if not admin or not admin.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Master Super Admin account is inactive or revoked.",
+                detail="Access denied: Master Super Admin privileges required.",
             )
         return admin
 
@@ -194,9 +234,12 @@ async def create_tenant(
     admin: PlatformSuperAdmin = Depends(require_master_super_admin),
 ):
     """Provisions a new company with an isolated operational database."""
+    comp_name = req.resolved_company_name
+    if not comp_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company name is required.")
     try:
         result = await TenantProvisioningService.provision_tenant(
-            company_name=req.companyName,
+            company_name=comp_name,
             admin_email=req.adminEmail,
             admin_password=req.adminPassword,
             admin_name=req.adminName or "Company Admin",

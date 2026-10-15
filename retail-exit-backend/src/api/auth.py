@@ -112,7 +112,10 @@ async def login_for_access_token(
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        subject=user.user_id, role=effective_role, expires_delta=access_token_expires
+        subject=user.user_id,
+        role=effective_role,
+        email=user.email,
+        expires_delta=access_token_expires,
     )
     logger.info("Operator successfully authenticated: %s (role: %s, effective: %s)", identifier, user.role, effective_role)
     return {

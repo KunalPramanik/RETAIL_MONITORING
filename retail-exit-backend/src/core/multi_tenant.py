@@ -33,7 +33,7 @@ os.makedirs(PLATFORM_DB_DIR, exist_ok=True)
 PLATFORM_DB_PATH = os.path.join(PLATFORM_DB_DIR, "control_plane.db")
 PLATFORM_DATABASE_URL = os.getenv(
     "PLATFORM_DATABASE_URL",
-    f"sqlite+aiosqlite:///{PLATFORM_DB_PATH}"
+    settings.DATABASE_URL if "postgresql" in settings.DATABASE_URL else f"sqlite+aiosqlite:///{PLATFORM_DB_PATH}"
 )
 
 # Engine & Session factory for platform control plane
@@ -119,22 +119,17 @@ def sanitize_slug(name: str) -> str:
 def get_tenant_db_url(tenant_id: str, slug: str) -> str:
     """Derives isolated database connection URL for a specific tenant."""
     base_url = settings.DATABASE_URL.strip()
-    if base_url.startswith("sqlite"):
-        tenants_dir = os.path.join(os.getcwd(), "data", "tenants")
-        os.makedirs(tenants_dir, exist_ok=True)
-        tenant_db_file = os.path.join(tenants_dir, f"{slug}_{tenant_id[:8]}.db")
-        return f"sqlite+aiosqlite:///{tenant_db_file}"
-    elif "postgresql" in base_url:
-        # For Postgres, parse URL and append dedicated tenant database name
-        # e.g., postgresql+asyncpg://user:pass@host:5432/secops_tenant_<slug>
+    tenant_mode = os.getenv("TENANT_DB_MODE", "sqlite").lower()
+    if tenant_mode == "postgres" and "postgresql" in base_url:
         prefix, _, db_part = base_url.rpartition("/")
         clean_db_name = f"secops_tenant_{slug.replace('-', '_')}_{tenant_id[:8]}"
         return f"{prefix}/{clean_db_name}"
     else:
-        # Default fallback to file-based isolation
+        # Default robust physical isolation: dedicated database file per tenant
         tenants_dir = os.path.join(os.getcwd(), "data", "tenants")
         os.makedirs(tenants_dir, exist_ok=True)
-        return f"sqlite+aiosqlite:///{tenants_dir}/{tenant_id}.db"
+        tenant_db_file = os.path.join(tenants_dir, f"{slug}_{tenant_id[:8]}.db")
+        return f"sqlite+aiosqlite:///{tenant_db_file}"
 
 
 def get_tenant_session_maker(db_url: str) -> async_sessionmaker[AsyncSession]:

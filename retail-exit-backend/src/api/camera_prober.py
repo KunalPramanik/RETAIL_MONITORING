@@ -285,6 +285,8 @@ def capture_camera_frame_sync(
             f"on path '{rtsp_path}'. Verify the stream path for this camera model (e.g. /live/ch0, /Streaming/Channels/101, /cam/realmonitor)."
         )
 
+    deadline = t0 + (timeout_sec if timeout_sec is not None else 3.0)
+
     if is_rtsp_reachable:
         candidate_rtsp_urls = []
         if rtsp_path:
@@ -292,13 +294,25 @@ def capture_camera_frame_sync(
         if sub_stream_path and sub_stream_path != rtsp_path:
             candidate_rtsp_urls.append((f"rtsp://{auth_part}{target_host}:{target_port}{sub_stream_path}", "RTSP Sub Stream"))
 
-        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2000000"
+        timeout_us = int(min(timeout_sec if timeout_sec is not None else 2.5, 2.5) * 1_000_000)
+        timeout_ms = int(timeout_us / 1000)
+        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = f"rtsp_transport;tcp|timeout;{timeout_us}|stimeout;{timeout_us}"
 
         for url, desc in candidate_rtsp_urls:
+            if time.perf_counter() >= deadline:
+                break
             try:
-                cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
-                cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1500)
-                cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500)
+                # Pass open/read timeout parameters into VideoCapture constructor for instant enforcement
+                try:
+                    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG, [
+                        cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, timeout_ms,
+                        cv2.CAP_PROP_READ_TIMEOUT_MSEC, timeout_ms,
+                    ])
+                except Exception:
+                    cap = cv2.VideoCapture(url, cv2.CAP_FFMPEG)
+                    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, timeout_ms)
+                    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, timeout_ms)
+
                 if cap.isOpened():
                     diag_info["is_handshake_ok"] = True
                     # AA.4: inspect codec before read — H.265 produces decode failures on MediaMTX WebRTC
@@ -385,6 +399,8 @@ def capture_camera_frame_sync(
 
     # Test discovered video endpoints
     for v_url, v_desc in discovered_video_urls:
+        if time.perf_counter() >= deadline:
+            break
         if v_url.startswith(("http://", "https://")):
             for auth_item in distinct_auth:
                 try:

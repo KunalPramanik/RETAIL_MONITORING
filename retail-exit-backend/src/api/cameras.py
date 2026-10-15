@@ -500,10 +500,37 @@ async def test_camera_connection(
 
     creds = req.credentials if (req and req.credentials) else (cam.credentials_ref if cam else None)
 
-    # Attempt capture in background thread pool to avoid blocking async event loop
-    frame_bytes, source_desc, latency_ms, diag_info = await asyncio.to_thread(
-        capture_camera_frame_sync, ip, rtsp, creds, sub_stream_path, 2.5, stream_url, True
-    )
+    # Attempt capture in background thread pool with strict timeout to prevent client drops
+    try:
+        frame_bytes, source_desc, latency_ms, diag_info = await asyncio.wait_for(
+            asyncio.to_thread(
+                capture_camera_frame_sync, ip, rtsp, creds, sub_stream_path, 2.5, stream_url, True
+            ),
+            timeout=5.0,
+        )
+    except (asyncio.TimeoutError, TimeoutError, Exception) as cap_err:
+        if isinstance(cap_err, (asyncio.TimeoutError, TimeoutError)):
+            frame_bytes = None
+            source_desc = "Capture Timeout"
+            latency_ms = 5000.0
+            diag_info = {
+                "stage": "TIMEOUT",
+                "error_message": f"Connection test timed out after 5.0s attempting to reach {ip}:{rtsp}. Verify camera is powered on and accessible on the local network.",
+                "is_reachable": False,
+                "is_port_open": False,
+                "is_handshake_ok": False,
+            }
+        else:
+            frame_bytes = None
+            source_desc = f"Capture Exception ({cap_err})"
+            latency_ms = 0.0
+            diag_info = {
+                "stage": "ERROR",
+                "error_message": str(cap_err),
+                "is_reachable": False,
+                "is_port_open": False,
+                "is_handshake_ok": False,
+            }
 
     os.makedirs("snapshots", exist_ok=True)
     snapshot_path = os.path.join("snapshots", f"preview_{camera_id}.jpg")

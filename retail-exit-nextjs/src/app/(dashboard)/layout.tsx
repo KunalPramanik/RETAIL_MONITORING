@@ -1,7 +1,7 @@
 "use client";
 
 import { safeFetch } from "@/lib/api-client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -23,19 +23,73 @@ import {
   Sparkles,
 } from "lucide-react";
 
+function NavLinks({ navItems, pathname }: { navItems: any[]; pathname: string }) {
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab") || (pathname === "/platform" ? "tenants" : null);
+
+  return (
+    <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      {navItems.map((item) => {
+        const isActive = (() => {
+          if (item.href === "/") {
+            return pathname === "/";
+          }
+          if (item.href.includes("?tab=")) {
+            const itemTab = item.href.split("?tab=")[1];
+            return pathname === "/platform" && currentTab === itemTab;
+          }
+          return pathname === item.href || pathname.startsWith(item.href + "/");
+        })();
+
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all ${
+              isActive
+                ? "bg-[#2563EB] text-white shadow-lg shadow-blue-900/25 font-bold border-l-2 border-[#38BDF8]"
+                : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-panel-hover)]"
+            }`}
+          >
+            <item.icon size={16} className={isActive ? "text-white" : "text-[var(--text-secondary)]"} />
+            <span>{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function HeaderTitle({ navItems, pathname }: { navItems: any[]; pathname: string }) {
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get("tab") || (pathname === "/platform" ? "tenants" : null);
+
+  const activeItem = navItems.find((n) => {
+    if (n.href === "/") return pathname === "/" && !currentTab;
+    if (n.href.includes("?tab=")) {
+      const itemTab = n.href.split("?tab=")[1];
+      return pathname === "/platform" && currentTab === itemTab;
+    }
+    return pathname === n.href || pathname.startsWith(n.href + "/");
+  });
+
+  return (
+    <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">
+      {activeItem?.label || "Control Console"}
+    </span>
+  );
+}
+
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [currentTime, setCurrentTime] = useState("");
   const [apiHealth, setApiHealth] = useState<"HEALTHY" | "DEGRADED" | "OFFLINE" | "CHECKING">("CHECKING");
-
-  const currentTab = searchParams.get("tab") || (pathname === "/platform" ? "tenants" : null);
 
   // Authentication guard
   useEffect(() => {
@@ -139,35 +193,9 @@ export default function DashboardLayout({
         </div>
 
         {/* Navigation Links */}
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
-            const isActive = (() => {
-              if (item.href === "/") {
-                return pathname === "/";
-              }
-              if (item.href.includes("?tab=")) {
-                const itemTab = item.href.split("?tab=")[1];
-                return pathname === "/platform" && currentTab === itemTab;
-              }
-              return pathname === item.href || pathname.startsWith(item.href + "/");
-            })();
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-lg text-xs font-medium transition-all ${
-                  isActive
-                    ? "bg-[#2563EB] text-white shadow-lg shadow-blue-900/25 font-bold border-l-2 border-[#38BDF8]"
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-panel-hover)]"
-                }`}
-              >
-                <item.icon size={16} className={isActive ? "text-white" : "text-[var(--text-secondary)]"} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        <Suspense fallback={<nav className="flex-1 p-3 space-y-1 overflow-y-auto" />}>
+          <NavLinks navItems={navItems} pathname={pathname} />
+        </Suspense>
 
         {/* User / Station Footer */}
         <div className="p-4 border-t border-[var(--border-hairline)] bg-[var(--bg-canvas)] transition-colors duration-200">
@@ -206,16 +234,9 @@ export default function DashboardLayout({
         <header className="px-6 py-3 border-b border-[var(--border-hairline)] flex justify-between items-center bg-[var(--header-bg)] z-10 sticky top-0 shadow-sm transition-colors duration-200">
           <div className="flex items-center gap-3">
             <span className="text-xs font-mono text-[var(--text-muted)]">SOFTWARE OWNER CONSOLE //</span>
-            <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">
-              {navItems.find((n) => {
-                if (n.href === "/") return pathname === "/" && !currentTab;
-                if (n.href.includes("?tab=")) {
-                  const itemTab = n.href.split("?tab=")[1];
-                  return pathname === "/platform" && currentTab === itemTab;
-                }
-                return pathname === n.href || pathname.startsWith(n.href + "/");
-              })?.label || "Control Console"}
-            </span>
+            <Suspense fallback={<span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">Control Console</span>}>
+              <HeaderTitle navItems={navItems} pathname={pathname} />
+            </Suspense>
           </div>
 
           <div className="flex items-center gap-3">

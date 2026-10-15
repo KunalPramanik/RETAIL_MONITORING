@@ -916,7 +916,7 @@ VALUES (
     '9f405af6-751b-44c4-8d27-4734d4a501db',
     'ces@gmail.com',
     'ces',
-    '$2b$12$3e3aXyOsHZ.ycnU3X3VIxuHQX9tCLHkFjvYefjhYrLr1xKbtUa0Tq',
+    '$2b$12$eIacDSWnSJDpI8.p9m8znOFRvENN8n6MAGa9JJnjD/dy.G7DN0Xhm',
     'ADMIN',
     '0f8248a3-2947-4f6b-871d-5b6cb219e2c1',
     FALSE,
@@ -945,7 +945,7 @@ VALUES (
     'admin_root_001',
     'ces',
     'ces@gmail.com',
-    '$2b$12$3e3aXyOsHZ.ycnU3X3VIxuHQX9tCLHkFjvYefjhYrLr1xKbtUa0Tq',
+    '$2b$12$eIacDSWnSJDpI8.p9m8znOFRvENN8n6MAGa9JJnjD/dy.G7DN0Xhm',
     'SUPER_ADMIN',
     TRUE,
     NOW()

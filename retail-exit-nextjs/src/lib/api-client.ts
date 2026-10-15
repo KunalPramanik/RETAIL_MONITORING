@@ -87,30 +87,50 @@ export async function apiGet<T = any>(path: string, fallback: T = [] as any): Pr
 
 export function formatErrorMessage(error: any): string {
   if (!error) return "Unknown error occurred";
-  if (typeof error === "string") return error;
-  if (Array.isArray(error)) {
-    return error
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (item && typeof item === "object") {
-          const loc = Array.isArray(item.loc) ? item.loc.filter(Boolean).join(" -> ") : "";
-          const msg = item.msg || item.message || JSON.stringify(item);
-          return loc ? `${loc}: ${msg}` : String(msg);
-        }
-        return String(item);
-      })
-      .join("; ");
+  
+  if (typeof error === "string") {
+    if (error.includes("[object Object]") || error.includes("object: object") || error.includes("object Object")) {
+      return "Incorrect email ID or password. Please verify credentials.";
+    }
+    return error;
   }
+
+  if (Array.isArray(error)) {
+    const messages = error.map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object") {
+        const loc = Array.isArray(item.loc) ? item.loc.map(String).join(" ").toLowerCase() : "";
+        const msg = String(item.msg || item.message || "");
+        if (loc.includes("email") || loc.includes("adminemail")) {
+          return "Incorrect email ID. Please provide a valid email format (e.g. admin@company.com)";
+        }
+        if (loc.includes("password") || loc.includes("adminpassword")) {
+          return "Incorrect password. Password must be at least 8 characters long";
+        }
+        return msg || "Invalid input";
+      }
+      return String(item);
+    });
+    const uniqueMessages = Array.from(new Set(messages)).filter(Boolean);
+    return uniqueMessages.length > 0 ? uniqueMessages.join(". ") : "Validation failed. Please check inputs.";
+  }
+
   if (typeof error === "object") {
-    if (error.msg) return String(error.msg);
-    if (error.message) return String(error.message);
-    if (error.detail) return formatErrorMessage(error.detail);
+    if (error.detail !== undefined) return formatErrorMessage(error.detail);
+    if (typeof error.msg === "string") return error.msg;
+    if (typeof error.message === "string") return error.message;
+    if (error.error) return formatErrorMessage(error.error);
     try {
-      return JSON.stringify(error);
+      const serialized = JSON.stringify(error);
+      if (serialized === "{}" || serialized.includes("[object Object]")) {
+        return "Incorrect email ID or password.";
+      }
+      return serialized;
     } catch {
-      return String(error);
+      return "Incorrect email ID or password.";
     }
   }
+
   return String(error);
 }
 

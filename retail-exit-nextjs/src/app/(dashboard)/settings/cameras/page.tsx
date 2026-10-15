@@ -24,6 +24,8 @@ import {
   Check,
   MoveUp,
   MoveDown,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 interface CameraItem {
@@ -67,6 +69,7 @@ export default function CameraManagementPage() {
   const [usbStatus, setUsbStatus] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
   const [testing, setTesting] = useState(false);
   const [viewingPreview, setViewingPreview] = useState<any>(null);
@@ -701,13 +704,24 @@ export default function CameraManagementPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">CREDENTIALS (OPTIONAL)</label>
-                  <input
-                    type="password"
-                    value={formData.credentials ?? ""}
-                    onChange={(e) => setFormData({ ...formData, credentials: e.target.value })}
-                    placeholder="admin:password"
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
-                  />
+                  <div className="relative">
+                    <input
+                      type={showCredentials ? "text" : "password"}
+                      value={formData.credentials ?? ""}
+                      onChange={(e) => setFormData({ ...formData, credentials: e.target.value })}
+                      placeholder="admin:password"
+                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 pr-9 text-[var(--text-primary)] font-mono outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCredentials(!showCredentials)}
+                      className="absolute right-2.5 top-2.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus:outline-none"
+                      title={showCredentials ? "Hide password" : "Show password"}
+                      aria-label={showCredentials ? "Hide password" : "Show password"}
+                    >
+                      {showCredentials ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

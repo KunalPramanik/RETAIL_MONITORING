@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { safeFetch } from "@/lib/api-client";
+import { safeFetch, formatErrorMessage } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import {
   ShieldAlert,
@@ -20,6 +20,7 @@ import {
   UserPlus,
   Clock,
   Eye,
+  EyeOff,
   Sliders,
   DollarSign,
   FileText,
@@ -188,6 +189,12 @@ function PlatformControlPanelInner() {
 
   const [actionSubmitting, setActionSubmitting] = useState(false);
 
+  // Password visibility & inline validation errors
+  const [showCreateAdminPassword, setShowCreateAdminPassword] = useState(false);
+  const [showProvisionPassword, setShowProvisionPassword] = useState(false);
+  const [createTenantError, setCreateTenantError] = useState<string | null>(null);
+  const [provisionOwnerError, setProvisionOwnerError] = useState<string | null>(null);
+
   const fetchAllData = async (isManual = false) => {
     try {
       if (isManual) setRefreshing(true);
@@ -226,10 +233,26 @@ function PlatformControlPanelInner() {
   // Handlers
   const handleCreateTenant = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!createTenantForm.name || !createTenantForm.slug) {
-      alert("Please provide Company Name and Slug.");
+    setCreateTenantError(null);
+    if (!createTenantForm.name.trim() || !createTenantForm.slug.trim()) {
+      setCreateTenantError("Please provide Company Name and Slug.");
       return;
     }
+
+    const emailTrim = createTenantForm.adminEmail.trim();
+    const pwd = createTenantForm.adminPassword;
+
+    if (emailTrim || pwd) {
+      if (!emailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+        setCreateTenantError("Incorrect email ID. Please provide a valid email format (e.g. admin@company.com).");
+        return;
+      }
+      if (!pwd || pwd.length < 8) {
+        setCreateTenantError("Incorrect password. Password must be at least 8 characters long.");
+        return;
+      }
+    }
+
     setActionSubmitting(true);
     try {
       const res = await safeFetch("/api/platform/tenants", {
@@ -241,8 +264,8 @@ function PlatformControlPanelInner() {
           slug: createTenantForm.slug.trim(),
           contactEmail: createTenantForm.contactEmail.trim() || undefined,
           tierId: createTenantForm.tierId,
-          adminEmail: createTenantForm.adminEmail.trim() || undefined,
-          adminPassword: createTenantForm.adminPassword || undefined,
+          adminEmail: emailTrim || undefined,
+          adminPassword: pwd || undefined,
         }),
       });
 
@@ -256,14 +279,15 @@ function PlatformControlPanelInner() {
           adminEmail: "",
           adminPassword: "",
         });
+        setCreateTenantError(null);
         fetchAllData(true);
-        alert("Company / Tenant successfully registered.");
       } else {
         const err = await res.json().catch(() => null);
-        alert(err?.detail || "Failed to create tenant.");
+        const parsed = formatErrorMessage(err?.detail || err?.message || err) || "Failed to create tenant. Please verify inputs.";
+        setCreateTenantError(parsed);
       }
     } catch (e: any) {
-      alert(e.message || "Request failed.");
+      setCreateTenantError(e?.message || "Request failed.");
     } finally {
       setActionSubmitting(false);
     }
@@ -299,7 +323,7 @@ function PlatformControlPanelInner() {
         fetchAllData(true);
       } else {
         const err = await res.json().catch(() => null);
-        alert(err?.detail || "Failed to update status.");
+        alert(formatErrorMessage(err?.detail || err?.message || err) || "Failed to update status.");
       }
     } catch (e: any) {
       alert(e.message || "Failed to update status.");
@@ -310,9 +334,18 @@ function PlatformControlPanelInner() {
 
   const handleProvisionStoreOwner = async (e: React.FormEvent) => {
     e.preventDefault();
+    setProvisionOwnerError(null);
     if (!showProvisionOwnerModal) return;
-    if (!provisionOwnerForm.email || !provisionOwnerForm.password) {
-      alert("Email and password are required.");
+
+    const emailTrim = provisionOwnerForm.email.trim();
+    const pwd = provisionOwnerForm.password;
+
+    if (!emailTrim || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      setProvisionOwnerError("Incorrect email ID. Please provide a valid email format (e.g. admin@company.com).");
+      return;
+    }
+    if (!pwd || pwd.length < 8) {
+      setProvisionOwnerError("Incorrect password. Password must be at least 8 characters long.");
       return;
     }
 
@@ -322,23 +355,25 @@ function PlatformControlPanelInner() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: provisionOwnerForm.email.trim(),
-          username: provisionOwnerForm.username.trim() || provisionOwnerForm.email.split("@")[0],
-          password: provisionOwnerForm.password,
+          email: emailTrim,
+          username: provisionOwnerForm.username.trim() || emailTrim.split("@")[0],
+          password: pwd,
+          role: "ADMIN",
         }),
       });
 
       if (res.ok) {
         setShowProvisionOwnerModal(null);
         setProvisionOwnerForm({ email: "", username: "", password: "" });
+        setProvisionOwnerError(null);
         fetchAllData(true);
-        alert("Store Owner account created successfully for tenant. Privileges restricted to tenant scope.");
       } else {
         const err = await res.json().catch(() => null);
-        alert(err?.detail || "Failed to provision store owner.");
+        const parsed = formatErrorMessage(err?.detail || err?.message || err) || "Incorrect email ID or password.";
+        setProvisionOwnerError(parsed);
       }
     } catch (e: any) {
-      alert(e.message || "Failed to provision owner.");
+      setProvisionOwnerError(e?.message || "Failed to provision owner.");
     } finally {
       setActionSubmitting(false);
     }
@@ -519,7 +554,11 @@ function PlatformControlPanelInner() {
             </div>
 
             <button
-              onClick={() => setShowCreateTenantModal(true)}
+              onClick={() => {
+                setCreateTenantError(null);
+                setShowCreateAdminPassword(false);
+                setShowCreateTenantModal(true);
+              }}
               className="px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-900/30 transition-all font-mono shrink-0"
             >
               <Plus size={15} /> Register New Company
@@ -578,6 +617,8 @@ function PlatformControlPanelInner() {
                           <div className="flex items-center justify-end gap-2">
                             <button
                               onClick={() => {
+                                setProvisionOwnerError(null);
+                                setShowProvisionPassword(false);
                                 setShowProvisionOwnerModal(t);
                                 setProvisionOwnerForm({
                                   email: `owner@${t.slug}.com`,
@@ -1057,6 +1098,23 @@ function PlatformControlPanelInner() {
             </div>
 
             <form onSubmit={handleCreateTenant} className="space-y-3 text-xs font-mono">
+              {createTenantError && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-xl border border-[var(--status-high)]/40 bg-[var(--status-high)]/10 text-[var(--status-high)] text-xs flex items-start gap-2 animate-in fade-in slide-in-from-top-1"
+                >
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                  <span className="flex-1 font-medium">{createTenantError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCreateTenantError(null)}
+                    className="hover:opacity-75"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[var(--text-secondary)] mb-1 uppercase">Company Name *</label>
                 <input
@@ -1136,19 +1194,28 @@ function PlatformControlPanelInner() {
                       onChange={(e) =>
                         setCreateTenantForm((prev) => ({ ...prev, adminEmail: e.target.value }))
                       }
-                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-[var(--text-primary)] outline-none"
+                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                     />
                   </div>
-                  <div>
+                  <div className="relative">
                     <input
-                      type="password"
-                      placeholder="Password"
+                      type={showCreateAdminPassword ? "text" : "password"}
+                      placeholder="Password (min 8 chars)"
                       value={createTenantForm.adminPassword}
                       onChange={(e) =>
                         setCreateTenantForm((prev) => ({ ...prev, adminPassword: e.target.value }))
                       }
-                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-[var(--text-primary)] outline-none"
+                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 pr-8 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateAdminPassword(!showCreateAdminPassword)}
+                      className="absolute right-2 top-2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus:outline-none"
+                      title={showCreateAdminPassword ? "Hide password" : "Show password"}
+                      aria-label={showCreateAdminPassword ? "Hide password" : "Show password"}
+                    >
+                      {showCreateAdminPassword ? <EyeOff size={15} /> : <Eye size={15} />}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1270,6 +1337,23 @@ function PlatformControlPanelInner() {
             </div>
 
             <form onSubmit={handleProvisionStoreOwner} className="space-y-3 text-xs font-mono">
+              {provisionOwnerError && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-xl border border-[var(--status-high)]/40 bg-[var(--status-high)]/10 text-[var(--status-high)] text-xs flex items-start gap-2 animate-in fade-in slide-in-from-top-1"
+                >
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                  <span className="flex-1 font-medium">{provisionOwnerError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setProvisionOwnerError(null)}
+                    className="hover:opacity-75"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+
               <p className="text-[var(--text-secondary)]">
                 Create a tenant-scoped administrator account for{" "}
                 <span className="text-[var(--text-primary)] font-bold">{showProvisionOwnerModal.name}</span>. This account
@@ -1281,6 +1365,7 @@ function PlatformControlPanelInner() {
                 <input
                   type="email"
                   required
+                  placeholder="admin@company.com"
                   value={provisionOwnerForm.email}
                   onChange={(e) =>
                     setProvisionOwnerForm((prev) => ({ ...prev, email: e.target.value }))
@@ -1293,6 +1378,7 @@ function PlatformControlPanelInner() {
                 <label className="block text-[var(--text-secondary)] mb-1 uppercase">Username</label>
                 <input
                   type="text"
+                  placeholder="e.g. store_admin"
                   value={provisionOwnerForm.username}
                   onChange={(e) =>
                     setProvisionOwnerForm((prev) => ({ ...prev, username: e.target.value }))
@@ -1303,17 +1389,31 @@ function PlatformControlPanelInner() {
 
               <div>
                 <label className="block text-[var(--text-secondary)] mb-1 uppercase">Initial Password *</label>
-                <input
-                  type="password"
-                  required
-                  minLength={8}
-                  placeholder="••••••••••••"
-                  value={provisionOwnerForm.password}
-                  onChange={(e) =>
-                    setProvisionOwnerForm((prev) => ({ ...prev, password: e.target.value }))
-                  }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
-                />
+                <div className="relative">
+                  <input
+                    type={showProvisionPassword ? "text" : "password"}
+                    required
+                    minLength={8}
+                    placeholder="Min. 8 characters (e.g. Pass@1234)"
+                    value={provisionOwnerForm.password}
+                    onChange={(e) =>
+                      setProvisionOwnerForm((prev) => ({ ...prev, password: e.target.value }))
+                    }
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowProvisionPassword(!showProvisionPassword)}
+                    className="absolute right-3 top-3 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors focus:outline-none"
+                    title={showProvisionPassword ? "Hide password" : "Show password"}
+                    aria-label={showProvisionPassword ? "Hide password" : "Show password"}
+                  >
+                    {showProvisionPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+                  Must be at least 8 characters long.
+                </div>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-hairline)]">

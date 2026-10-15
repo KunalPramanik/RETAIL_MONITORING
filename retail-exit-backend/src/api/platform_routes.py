@@ -59,8 +59,8 @@ class TenantProvisionRequest(BaseModel):
     companyName: Optional[str] = None
     name: Optional[str] = None
     slug: Optional[str] = None
-    adminEmail: str = Field(..., pattern=r"^[^@]+@[^@]+\.[^@]+$")
-    adminPassword: str = Field(..., min_length=8)
+    adminEmail: Optional[str] = None
+    adminPassword: Optional[str] = None
     adminName: Optional[str] = "Company Admin"
     timezone: Optional[str] = "Asia/Kolkata"
     tierId: Optional[str] = "tier_starter_01"
@@ -89,10 +89,10 @@ class TenantStatusUpdateRequest(BaseModel):
 
 
 class TenantUserProvisionRequest(BaseModel):
-    email: str = Field(..., pattern=r"^[^@]+@[^@]+\.[^@]+$")
+    email: str
     username: Optional[str] = None
-    password: str = Field(..., min_length=8)
-    role: str = Field(..., pattern="^(ADMIN|SUPERVISOR|VIEWER)$")
+    password: str
+    role: Optional[str] = "ADMIN"
 
 
 class StoreStatusUpdateRequest(BaseModel):
@@ -461,11 +461,30 @@ async def create_tenant(
     comp_name = req.resolved_company_name
     if not comp_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company name is required.")
+
+    admin_email = (req.adminEmail or "").strip()
+    admin_pwd = req.adminPassword or ""
+
+    if admin_email or admin_pwd:
+        if not admin_email or not re.match(r"^[^@]+@[^@]+\.[^@]+$", admin_email):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect email ID. Please provide a valid email format (e.g. admin@company.com).",
+            )
+        if not admin_pwd or len(admin_pwd) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Incorrect password. Password must be at least 8 characters long.",
+            )
+    else:
+        admin_email = f"admin@{req.slug or 'tenant'}.com"
+        admin_pwd = f"InitAdmin{int(datetime.now().timestamp())}!"
+
     try:
         result = await TenantProvisioningService.provision_tenant(
             company_name=comp_name,
-            admin_email=req.adminEmail,
-            admin_password=req.adminPassword,
+            admin_email=admin_email,
+            admin_password=admin_pwd,
             admin_name=req.adminName or "Company Admin",
             timezone_str=req.timezone or "Asia/Kolkata",
             actor_id=admin.admin_id,
@@ -512,7 +531,19 @@ async def provision_store_owner(
     admin: PlatformSuperAdmin = Depends(require_master_super_admin),
 ):
     """Provisions the initial Store Owner account in AppUser (strictly role ADMIN, never SUPER_ADMIN)."""
-    if req.email.strip().lower() == admin.email.strip().lower():
+    email = (req.email or "").strip().lower()
+    if not email or not re.match(r"^[^@]+@[^@]+\.[^@]+$", email):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect email ID. Please provide a valid email format (e.g. admin@company.com).",
+        )
+    if not req.password or len(req.password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect password. Password must be at least 8 characters long.",
+        )
+
+    if email == admin.email.strip().lower():
         raise HTTPException(status_code=400, detail="Cannot provision Store Owner with Software Owner email.")
 
     async with AsyncSessionLocal() as op_session:

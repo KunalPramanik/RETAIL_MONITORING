@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { safeFetch } from "./api-client";
+import { safeFetch, formatErrorMessage } from "./api-client";
 
 export interface AuthUser {
   id: string;
@@ -146,10 +146,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.status === 401) {
           return {
             success: false,
-            error: data?.detail || "Incorrect username or password. Please verify your credentials.",
+            error: formatErrorMessage(data?.detail) || "Incorrect username or password. Please verify your credentials.",
           };
         }
-        const errMsg = data?.detail || data?.message || "Authentication failed. Please check your credentials.";
+        const errMsg = formatErrorMessage(data?.detail || data?.message || data) || "Authentication failed. Please check your credentials.";
         return { success: false, error: errMsg };
       }
 

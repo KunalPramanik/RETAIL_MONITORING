@@ -8,7 +8,7 @@ import ipaddress
 import re
 from typing import Optional, List, Any
 from datetime import datetime
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
 
 
 BLOCKED_NETWORKS = [
@@ -20,11 +20,15 @@ BLOCKED_NETWORKS = [
 ]
 
 
-def validate_camera_host(host: str) -> str:
-    host_clean = host.strip()
+def validate_camera_host(host: Optional[str]) -> str:
+    host_clean = (host or "").strip()
     if not host_clean:
-        raise ValueError("ipAddress cannot be empty")
-    
+        return "127.0.0.1"
+
+    # Allow local device identifiers (USB device indices, virtual feeds)
+    if host_clean.lower() in ("0", "1", "2", "3", "webcam", "usb", "usb-0", "usb-1", "localhost"):
+        return host_clean
+
     # Check if host is an IP address
     try:
         ip_obj = ipaddress.ip_address(host_clean)
@@ -62,11 +66,11 @@ def validate_camera_fps(fps: Optional[int]) -> Optional[int]:
     return fps
 
 
-def validate_camera_rtsp_path(path: str) -> str:
-    path_clean = path.strip()
+def validate_camera_rtsp_path(path: Optional[str]) -> str:
+    path_clean = (path or "").strip()
     if not path_clean:
-        raise ValueError("rtspPath cannot be empty")
-    if not path_clean.startswith("/"):
+        return "/live/ch0"
+    if not path_clean.startswith("/") and not path_clean.startswith(("http://", "https://", "rtsp://")):
         path_clean = f"/{path_clean}"
     return path_clean
 
@@ -103,8 +107,8 @@ class CameraCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     label: str = Field(..., min_length=2, max_length=255)
-    ipAddress: str = Field(..., min_length=1, max_length=255)
-    rtspPath: str = Field(..., min_length=1)
+    ipAddress: Optional[str] = Field(default="127.0.0.1", max_length=255)
+    rtspPath: Optional[str] = Field(default="/live/ch0")
     subStreamPath: Optional[str] = None
     streamUrl: Optional[str] = None
     credentials: Optional[str] = None
@@ -115,23 +119,51 @@ class CameraCreate(BaseModel):
     cameraRole: Optional[str] = Field("GENERAL_MONITORING", alias="camera_role")
     ignoredClasses: Optional[List[str]] = Field(default_factory=list, alias="ignored_classes")
 
+    @model_validator(mode="before")
+    @classmethod
+    def populate_defaults_for_stream_or_usb(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            stream_url = data.get("streamUrl") or data.get("stream_url")
+            ip_address = data.get("ipAddress") or data.get("ip_address")
+            rtsp_path = data.get("rtspPath") or data.get("rtsp_path")
+
+            if not ip_address or not str(ip_address).strip():
+                if stream_url and str(stream_url).strip():
+                    url_str = str(stream_url).strip()
+                    try:
+                        from urllib.parse import urlparse
+                        parsed = urlparse(url_str)
+                        if parsed.hostname:
+                            data["ipAddress"] = parsed.hostname
+                        else:
+                            data["ipAddress"] = "127.0.0.1"
+                    except Exception:
+                        data["ipAddress"] = "127.0.0.1"
+                else:
+                    data["ipAddress"] = "127.0.0.1"
+
+            if not rtsp_path or not str(rtsp_path).strip():
+                data["rtspPath"] = "/live/ch0"
+
+        return data
+
     @field_validator("label")
     @classmethod
     def clean_label(cls, v: str) -> str:
-        cleaned = v.strip()
+        cleaned = (v or "").strip()
         if len(cleaned) < 2:
             raise ValueError("Label must be at least 2 characters")
         return cleaned
 
     @field_validator("ipAddress")
     @classmethod
-    def check_ip(cls, v: str) -> str:
-        return validate_camera_host(v)
+    def check_ip(cls, v: Optional[str]) -> str:
+        return validate_camera_host(v or "127.0.0.1")
 
     @field_validator("rtspPath")
     @classmethod
-    def check_rtsp_path(cls, v: str) -> str:
-        return validate_camera_rtsp_path(v)
+    def check_rtsp_path(cls, v: Optional[str]) -> str:
+        return validate_camera_rtsp_path(v or "/live/ch0")
 
     @field_validator("resolution")
     @classmethod

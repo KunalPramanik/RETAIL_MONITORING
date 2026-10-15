@@ -244,29 +244,55 @@ export default function CameraManagementPage() {
 
     // Enforce explicit camera configuration; prevent submitting unconfigured fake defaults
     if (!formData.label.trim()) {
-      setTestResult({ success: false, errorMessage: "Camera label is required before pairing." });
+      setTestResult({ success: false, errorMessage: "Camera label is required before testing connection." });
       setTesting(false);
       return;
     }
-    if (formData.connectionType !== "USB" && formData.connectionType !== "WIFI_HTTP" && !formData.ipAddress.trim()) {
-      setTestResult({ success: false, errorMessage: "Valid camera IP address or hostname is required." });
+    if (formData.label.trim().length < 2) {
+      setTestResult({ success: false, errorMessage: "Camera label must be at least 2 characters." });
       setTesting(false);
       return;
     }
-    if (formData.connectionType === "WIFI_HTTP" && !formData.streamUrl.trim()) {
-      setTestResult({ success: false, errorMessage: "HTTP / MJPEG Stream URL is required." });
-      setTesting(false);
-      return;
+
+    let resolvedIp = (formData.ipAddress || "").trim();
+    let resolvedStreamUrl: string | undefined = undefined;
+
+    if (formData.connectionType === "USB") {
+      resolvedIp = resolvedIp || "0";
+      resolvedStreamUrl = resolvedIp;
+    } else if (formData.connectionType === "WIFI_HTTP") {
+      if (!formData.streamUrl.trim()) {
+        setTestResult({ success: false, errorMessage: "HTTP / MJPEG Stream URL is required." });
+        setTesting(false);
+        return;
+      }
+      resolvedStreamUrl = formData.streamUrl.trim();
+      if (!resolvedIp && resolvedStreamUrl) {
+        try {
+          const parsed = new URL(resolvedStreamUrl);
+          resolvedIp = parsed.hostname || "127.0.0.1";
+        } catch {
+          const m = resolvedStreamUrl.match(/^(?:https?:\/\/)?([^/:]+)/i);
+          resolvedIp = m ? m[1] : "127.0.0.1";
+        }
+      }
+      if (!resolvedIp) resolvedIp = "127.0.0.1";
+    } else {
+      if (!resolvedIp) {
+        setTestResult({ success: false, errorMessage: "Valid camera IP address or hostname is required." });
+        setTesting(false);
+        return;
+      }
     }
 
     try {
       const payload: any = {
         label: formData.label.trim(),
-        ipAddress: formData.connectionType === "USB" ? (formData.ipAddress || "0") : formData.ipAddress.trim(),
+        ipAddress: resolvedIp,
         rtspPath: formData.rtspPath.trim() || "/live/ch0",
-        streamUrl: formData.connectionType === "WIFI_HTTP" ? formData.streamUrl.trim() : (formData.connectionType === "USB" ? (formData.ipAddress || "0") : undefined),
+        streamUrl: resolvedStreamUrl,
         credentials: formData.credentials.trim() || undefined,
-        laneId: formData.laneId,
+        laneId: formData.laneId || "LANE-01",
       };
 
       const res = await safeFetch("/api/cameras", {
@@ -300,6 +326,14 @@ export default function CameraManagementPage() {
     } finally {
       setTesting(false);
     }
+  };
+
+  const handleSaveAndDeploy = async () => {
+    if (!testResult) {
+      await handleTestConnection();
+    }
+    setShowAddModal(false);
+    fetchCameras();
   };
 
   const handleConfirmDiscoveredLane = async (dev: DiscoveredDevice) => {
@@ -768,7 +802,7 @@ export default function CameraManagementPage() {
                 <Play size={14} /> {testing ? "Verifying Stream..." : "Test Connection"}
               </button>
               <button
-                onClick={() => { setShowAddModal(false); fetchCameras(); }}
+                onClick={handleSaveAndDeploy}
                 className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-900/30 transition-all"
               >
                 Save & Deploy Camera

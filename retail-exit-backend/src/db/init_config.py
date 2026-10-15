@@ -58,38 +58,10 @@ async def init_baseline_configuration(session: AsyncSession):
         session.add(store)
         await session.flush()
 
-    # 2. Ensure at least one active ADMIN user exists
-    existing_admin = await session.execute(select(AppUser).where(AppUser.role == "ADMIN", AppUser.is_active == True))
-    if not existing_admin.scalars().first():
-        initial_pw = os.getenv("ADMIN_INITIAL_PASSWORD")
-        if not initial_pw:
-            env = os.getenv("ENVIRONMENT", "development").lower()
-            if env == "production":
-                raise RuntimeError(
-                    "FATAL: ADMIN_INITIAL_PASSWORD environment variable must be configured "
-                    "in environment or secret manager before first-run database bootstrap in production."
-                )
-            import secrets
-            import sys
-            initial_pw = secrets.token_urlsafe(18)
-            sys.stderr.write(
-                f"\n[BOOTSTRAP] Initial admin user provisioned. One-time setup password: {initial_pw}\n"
-            )
+    # 2. Ensure ONLY the Software Owner (ces@gmail.com) exists as Active ADMIN
+    from sqlalchemy import delete
+    await session.execute(delete(AppUser).where(AppUser.email != "ces@gmail.com"))
 
-        hashed_password = get_password_hash(initial_pw)
-        admin_user = AppUser(
-            user_id=str(uuid.uuid4()),
-            email="admin@secops.local",
-            username="admin",
-            password_hash=hashed_password,
-            role="ADMIN",
-            store_id=store.store_id,
-            mfa_enabled=False,
-            is_active=True,
-        )
-        session.add(admin_user)
-
-    # 2b. Ensure platform owner / store admin user ces@gmail.com exists with Ces@1234
     ces_user_res = await session.execute(
         select(AppUser).where(
             or_(
@@ -116,6 +88,7 @@ async def init_baseline_configuration(session: AsyncSession):
         ces_user.password_hash = get_password_hash("Ces@1234")
         ces_user.is_active = True
         ces_user.role = "ADMIN"
+        ces_user.store_id = store.store_id
 
     # 3. Base Threshold Config
     cfg = await session.execute(select(ThresholdConfig).limit(1))

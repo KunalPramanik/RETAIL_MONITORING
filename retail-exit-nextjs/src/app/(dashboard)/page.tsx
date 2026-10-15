@@ -212,14 +212,39 @@ export default function DashboardPage() {
     let ws: WebSocket | null = null;
     let reconnectTimeout: any = null;
 
+    let pingTimer: any = null;
+
     const connectWs = () => {
       try {
         const wsUrl = getWsUrl("/ws/live");
         ws = new WebSocket(wsUrl);
 
+        ws.onopen = () => {
+          pingTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            }
+          }, 10000);
+        };
+
         ws.onmessage = (event) => {
           try {
+            if (event.data === "pong") return;
             const data = JSON.parse(event.data);
+            if (data.type === "pong") return;
+
+            if (data.type === "camera_status_changed" && data.payload) {
+              const updatedCam = data.payload;
+              setCameras((prev) =>
+                prev.map((c) =>
+                  c.cameraId === updatedCam.cameraId ? { ...c, ...updatedCam } : c
+                )
+              );
+              setStreamNonce(Date.now());
+              fetchData();
+              return;
+            }
+
             if (
               data.type === "new_alert" ||
               data.type === "alert_resolved" ||
@@ -238,6 +263,7 @@ export default function DashboardPage() {
         };
 
         ws.onclose = () => {
+          if (pingTimer) clearInterval(pingTimer);
           reconnectTimeout = setTimeout(connectWs, 5000);
         };
 
@@ -254,6 +280,7 @@ export default function DashboardPage() {
     const fallbackInterval = setInterval(fetchData, 15000);
 
     return () => {
+      if (pingTimer) clearInterval(pingTimer);
       if (ws) {
         ws.onclose = null;
         ws.close();
@@ -678,14 +705,27 @@ export default function DashboardPage() {
 
                     {/* Video Player Display Container */}
                     <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden select-none">
-                      <img
-                        src={videoSrc}
-                        alt={cam.label}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = `/api/cameras/${cam.cameraId}/snapshot?t=${Date.now()}`;
-                        }}
-                      />
+                      {isOnline ? (
+                        <img
+                          src={videoSrc}
+                          alt={cam.label}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = `/api/cameras/${cam.cameraId}/snapshot?t=${Date.now()}`;
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-[#12151A] text-[#8B93A1] font-mono text-xs select-none p-4 text-center">
+                          <Video size={36} className="mb-2 text-[#E5484D] animate-pulse" />
+                          <span className="tracking-widest text-[#E5484D] font-bold text-xs">CAMERA OFFLINE // NO SIGNAL</span>
+                          <span className="text-[#8B93A1] text-[10px] mt-1 font-mono">
+                            {cam.ipAddress ? `ENDPOINT: ${cam.ipAddress} (PORT 554)` : "RTSP EDGE STREAM"}
+                          </span>
+                          <span className="text-[#E8A33D] text-[10px] mt-1.5 font-mono animate-pulse">
+                            ● POLLING HARDWARE // AUTO-RECONNECTING...
+                          </span>
+                        </div>
+                      )}
 
                       {/* Live Surveillance HUD Badges */}
                       <div className="absolute top-2 left-2 z-20 pointer-events-none flex items-center gap-1.5">

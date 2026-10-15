@@ -125,18 +125,17 @@ def capture_camera_frame_sync(
 
     if credentials:
         clean_c = str(credentials).strip()
-        if ":" in clean_c:
+        if ":" in clean_c and not clean_c.startswith("secops/"):
             u, p = clean_c.split(":", 1)
             auth_tuples.append((u, p))
         elif not clean_c.startswith("secops/"):
             auth_tuples.append((clean_c, ""))
         auth_tuples.append(None)
-        auth_tuples.extend([("admin", ""), ("admin", "admin"), ("admin", "12345")])
+        auth_tuples.extend([("admin", "123456"), ("admin", ""), ("admin", "admin"), ("admin", "12345")])
     else:
         # Default to unauthenticated stream pull first, then standard IP camera defaults
         auth_tuples.append(None)
-        # Common IP camera defaults as fallbacks (Juan/Jooan/Hiseeu default is admin with blank pass)
-        auth_tuples.extend([("admin", ""), ("admin", "admin"), ("admin", "12345")])
+        auth_tuples.extend([("admin", "123456"), ("admin", ""), ("admin", "admin"), ("admin", "12345")])
 
     # Distinct auth tuples while preserving order
     seen = set()
@@ -289,10 +288,34 @@ def capture_camera_frame_sync(
 
     if is_rtsp_reachable:
         candidate_rtsp_urls = []
+        paths_to_test = []
         if rtsp_path:
-            candidate_rtsp_urls.append((f"rtsp://{auth_part}{target_host}:{target_port}{rtsp_path}", "RTSP Main Stream"))
+            paths_to_test.append((rtsp_path, "RTSP Main Stream"))
         if sub_stream_path and sub_stream_path != rtsp_path:
-            candidate_rtsp_urls.append((f"rtsp://{auth_part}{target_host}:{target_port}{sub_stream_path}", "RTSP Sub Stream"))
+            paths_to_test.append((sub_stream_path, "RTSP Sub Stream"))
+        for p_fb in [
+            "/unicast/c1/s0/live",
+            "/unicast/c1/s1/live",
+            "/media/video1",
+            "/media/video2",
+            "/Live/Ch0/101",
+            "/Live/Ch0/102",
+            "/Streaming/Channels/101",
+            "/Streaming/Channels/102",
+            "/cam/realmonitor?channel=1&subtype=0",
+            "/cam/realmonitor?channel=1&subtype=1",
+            "/live/ch0",
+            "/live/ch1",
+            "/h264Preview_01_main",
+            "/h264Preview_01_sub",
+        ]:
+            if not any(p_fb.lower() == p[0].lower() for p in paths_to_test):
+                paths_to_test.append((p_fb, f"NVR Stream ({p_fb})"))
+
+        for auth in distinct_auth:
+            a_str = f"{auth[0]}:{auth[1]}@" if (auth and auth != ("__NONE__", "")) else ""
+            for p, d in paths_to_test:
+                candidate_rtsp_urls.append((f"rtsp://{a_str}{target_host}:{target_port}{p}", d))
 
         timeout_us = int(min(timeout_sec if timeout_sec is not None else 2.5, 2.5) * 1_000_000)
         timeout_ms = int(timeout_us / 1000)

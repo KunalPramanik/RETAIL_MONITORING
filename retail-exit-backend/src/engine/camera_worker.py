@@ -164,10 +164,21 @@ class CameraIngestionWorker:
                     break
                 try:
                     async with db_session.AsyncSessionLocal() as cam_session:
-                        cam_in_session = await cam_session.get(Camera, cam.camera_id)
-                        if cam_in_session and not cam_in_session.removed_at:
-                            await self.poll_single_camera(cam_in_session, cam_session)
-                            await cam_session.commit()
+                        try:
+                            cam_in_session = await cam_session.get(Camera, cam.camera_id)
+                            if cam_in_session and not cam_in_session.removed_at:
+                                await self.poll_single_camera(cam_in_session, cam_session)
+                                if cam_session.is_active:
+                                    try:
+                                        await cam_session.commit()
+                                    except Exception:
+                                        pass
+                        except Exception:
+                            try:
+                                await cam_session.rollback()
+                            except Exception:
+                                pass
+                            raise
                 except Exception as cam_err:
                     logger.error("Isolated camera loop error on %s: %s", cam.camera_id, cam_err)
         except asyncio.CancelledError:
@@ -186,7 +197,7 @@ class CameraIngestionWorker:
         from src.engine.stream_manager import camera_stream_manager
         target_path = cam.sub_stream_path or cam.rtsp_path or ""
         sm_bytes, _ = camera_stream_manager.get_latest_real_jpeg(
-            cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, max_wait_sec=0.80
+            cam.camera_id, str(cam.ip_address), str(target_path), str(cam.stream_url or "") if cam.stream_url else None, credentials=str(cam.credentials_ref or "") if cam.credentials_ref else None, max_wait_sec=0.80
         )
         if sm_bytes:
             return sm_bytes
@@ -205,18 +216,48 @@ class CameraIngestionWorker:
 
     async def _handle_offline_camera(self, cam: Camera, session, now: datetime) -> None:
         """Handles offline transition and stream gap recording when no frame is received."""
-        if cam.status == "ONLINE" and cam.last_heartbeat_at:
-            hb = cam.last_heartbeat_at.replace(tzinfo=timezone.utc) if cam.last_heartbeat_at.tzinfo is None else cam.last_heartbeat_at
-            if (now - hb).total_seconds() > 30:
+        from src.api.cameras import serialize_camera
+        from src.cache import cache_service
+        from src.realtime.hub import ws_hub
+
+        status_changed = False
+        if cam.status != "OFFLINE":
+            if not hasattr(self, "_missed_frames"):
+                self._missed_frames = {}
+            missed = self._missed_frames.get(cam.camera_id, 0) + 1
+            self._missed_frames[cam.camera_id] = missed
+
+            hb = cam.last_heartbeat_at.replace(tzinfo=timezone.utc) if cam.last_heartbeat_at and cam.last_heartbeat_at.tzinfo is None else cam.last_heartbeat_at
+            if missed >= 1 or not hb or (now - hb).total_seconds() > 3.0:
                 cam.status = "OFFLINE"
                 cam.offline_since = now
+                status_changed = True
+                self._missed_frames[cam.camera_id] = 0
+
+        if status_changed:
+            try:
+                await session.commit()
+            except Exception as c_err:
+                logger.debug("Failed committing offline status: %s", c_err)
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+            try:
+                await cache_service.invalidate("cameras")
+                await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
+                logger.info("Camera %s dynamically transitioned to OFFLINE and broadcast to clients.", cam.camera_id)
+            except Exception as b_err:
+                logger.debug("Failed broadcasting camera_status_changed offline: %s", b_err)
+
         if cam.lane_id:
             try:
-                await DispatchEngine.record_stream_gap(
-                    session=session,
-                    dock_lane_id=cam.lane_id,
-                    gap_seconds=self.poll_interval_sec,
-                )
+                async with session.begin_nested():
+                    await DispatchEngine.record_stream_gap(
+                        session=session,
+                        dock_lane_id=cam.lane_id,
+                        gap_seconds=self.poll_interval_sec,
+                    )
             except Exception as _gap_err:
                 logger.debug("Dispatch stream gap recording error: %s", _gap_err)
 
@@ -1349,7 +1390,7 @@ class CameraIngestionWorker:
                 logger.debug("Disk snapshot error on %s: %s", c_id, _disk_err)
 
         asyncio.create_task(asyncio.to_thread(_persist_to_disk, cam.camera_id, frame_bytes, annotated_bytes))
-        await session.commit()
+        await session.flush()
         await ws_hub.broadcast_event("detection_update", detection_data)
 
     async def poll_single_camera(self, cam: Camera, session) -> Optional[bytes]:
@@ -1364,10 +1405,33 @@ class CameraIngestionWorker:
         # Camera is streaming live video: update heartbeat and frame timestamp
         cam.last_heartbeat_at = now
         cam.last_frame_at = now
-        if cam.status == "OFFLINE":
+        if hasattr(self, "_missed_frames"):
+            self._missed_frames[cam.camera_id] = 0
+
+        status_changed = False
+        if cam.status != "ONLINE":
             cam.status = "ONLINE"
             cam.degraded_reason = None
             cam.offline_since = None
+            status_changed = True
+
+        if status_changed:
+            try:
+                await session.commit()
+            except Exception as c_err:
+                logger.debug("Failed committing online status: %s", c_err)
+                try:
+                    await session.rollback()
+                except Exception:
+                    pass
+            try:
+                from src.api.cameras import serialize_camera
+                from src.cache import cache_service
+                await cache_service.invalidate("cameras")
+                await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
+                logger.info("Camera %s dynamically transitioned to ONLINE and broadcast to clients.", cam.camera_id)
+            except Exception as b_err:
+                logger.debug("Failed broadcasting camera_status_changed online: %s", b_err)
 
         annotated_bytes = frame_bytes
         detection_data: Dict[str, Any] = {

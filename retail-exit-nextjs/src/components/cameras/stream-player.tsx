@@ -93,6 +93,7 @@ export default function StreamPlayer({
   const [latencyMs, setLatencyMs] = useState(42);
   const [resolution, setResolution] = useState("1920x1080");
   const [isConnected, setIsConnected] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState<string>("ONLINE");
   const [isStreaming, setIsStreaming] = useState(true);
   const [showPtz, setShowPtz] = useState(false);
   const [ptzMoving, setPtzMoving] = useState(false);
@@ -129,6 +130,12 @@ export default function StreamPlayer({
       const res = await safeFetch(`/api/cameras/${cameraId}/stats`);
       if (res.ok) {
         const data = await res.json();
+        if (data.status) {
+          setCameraStatus(data.status);
+          if (data.status === "OFFLINE") {
+            setIsStreaming(false);
+          }
+        }
         if (data.footfallIn !== undefined) setFootfallIn(data.footfallIn);
         if (data.footfallOut !== undefined) setFootfallOut(data.footfallOut);
         if (data.occupancy !== undefined) setOccupancy(data.occupancy);
@@ -280,6 +287,20 @@ export default function StreamPlayer({
                   setUnknownCount(unknown);
                 }
               }
+            } else if (data.type === "camera_status_changed") {
+              const camPayload = data.payload;
+              if (!camPayload.cameraId || camPayload.cameraId === cameraId) {
+                if (camPayload.status) {
+                  setCameraStatus(camPayload.status);
+                }
+                if (camPayload.status === "ONLINE") {
+                  setIsStreaming(true);
+                  setSnapshotKey(Date.now());
+                } else if (camPayload.status === "OFFLINE") {
+                  setIsStreaming(false);
+                }
+                fetchCameraStats();
+              }
             } else if (data.type === "new_alert" && onAlertTriggered) {
               onAlertTriggered(data.payload);
             }
@@ -411,7 +432,7 @@ export default function StreamPlayer({
   };
 
   // Video Source URL (continuous stream from FastAPI)
-  const videoSrc = `/api/cameras/${cameraId}/stream?raw=true&stream=${streamQuality}`;
+  const videoSrc = `/api/cameras/${cameraId}/stream?raw=true&stream=${streamQuality}&t=${snapshotKey}`;
   const currentSnapshotUrl = `/api/cameras/${cameraId}/snapshot?t=${snapshotKey}`;
 
   // Helper to match Part P.1 and CC.2 color & styling system with explicit object shapes
@@ -497,13 +518,22 @@ export default function StreamPlayer({
         <div className="flex items-center gap-3">
           <div
             className={`w-2.5 h-2.5 rounded-full ${
-              isConnected
+              cameraStatus === "ONLINE"
                 ? "bg-[var(--status-ok)] shadow-[0_0_8px_var(--status-ok)]"
-                : "bg-[var(--status-high)]"
+                : "bg-[var(--status-critical)]"
             }`}
           />
           <span className="font-bold font-mono text-[var(--text-primary)] tracking-wider">
             {cameraId}
+          </span>
+          <span
+            className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase ${
+              cameraStatus === "ONLINE"
+                ? "bg-emerald-950/60 text-emerald-400 border border-emerald-800/50"
+                : "bg-red-950/60 text-red-400 border border-red-800/50"
+            }`}
+          >
+            {cameraStatus}
           </span>
           <span className="text-[var(--text-muted)] font-sans text-xs hidden sm:inline">
             {cameraName}
@@ -539,19 +569,28 @@ export default function StreamPlayer({
         className="relative aspect-video bg-black w-full overflow-hidden select-none"
       >
         {/* Continuous Stream Feed or Real-time Fallback */}
-        {isStreaming ? (
+        {isStreaming && cameraStatus === "ONLINE" ? (
           <img
             src={videoSrc}
             alt={cameraName}
-            onError={() => setIsStreaming(false)}
+            onError={() => {
+              setIsStreaming(false);
+              setTimeout(() => {
+                setSnapshotKey(Date.now());
+                setIsStreaming(true);
+              }, 3000);
+            }}
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center bg-[#12151A] text-[#8B93A1] font-mono text-xs">
-            <Video size={40} className="mb-2 text-[#2C323D] animate-pulse" />
-            <span className="tracking-widest text-[#B8E3D6]">RTSP STREAM MONITOR</span>
-            <span className="text-[#8B93A1] text-[10px] mt-1">
-              {cameraIp} (PORT 554)
+          <div className="w-full h-full flex flex-col items-center justify-center bg-[#12151A] text-[#8B93A1] font-mono text-xs select-none">
+            <Video size={40} className="mb-2 text-[#E5484D] animate-pulse" />
+            <span className="tracking-widest text-[#E5484D] font-bold">CAMERA OFFLINE // NO SIGNAL</span>
+            <span className="text-[#8B93A1] text-[10px] mt-1 font-mono">
+              ENDPOINT: {cameraIp} (PORT 554)
+            </span>
+            <span className="text-[#E8A33D] text-[10px] mt-1 font-mono animate-pulse">
+              ● POLLING HARDWARE // AUTO-RECONNECTING WHEN POWERED ON...
             </span>
           </div>
         )}

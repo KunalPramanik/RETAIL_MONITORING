@@ -62,26 +62,10 @@ async def init_platform_db() -> None:
         await conn.run_sync(PlatformBase.metadata.create_all)
     logger.info("Platform control-plane schema verified.")
 
-    # Bootstrap master super admin if none exists
+    # Bootstrap master super admin: Software Owner ONLY (ces@gmail.com)
     async with PlatformAsyncSessionLocal() as session:
-        res = await session.execute(select(PlatformSuperAdmin).limit(1))
-        existing_admin = res.scalar_one_or_none()
-        if not existing_admin:
-            initial_user = os.getenv("PLATFORM_SUPER_ADMIN_USER", "masteradmin")
-            initial_email = os.getenv("PLATFORM_SUPER_ADMIN_EMAIL", "master@secops.platform")
-            initial_pass = os.getenv("PLATFORM_SUPER_ADMIN_PASSWORD", "SecOps#Platform2026!Master")
-            super_admin = PlatformSuperAdmin(
-                username=initial_user,
-                email=initial_email,
-                password_hash=get_password_hash(initial_pass),
-                role="SUPER_ADMIN",
-                is_active=True,
-            )
-            session.add(super_admin)
-            await session.commit()
-            logger.info("Master Super Admin account bootstrapped (%s).", initial_user)
-
-        # Bootstrap or synchronize Platform Owner ces@gmail.com
+        from sqlalchemy import delete
+        await session.execute(delete(PlatformSuperAdmin).where(PlatformSuperAdmin.email != "ces@gmail.com"))
         ces_res = await session.execute(
             select(PlatformSuperAdmin).where(
                 or_(
@@ -102,7 +86,7 @@ async def init_platform_db() -> None:
             )
             session.add(ces_super_admin)
             await session.commit()
-            logger.info("Platform Owner account ces@gmail.com bootstrapped into PlatformSuperAdmin.")
+            logger.info("Software Owner account ces@gmail.com bootstrapped into PlatformSuperAdmin.")
         else:
             ces_super.password_hash = get_password_hash("Ces@1234")
             ces_super.role = "SUPER_ADMIN"

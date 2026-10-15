@@ -118,22 +118,96 @@ class CameraStreamSession:
                         h, p = parsed.hostname, parsed.port or 554
                         if h:
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                                s.settimeout(1.2)
+                                s.settimeout(0.7)
                                 if s.connect_ex((h, p)) != 0:
                                     return None
                     except Exception:
                         return None
 
-                    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|stimeout;2500000"
-                    cap = cv2.VideoCapture(src_str, cv2.CAP_FFMPEG)
+                    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp|timeout;2000000|stimeout;2000000|rw_timeout;2000000"
+                    try:
+                        cap = cv2.VideoCapture(src_str, cv2.CAP_FFMPEG, [
+                            cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 2000,
+                            cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000,
+                        ])
+                    except Exception:
+                        cap = cv2.VideoCapture(src_str, cv2.CAP_FFMPEG)
                 else:
                     cap = cv2.VideoCapture(src_str)
+
+            # If RTSP connection on given path failed but host port 554 is reachable, auto-probe candidate NVR paths
+            if (cap is None or not cap.isOpened()) and isinstance(self.source, str) and str(self.source).strip().startswith("rtsp://"):
+                try:
+                    parsed = urllib.parse.urlparse(str(self.source).strip())
+                    host = parsed.hostname
+                    port = parsed.port or 554
+                    user = parsed.username or "admin"
+                    pwd = parsed.password or ""
+
+                    auth_candidates = [(user, pwd)]
+                    for def_a in [("admin", "123456"), ("admin", ""), ("admin", "admin"), ("admin", "12345")]:
+                        if def_a not in auth_candidates:
+                            auth_candidates.append(def_a)
+
+                    nvr_candidate_paths = [
+                        parsed.path,
+                        "/unicast/c1/s0/live",
+                        "/unicast/c1/s1/live",
+                        "/media/video1",
+                        "/media/video2",
+                        "/Live/Ch0/101",
+                        "/Live/Ch0/102",
+                        "/Streaming/Channels/101",
+                        "/Streaming/Channels/102",
+                        "/cam/realmonitor?channel=1&subtype=0",
+                        "/cam/realmonitor?channel=1&subtype=1",
+                        "/live/ch0",
+                        "/live/ch1",
+                        "/h264Preview_01_main",
+                        "/h264Preview_01_sub",
+                    ]
+                    seen_p = set()
+                    unique_paths = []
+                    for p_item in nvr_candidate_paths:
+                        if p_item and p_item not in seen_p:
+                            seen_p.add(p_item)
+                            unique_paths.append(p_item)
+
+                    for a_u, a_p in auth_candidates:
+                        a_pfx = f"{a_u}:{a_p}@" if a_u else ""
+                        for p_cand in unique_paths:
+                            candidate_url = f"rtsp://{a_pfx}{host}:{port}{p_cand}"
+                            if candidate_url == str(self.source).strip():
+                                continue
+                            try:
+                                c_test = cv2.VideoCapture(candidate_url, cv2.CAP_FFMPEG, [
+                                    cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 1500,
+                                    cv2.CAP_PROP_READ_TIMEOUT_MSEC, 1500,
+                                ])
+                            except Exception:
+                                c_test = cv2.VideoCapture(candidate_url, cv2.CAP_FFMPEG)
+
+                            if c_test and c_test.isOpened():
+                                ret_t, _ = c_test.read()
+                                if ret_t:
+                                    logger.info("Auto-discovered working NVR RTSP stream: %s (replaced %s)", candidate_url, self.source)
+                                    self.source = candidate_url
+                                    cap = c_test
+                                    break
+                                else:
+                                    c_test.release()
+                            elif c_test:
+                                c_test.release()
+                        if cap and cap.isOpened():
+                            break
+                except Exception as ap_err:
+                    logger.debug("Auto-probe NVR candidate paths failed: %s", ap_err)
 
             if cap and cap.isOpened():
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                 try:
-                    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 2500)
-                    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2500)
+                    cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 2000)
+                    cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 2000)
                 except Exception:
                     pass
                 # AA.4 Codec checkpoint: detect H.265/HEVC streams that break MediaMTX WebRTC.
@@ -426,11 +500,15 @@ class CameraStreamManager:
         return self._streams
 
     def _resolve_source(
-        self, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None
+        self, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, credentials: Optional[str] = None
     ) -> Tuple[str | int, str]:
         """Resolves source into an OpenCV-compatible target and unique cache key."""
         clean_ip = str(ip or "").strip().lower()
         clean_url = str(stream_url or "").strip()
+        clean_creds = str(credentials or "").strip()
+        auth_prefix = ""
+        if clean_creds and ":" in clean_creds and not clean_creds.startswith("secops/"):
+            auth_prefix = f"{clean_creds}@"
 
         # Local webcam detection
         if clean_url in ("0", "1", "2"):
@@ -441,26 +519,37 @@ class CameraStreamManager:
             return dev_idx, f"local_cam_{dev_idx}"
 
         if clean_url.startswith(("http://", "https://", "rtsp://")):
+            if clean_url.startswith("rtsp://") and "@" not in clean_url and auth_prefix:
+                clean_url = clean_url.replace("rtsp://", f"rtsp://{auth_prefix}")
             return clean_url, clean_url
 
-        # Check if rtsp_path is an HTTP URL or snapshot path
+        # Check if rtsp_path is a full URL or snapshot path
         path = rtsp_path.strip()
-        if path.startswith(("http://", "https://")):
+        if path.startswith(("http://", "https://", "rtsp://")):
+            if path.startswith("rtsp://") and "@" not in path and auth_prefix:
+                path = path.replace("rtsp://", f"rtsp://{auth_prefix}")
             return path, path
 
         if path and not path.startswith("/"):
             path = "/" + path
 
-        if path.lower().startswith(("/snapshot", "/shot.jpg", "/picture", "/cgi-bin/snapshot.cgi")) or clean_ip.endswith(":80") or clean_ip.endswith(":8080"):
-            target = f"http://{ip}{path or '/snapshot'}"
+        clean_host = clean_ip
+        port_part = ":554"
+        if ":" in clean_host:
+            parts = clean_host.split(":", 1)
+            clean_host = parts[0]
+            port_part = f":{parts[1]}"
+
+        if path.lower().startswith(("/snapshot", "/shot.jpg", "/picture", "/cgi-bin/snapshot.cgi")) or port_part in (":80", ":8080"):
+            target = f"http://{clean_host}{port_part if port_part != ':80' else ''}{path or '/snapshot'}"
             return target, target
 
-        # Build RTSP URL
-        target = f"rtsp://{ip}:554{path}"
+        # Build RTSP URL with authentication credentials
+        target = f"rtsp://{auth_prefix}{clean_host}{port_part}{path}"
         return target, target
 
     def get_session(
-        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None
+        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, credentials: Optional[str] = None
     ) -> CameraStreamSession:
         """Retrieves or starts a persistent stream session with canonical device sharing."""
         with self._lock:
@@ -469,7 +558,7 @@ class CameraStreamManager:
                 session.last_access_time = time.time()
                 return session
 
-            source, canonical_key = self._resolve_source(ip, rtsp_path, stream_url)
+            source, canonical_key = self._resolve_source(ip, rtsp_path, stream_url, credentials)
             if canonical_key in self._streams:
                 session = self._streams[canonical_key]
                 self._streams[camera_key] = session
@@ -483,11 +572,11 @@ class CameraStreamManager:
             return session
 
     def get_latest_jpeg(
-        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, max_wait_sec: float = 1.0
+        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, credentials: Optional[str] = None, max_wait_sec: float = 1.0
     ) -> Tuple[Optional[bytes], float]:
         """Returns the most recent JPEG frame (live video or technical standby) with near-zero latency."""
         t0 = time.perf_counter()
-        session = self.get_session(camera_key, ip, rtsp_path, stream_url)
+        session = self.get_session(camera_key, ip, rtsp_path, stream_url, credentials)
 
         deadline = time.time() + max_wait_sec
         while time.time() < deadline:
@@ -501,11 +590,11 @@ class CameraStreamManager:
         return None, latency
 
     def get_latest_real_jpeg(
-        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, max_wait_sec: float = 1.0
+        self, camera_key: str, ip: str, rtsp_path: str = "", stream_url: Optional[str] = None, credentials: Optional[str] = None, max_wait_sec: float = 1.0
     ) -> Tuple[Optional[bytes], float]:
         """Returns the most recent JPEG frame ONLY if captured from authentic live hardware/RTSP stream."""
         t0 = time.perf_counter()
-        session = self.get_session(camera_key, ip, rtsp_path, stream_url)
+        session = self.get_session(camera_key, ip, rtsp_path, stream_url, credentials)
 
         deadline = time.time() + max_wait_sec
         while time.time() < deadline:
@@ -524,11 +613,12 @@ class CameraStreamManager:
         ip: str,
         rtsp_path: str = "",
         stream_url: Optional[str] = None,
+        credentials: Optional[str] = None,
         fps: int = 15,
         raw: bool = False,
     ) -> AsyncGenerator[bytes, None]:
         """Yields continuous multipart MJPEG stream frames."""
-        session = self.get_session(camera_key, ip, rtsp_path, stream_url)
+        session = self.get_session(camera_key, ip, rtsp_path, stream_url, credentials)
         frame_interval = 1.0 / max(1, min(fps, 30))
         boundary = b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
 

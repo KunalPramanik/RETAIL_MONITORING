@@ -341,16 +341,30 @@ async def register_camera(
     else:
         rtsp_path_norm = raw_rtsp
 
+    auth_str = ""
+    if body.credentials:
+        clean_c = body.credentials.strip()
+        if ":" in clean_c and not clean_c.startswith("secops/"):
+            auth_str = f"{clean_c}@"
+
+    clean_ip = (body.ipAddress or "").strip()
+    clean_host = clean_ip
+    port_part = ":554"
+    if ":" in clean_host:
+        parts = clean_host.split(":", 1)
+        clean_host = parts[0]
+        port_part = f":{parts[1]}"
+
     if body.streamUrl:
         stream_url = body.streamUrl
     elif rtsp_path_norm.startswith(("http://", "https://", "rtsp://")):
         stream_url = rtsp_path_norm
-    elif ":8080" in rtsp_path_norm or rtsp_path_norm.endswith("/video"):
-        stream_url = f"http://{body.ipAddress}:8080/video"
+    elif ":8080" in rtsp_path_norm or rtsp_path_norm.endswith("/video") or port_part == ":8080":
+        stream_url = f"http://{clean_host}:8080/video"
     elif body.ipAddress in ("0", "1", "webcam"):
         stream_url = body.ipAddress
     else:
-        stream_url = f"rtsp://{body.ipAddress}:554{rtsp_path_norm}"
+        stream_url = f"rtsp://{auth_str}{clean_host}{port_part}{rtsp_path_norm}"
 
     # Idempotency check: search for active camera with matching IP + RTSP path or stream URL
     norm_ip = (body.ipAddress or "").strip().lower()
@@ -381,9 +395,10 @@ async def register_camera(
         matched_cam.label = body.label or matched_cam.label
         if body.laneId:
             matched_cam.lane_id = body.laneId
-            matched_cam.status = "ONLINE"
         if body.credentials:
-            matched_cam.credentials_ref = f"secops/cameras/{matched_cam.camera_id}"
+            matched_cam.credentials_ref = body.credentials.strip()
+            if matched_cam.stream_url and matched_cam.stream_url.startswith("rtsp://") and "@" not in matched_cam.stream_url:
+                matched_cam.stream_url = matched_cam.stream_url.replace("rtsp://", f"rtsp://{matched_cam.credentials_ref}@")
         if body.resolution:
             matched_cam.resolution = body.resolution
         if body.fps:
@@ -420,7 +435,7 @@ async def register_camera(
         ip_address=body.ipAddress,
         rtsp_path=rtsp_path_norm,
         sub_stream_path=body.subStreamPath or (rtsp_path_norm.replace("101", "102") if (rtsp_path_norm and "101" in rtsp_path_norm) else None),
-        credentials_ref=f"secops/cameras/{cam_id}" if body.credentials else None,
+        credentials_ref=body.credentials.strip() if body.credentials else None,
         stream_url=stream_url,
         pairing_method=body.pairingMethod or "MANUAL",
         resolution=body.resolution or "1920x1080",
@@ -498,7 +513,8 @@ async def test_camera_connection(
         elif "ch0" in rtsp:
             sub_stream_path = rtsp.replace("ch0", "ch1")
 
-    creds = req.credentials if (req and req.credentials) else (cam.credentials_ref if cam else None)
+    raw_creds = req.credentials if (req and req.credentials) else (cam.credentials_ref if cam else None)
+    creds = raw_creds.strip() if (raw_creds and not str(raw_creds).startswith("secops/")) else None
 
     # Attempt capture in background thread pool with strict timeout to prevent client drops
     try:
@@ -572,8 +588,10 @@ async def test_camera_connection(
             diag_info.get("suggested_stream_url")
             or (str(cam.stream_url) if (cam and cam.stream_url) else None)
             or stream_url
-            or (f"http://{ip}{rtsp}" if (rtsp and (rtsp.startswith(("/video", "/snapshot")) or ":80" in ip or ":8080" in ip)) else f"rtsp://{ip}:554{rtsp}")
+            or (f"http://{ip}{rtsp}" if (rtsp and (rtsp.startswith(("/video", "/snapshot")) or ":80" in ip or ":8080" in ip)) else f"rtsp://{creds + '@' if creds else ''}{ip}:554{rtsp}")
         )
+        if creds and working_url and working_url.startswith("rtsp://") and "@" not in working_url:
+            working_url = working_url.replace("rtsp://", f"rtsp://{creds}@")
 
         if cam:
             cam.status = "ONLINE"
@@ -583,7 +601,14 @@ async def test_camera_connection(
                 cam.sub_stream_path = sub_stream_path
             if working_url:
                 cam.stream_url = working_url
+                try:
+                    parsed_w = urllib.parse.urlparse(working_url)
+                    if parsed_w.path and parsed_w.path != "/":
+                        cam.rtsp_path = parsed_w.path
+                except Exception:
+                    pass
             await session.commit()
+            await cache_service.invalidate("cameras")
             await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
 
         preview_b64 = f"data:image/jpeg;base64,{base64.b64encode(frame_bytes).decode('ascii')}"
@@ -600,7 +625,7 @@ async def test_camera_connection(
             latencyMs=latency_ms,
         )
 
-    # If no real frame decoded â€” honest failure for ALL cases (registered or new wizard test).
+    # If no real frame decoded — honest failure for ALL cases (registered or new wizard test).
     # Saves a standby card to disk so the tile shows meaningful status to the operator.
     diag_label = cam.label if cam else (f"CAMERA {camera_id}")
     diag_lane = cam.lane_id if cam else None
@@ -623,6 +648,7 @@ async def test_camera_connection(
         cam.status = "OFFLINE"
         cam.offline_since = cam.offline_since or now
         await session.commit()
+        await cache_service.invalidate("cameras")
         await ws_hub.broadcast_event("camera_status_changed", serialize_camera(cam).model_dump())
 
     target_endpoint = stream_url or (f"rtsp://{ip}:554{rtsp}" if not rtsp.startswith(("http://", "https://", "rtsp://")) else f"{ip}{rtsp}")
@@ -790,6 +816,7 @@ async def stream_camera_mjpeg(
         ip=target_ip,
         rtsp_path=target_path,
         stream_url=stream_url,
+        credentials=cam.credentials_ref,
         fps=cam.fps or 20,
         raw=raw,
     )
@@ -1141,7 +1168,9 @@ async def update_camera(
     if body.subStreamPath is not None:
         cam.sub_stream_path = body.subStreamPath
     if body.credentials is not None:
-        cam.credentials_ref = f"secops/cameras/{cam.camera_id}"
+        cam.credentials_ref = body.credentials.strip() if body.credentials.strip() else None
+        if cam.credentials_ref and cam.stream_url and cam.stream_url.startswith("rtsp://") and "@" not in cam.stream_url:
+            cam.stream_url = cam.stream_url.replace("rtsp://", f"rtsp://{cam.credentials_ref}@")
     if body.laneId is not None:
         if body.laneId != "":
             lane_res = await session.execute(select(Lane).where(Lane.lane_id == body.laneId))

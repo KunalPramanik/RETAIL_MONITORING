@@ -252,7 +252,7 @@ class DispatchEngine:
             if disp:
                 current_gap = float(disp.tracking_interrupted_seconds or 0.0)
                 disp.tracking_interrupted_seconds = round(current_gap + gap_seconds, 2)
-                await session.commit()
+                await session.flush()
                 logger.warning(
                     "Recorded %.1fs stream gap for active dispatch session %s on dock %s",
                     gap_seconds, active_sess_id, dock_lane_id

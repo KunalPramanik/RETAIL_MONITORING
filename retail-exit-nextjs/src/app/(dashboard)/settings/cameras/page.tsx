@@ -1,6 +1,6 @@
 "use client";
 
-import { safeFetch, formatErrorMessage } from "@/lib/api-client";
+import { safeFetch, formatErrorMessage, getWsUrl } from "@/lib/api-client";
 
 import React, { useState, useEffect } from "react";
 import {
@@ -186,7 +186,53 @@ export default function CameraManagementPage() {
     fetchCameras();
     fetchDiscovery();
     const interval = setInterval(fetchCameras, 10000);
-    return () => clearInterval(interval);
+
+    let ws: WebSocket | null = null;
+    let reconnectTimer: any = null;
+    let pingTimer: any = null;
+    const connectWs = () => {
+      try {
+        const wsUrl = getWsUrl("/ws/live");
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+          pingTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            }
+          }, 10000);
+        };
+        ws.onmessage = (event) => {
+          try {
+            if (event.data === "pong") return;
+            const data = JSON.parse(event.data);
+            if (data.type === "camera_status_changed" && data.payload) {
+              const updatedCam = data.payload;
+              setCameras((prev) =>
+                prev.map((c) =>
+                  c.cameraId === updatedCam.cameraId ? { ...c, ...updatedCam } : c
+                )
+              );
+              fetchCameras();
+            }
+          } catch (_) {}
+        };
+        ws.onclose = () => {
+          if (pingTimer) clearInterval(pingTimer);
+          reconnectTimer = setTimeout(connectWs, 4000);
+        };
+      } catch (_) {}
+    };
+    connectWs();
+
+    return () => {
+      clearInterval(interval);
+      if (pingTimer) clearInterval(pingTimer);
+      if (ws) {
+        ws.onclose = null;
+        ws.close();
+      }
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
   }, []);
 
   const handleTestConnection = async () => {

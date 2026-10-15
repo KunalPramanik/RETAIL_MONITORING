@@ -50,6 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: data.email,
           username: data.username || data.email,
           role: data.role || "VIEWER",
+          isPlatformOwner: Boolean(data.isPlatformOwner),
         };
         setUser(profile);
         try {

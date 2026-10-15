@@ -58,7 +58,9 @@ async def init_baseline_configuration(session: AsyncSession):
         session.add(store)
         await session.flush()
 
-    # 2. Software Owner is strictly managed via platform_super_admin (AppUser remains unseeded)
+    # 2. Production admin safety check
+    if os.getenv("ENVIRONMENT") == "production" and not os.getenv("ADMIN_INITIAL_PASSWORD"):
+        raise RuntimeError("ADMIN_INITIAL_PASSWORD environment variable must be configured for baseline admin bootstrap in production")
 
     # 3. Base Threshold Config
     cfg = await session.execute(select(ThresholdConfig).limit(1))

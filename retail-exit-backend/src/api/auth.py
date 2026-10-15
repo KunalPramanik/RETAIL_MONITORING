@@ -41,6 +41,13 @@ class Token(BaseModel):
     isPlatformOwner: Optional[bool] = False
 
 
+class UserCreate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: str
+    role: Optional[str] = "VIEWER"
+
+
 class ChangePasswordRequest(BaseModel):
     currentPassword: str
     newPassword: str = Field(..., min_length=8)
@@ -170,6 +177,62 @@ async def logout_user(current_user: Any = Depends(get_current_user)):
     """Logs out the active operator and records an audit log entry."""
     logger.info("Operator logged out: %s (id: %s, role: %s)", current_user.email, current_user.user_id, current_user.role)
     return {"msg": "Successfully logged out", "status": "LOGGED_OUT"}
+
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register_user(
+    user_in: UserCreate,
+    db: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.auth_per_minute, seconds=60, scope="auth_register")),
+):
+    """Registers a new user account, populating both canonical email and display username."""
+    raw_identifier = (user_in.email or user_in.username or "").strip()
+    if not raw_identifier:
+        raise HTTPException(status_code=400, detail="Username or email must be provided")
+
+    # Reconcile email vs username handle
+    if "@" in raw_identifier:
+        resolved_email = raw_identifier
+        resolved_username = user_in.username.strip() if user_in.username else raw_identifier.split("@")[0]
+    else:
+        resolved_username = raw_identifier
+        resolved_email = user_in.email.strip() if user_in.email else f"{raw_identifier}@secops.local"
+
+    # Ensure uniqueness across both fields
+    existing = await db.execute(
+        select(User).where(
+            or_(
+                User.email == resolved_email,
+                User.username == resolved_username,
+            )
+        )
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=400, detail="User already registered with this email or username")
+        
+    hashed_password = get_password_hash(user_in.password)
+    assigned_role = user_in.role.upper() if user_in.role else "VIEWER"
+    if assigned_role not in ("ADMIN", "SUPERVISOR", "VIEWER"):
+        assigned_role = "VIEWER"
+
+    db_user = User(
+        user_id=str(uuid.uuid4()),
+        email=resolved_email,
+        username=resolved_username,
+        password_hash=hashed_password,
+        role=assigned_role,
+        is_active=True,
+    )
+    db.add(db_user)
+    await db.commit()
+    await db.refresh(db_user)
+    return {
+        "msg": "User created successfully",
+        "user_id": db_user.user_id,
+        "email": db_user.email,
+        "username": db_user.username,
+        "role": db_user.role,
+    }
 
 
 @router.get("/me")

@@ -295,19 +295,13 @@ export default function CameraManagementPage() {
         laneId: formData.laneId || "LANE-01",
       };
 
-      const res = await safeFetch("/api/cameras", {
+      const testRes = await safeFetch("/api/cameras/test-connection", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      if (res.ok) {
-        const newCam = await res.json();
-        const testRes = await safeFetch(`/api/cameras/${newCam.cameraId}/test-connection`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
-        });
+      if (testRes.ok) {
         const testData = await testRes.json();
         setTestResult({
           success: Boolean(testData.success),
@@ -316,10 +310,9 @@ export default function CameraManagementPage() {
           previewImageBase64: testData.previewImageBase64,
           snapshotUrl: testData.snapshotUrl,
         });
-        fetchCameras();
       } else {
-        const err = await res.json();
-        setTestResult({ success: false, errorMessage: formatErrorMessage(err.detail || err.message || "Validation Error") });
+        const err = await testRes.json();
+        setTestResult({ success: false, errorMessage: formatErrorMessage(err.detail || err.message || "Connection Test Failed") });
       }
     } catch (err: any) {
       setTestResult({ success: false, errorMessage: formatErrorMessage(err.message || "Failed to reach backend API") });
@@ -329,11 +322,84 @@ export default function CameraManagementPage() {
   };
 
   const handleSaveAndDeploy = async () => {
-    if (!testResult) {
-      await handleTestConnection();
+    if (!formData.label.trim()) {
+      alert("Camera label is required before saving.");
+      return;
     }
-    setShowAddModal(false);
-    fetchCameras();
+    if (formData.label.trim().length < 2) {
+      alert("Camera label must be at least 2 characters.");
+      return;
+    }
+
+    let resolvedIp = (formData.ipAddress || "").trim();
+    let resolvedStreamUrl: string | undefined = undefined;
+
+    if (formData.connectionType === "USB") {
+      resolvedIp = resolvedIp || "0";
+      resolvedStreamUrl = resolvedIp;
+    } else if (formData.connectionType === "WIFI_HTTP") {
+      if (!formData.streamUrl.trim()) {
+        alert("HTTP / MJPEG Stream URL is required.");
+        return;
+      }
+      resolvedStreamUrl = formData.streamUrl.trim();
+      if (!resolvedIp && resolvedStreamUrl) {
+        try {
+          const parsed = new URL(resolvedStreamUrl);
+          resolvedIp = parsed.hostname || "127.0.0.1";
+        } catch {
+          const m = resolvedStreamUrl.match(/^(?:https?:\/\/)?([^/:]+)/i);
+          resolvedIp = m ? m[1] : "127.0.0.1";
+        }
+      }
+      if (!resolvedIp) resolvedIp = "127.0.0.1";
+    } else {
+      if (!resolvedIp) {
+        alert("Valid camera IP address or hostname is required.");
+        return;
+      }
+    }
+
+    try {
+      const payload: any = {
+        label: formData.label.trim(),
+        ipAddress: resolvedIp,
+        rtspPath: formData.rtspPath.trim() || "/live/ch0",
+        streamUrl: resolvedStreamUrl,
+        credentials: formData.credentials.trim() || undefined,
+        laneId: formData.laneId || "LANE-01",
+        resolution: formData.resolution || "1920x1080",
+        fps: formData.fps || 30,
+      };
+
+      const res = await safeFetch("/api/cameras", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setShowAddModal(false);
+        setTestResult(null);
+        setFormData({
+          connectionType: "LAN_RTSP",
+          label: "",
+          ipAddress: "",
+          rtspPath: "/live/ch0",
+          streamUrl: "",
+          laneId: lanes[0]?.laneId || "LANE-01",
+          credentials: "",
+          resolution: "1920x1080",
+          fps: 30,
+        });
+        fetchCameras();
+      } else {
+        const err = await res.json();
+        alert(`Failed to save camera: ${formatErrorMessage(err.detail || err.message || "Registration Error")}`);
+      }
+    } catch (err: any) {
+      alert(`Network error saving camera: ${err.message || "Unknown error"}`);
+    }
   };
 
   const handleConfirmDiscoveredLane = async (dev: DiscoveredDevice) => {
@@ -572,7 +638,11 @@ export default function CameraManagementPage() {
                             try {
                               const nonce = Date.now();
                               setPreviewModalNonce(nonce);
-                              const res = await safeFetch(`/api/cameras/${cam.cameraId}/test-connection`, { method: "POST" });
+                              const res = await safeFetch(`/api/cameras/${cam.cameraId}/test-connection`, {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({}),
+                              });
                               const dat = await res.json();
                               setViewingPreview({
                                 label: cam.label,

@@ -29,22 +29,42 @@ def validate_camera_host(host: Optional[str]) -> str:
     if host_clean.lower() in ("0", "1", "2", "3", "webcam", "usb", "usb-0", "usb-1", "localhost"):
         return host_clean
 
+    # If a full URL is pasted into host, extract hostname and optional port
+    if host_clean.startswith(("rtsp://", "http://", "https://")):
+        try:
+            import urllib.parse
+            parsed = urllib.parse.urlparse(host_clean)
+            if parsed.hostname:
+                host_clean = parsed.hostname + (f":{parsed.port}" if parsed.port else "")
+        except Exception:
+            pass
+
+    # Extract port if present (e.g. 192.168.1.100:554 or nvr.local:8000)
+    pure_host = host_clean
+    if ":" in host_clean and not host_clean.startswith("["):
+        parts = host_clean.rsplit(":", 1)
+        if parts[1].isdigit():
+            pure_host = parts[0]
+            port = int(parts[1])
+            if not (1 <= port <= 65535):
+                raise ValueError(f"Port out of range: {port}")
+
     # Check if host is an IP address
     try:
-        ip_obj = ipaddress.ip_address(host_clean)
+        ip_obj = ipaddress.ip_address(pure_host)
         for net in BLOCKED_NETWORKS:
             if ip_obj in net:
-                raise ValueError(f"Prohibited IP address or subnet: {host_clean} (SSRF / Multicast blocked)")
+                raise ValueError(f"Prohibited IP address or subnet: {pure_host} (SSRF / Multicast blocked)")
         if ip_obj.is_unspecified:
-            raise ValueError(f"Prohibited unspecified IP address: {host_clean}")
+            raise ValueError(f"Prohibited unspecified IP address: {pure_host}")
         return host_clean
     except ValueError as e:
-        if "Prohibited" in str(e):
+        if "Prohibited" in str(e) or "Port out of range" in str(e):
             raise
         # Not an IP address; check if valid hostname / FQDN
-        if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$", host_clean):
-            if host_clean.lower() in ("metadata.google.internal", "instance-data"):
-                raise ValueError(f"Prohibited cloud metadata hostname: {host_clean}")
+        if re.match(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$", pure_host):
+            if pure_host.lower() in ("metadata.google.internal", "instance-data"):
+                raise ValueError(f"Prohibited cloud metadata hostname: {pure_host}")
             return host_clean
         raise ValueError(f"Invalid IP address or hostname: '{host_clean}'")
 
@@ -126,23 +146,34 @@ class CameraCreate(BaseModel):
             stream_url = data.get("streamUrl") or data.get("stream_url")
             ip_address = data.get("ipAddress") or data.get("ip_address")
             rtsp_path = data.get("rtspPath") or data.get("rtsp_path")
+            creds = data.get("credentials")
 
-            if not ip_address or not str(ip_address).strip():
-                if stream_url and str(stream_url).strip():
-                    url_str = str(stream_url).strip()
-                    try:
-                        from urllib.parse import urlparse
-                        parsed = urlparse(url_str)
-                        if parsed.hostname:
-                            data["ipAddress"] = parsed.hostname
-                        else:
-                            data["ipAddress"] = "127.0.0.1"
-                    except Exception:
-                        data["ipAddress"] = "127.0.0.1"
-                else:
-                    data["ipAddress"] = "127.0.0.1"
+            # Check if ip_address was given as a full URL
+            target_url = None
+            if ip_address and str(ip_address).strip().startswith(("rtsp://", "http://", "https://")):
+                target_url = str(ip_address).strip()
+            elif stream_url and str(stream_url).strip().startswith(("rtsp://", "http://", "https://")):
+                target_url = str(stream_url).strip()
 
-            if not rtsp_path or not str(rtsp_path).strip():
+            if target_url:
+                try:
+                    from urllib.parse import urlparse
+                    parsed = urlparse(target_url)
+                    if parsed.hostname:
+                        data["ipAddress"] = parsed.hostname + (f":{parsed.port}" if parsed.port else "")
+                    if parsed.path and parsed.path != "/" and not rtsp_path:
+                        data["rtspPath"] = parsed.path
+                    if parsed.username and not creds:
+                        data["credentials"] = f"{parsed.username}:{parsed.password or ''}"
+                    if not stream_url:
+                        data["streamUrl"] = target_url
+                except Exception:
+                    pass
+
+            if not data.get("ipAddress") or not str(data.get("ipAddress")).strip():
+                data["ipAddress"] = "127.0.0.1"
+
+            if not data.get("rtspPath") or not str(data.get("rtspPath")).strip():
                 data["rtspPath"] = "/live/ch0"
 
         return data
@@ -228,11 +259,15 @@ class CameraUpdate(BaseModel):
 
 
 class CameraTestConnectionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
+
     ipAddress: Optional[str] = None
     rtspPath: Optional[str] = None
     subStreamPath: Optional[str] = None
     streamUrl: Optional[str] = None
     credentials: Optional[str] = None
+    label: Optional[str] = None
+    laneId: Optional[str] = None
 
 
 class CameraTestConnectionResponse(BaseModel):

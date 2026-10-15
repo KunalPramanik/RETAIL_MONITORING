@@ -277,10 +277,12 @@ export default function SoftwareOwnerSettingsPage() {
         <div className="lg:col-span-2 bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-6">
           <div className="border-b border-[var(--border-hairline)] pb-4">
             <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <Key size={18} className="text-[#38BDF8]" /> Update Software Owner Password
+              <Key size={18} className="text-[#38BDF8]" /> {isSoftwareOwner ? "Update Software Owner Password" : "Update Account Password"}
             </h2>
             <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-              Securely update your master platform password. Passwords are saved with high-entropy salted hashes.
+              {isSoftwareOwner
+                ? "Securely update your master platform password. Passwords are saved with high-entropy salted hashes."
+                : "Securely update your store administrator or operator password."}
             </p>
           </div>
 

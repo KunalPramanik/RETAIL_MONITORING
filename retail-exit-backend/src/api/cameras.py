@@ -472,23 +472,35 @@ async def register_camera(
     return resp
 
 
-@router.post("/{camera_id}/test-connection", response_model=CameraTestConnectionResponse)
-async def test_camera_connection(
+async def _do_test_connection(
     camera_id: str,
-    req: Optional[CameraTestConnectionRequest] = None,
-    session: AsyncSession = Depends(get_db),
-    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.camera_test_per_minute, seconds=60, scope="camera_test_conn")),
-):
-    """Attempts a real/simulated RTSP stream pull from the camera via media server.
-    
+    req: Optional[CameraTestConnectionRequest],
+    cam: Optional[Camera],
+    session: AsyncSession,
+) -> CameraTestConnectionResponse:
+    """Attempts a real RTSP/HTTP stream pull from the camera.
     Returns a live snapshot frame on success or specific actionable diagnostics on failure.
     """
-    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
-    cam = result.scalar_one_or_none()
-
-    ip = str(req.ipAddress if req and req.ipAddress else (cam.ip_address if cam else ""))
-    rtsp = str(req.rtspPath if req and req.rtspPath else (cam.rtsp_path if cam else "/live/ch0"))
+    raw_ip = str(req.ipAddress if req and req.ipAddress else (cam.ip_address if cam else "")).strip()
+    rtsp = str(req.rtspPath if req and req.rtspPath else (cam.rtsp_path if cam else "/live/ch0")).strip()
     stream_url = (req.streamUrl if req and req.streamUrl else None) or (cam.stream_url if cam else None)
+    raw_creds = req.credentials if (req and req.credentials) else (cam.credentials_ref if cam else None)
+    creds = raw_creds.strip() if (raw_creds and not str(raw_creds).startswith("secops/")) else None
+
+    # Handle full URL provided in IP field
+    ip = raw_ip
+    if raw_ip.startswith(("rtsp://", "http://", "https://")):
+        stream_url = stream_url or raw_ip
+        try:
+            parsed_u = urllib.parse.urlparse(raw_ip)
+            if parsed_u.hostname:
+                ip = parsed_u.hostname + (f":{parsed_u.port}" if parsed_u.port else "")
+            if parsed_u.path and parsed_u.path != "/":
+                rtsp = parsed_u.path
+            if parsed_u.username and not creds:
+                creds = f"{parsed_u.username}:{parsed_u.password or ''}"
+        except Exception:
+            pass
 
     if not ip and not stream_url:
         return CameraTestConnectionResponse(
@@ -512,9 +524,6 @@ async def test_camera_connection(
             sub_stream_path = rtsp.replace("101", "102")
         elif "ch0" in rtsp:
             sub_stream_path = rtsp.replace("ch0", "ch1")
-
-    raw_creds = req.credentials if (req and req.credentials) else (cam.credentials_ref if cam else None)
-    creds = raw_creds.strip() if (raw_creds and not str(raw_creds).startswith("secops/")) else None
 
     # Attempt capture in background thread pool with strict timeout to prevent client drops
     try:
@@ -675,6 +684,32 @@ async def test_camera_connection(
         errorMessage=err_msg,
         latencyMs=latency_ms,
     )
+
+
+@router.post("/test-connection", response_model=CameraTestConnectionResponse)
+async def test_camera_connection_direct(
+    req: Optional[CameraTestConnectionRequest] = None,
+    session: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.camera_test_per_minute, seconds=60, scope="camera_test_conn")),
+):
+    """Directly tests connection to a camera with unpersisted parameters before registration."""
+    return await _do_test_connection(camera_id="new_camera", req=req, cam=None, session=session)
+
+
+@router.post("/{camera_id}/test-connection", response_model=CameraTestConnectionResponse)
+async def test_camera_connection(
+    camera_id: str,
+    req: Optional[CameraTestConnectionRequest] = None,
+    session: AsyncSession = Depends(get_db),
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.camera_test_per_minute, seconds=60, scope="camera_test_conn")),
+):
+    """Attempts a real/simulated RTSP stream pull from the camera via media server.
+    
+    Returns a live snapshot frame on success or specific actionable diagnostics on failure.
+    """
+    result = await session.execute(select(Camera).where(Camera.camera_id == camera_id))
+    cam = result.scalar_one_or_none()
+    return await _do_test_connection(camera_id=camera_id, req=req, cam=cam, session=session)
 
 
 @router.get("/{camera_id}/snapshot")

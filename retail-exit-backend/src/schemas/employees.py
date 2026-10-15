@@ -7,7 +7,7 @@ from typing import Optional, List, Dict
 class EmployeeBase(BaseModel):
     name: str
     role: str
-    rfidBadgeId: str
+    rfidBadgeId: Optional[str] = None
     shiftId: Optional[str] = None
     activeFlag: bool = True
 
@@ -29,6 +29,7 @@ class EmployeeResponse(EmployeeBase):
     employeeCode: Optional[str] = None
     mismatchCount30d: int = 0
     hasFaceEnrolled: bool = False
+    hasPhoto: bool = False
     embeddingUpdatedAt: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)

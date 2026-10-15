@@ -45,7 +45,7 @@ export default function EmployeeDetailPage() {
       const resHist = await safeFetch(`/api/employees/${employeeId}/history`);
       if (resHist.ok) {
         const histData = await resHist.json();
-        setHistory(histData.recentEvents || []);
+        setHistory(histData.events || histData.recentEvents || []);
       }
     } catch (e) {
       console.warn("Failed to fetch employee detail:", e);
@@ -106,7 +106,7 @@ export default function EmployeeDetailPage() {
         <div>
           <span className="text-xs font-mono text-[var(--text-secondary)]">PERSONNEL DOSSIER //</span>
           <h1 className="text-2xl font-bold text-[var(--text-primary)] mt-1">{employee?.name || employeeId}</h1>
-          <div className="flex items-center gap-3 mt-2 text-xs font-mono">
+          <div className="flex flex-wrap items-center gap-3 mt-2 text-xs font-mono">
             <span className="px-2 py-0.5 rounded bg-[var(--bg-canvas)] text-[#38BDF8] border border-[var(--border-hairline)]">
               Role: {employee?.role || "STORE_ASSOCIATE"}
             </span>
@@ -116,6 +116,15 @@ export default function EmployeeDetailPage() {
             <span className="text-[var(--text-secondary)]">
               Code: <b className="text-[#38BDF8]">{employee?.employeeCode || "EMP-AUTO"}</b>
             </span>
+            {employee?.hasFaceEnrolled ? (
+              <span className="px-2 py-0.5 rounded bg-[#4FD1B3]/10 text-[#4FD1B3] border border-[#4FD1B3]/30 font-bold flex items-center gap-1">
+                <ShieldCheck size={13} /> KNOWN STAFF (VERIFIED)
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded bg-[#E5484D]/10 text-[#E5484D] border border-[#E5484D]/30 font-bold flex items-center gap-1">
+                <AlertTriangle size={13} /> UNKNOWN (NO FACE ENROLLED)
+              </span>
+            )}
           </div>
         </div>
 

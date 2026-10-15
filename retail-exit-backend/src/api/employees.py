@@ -6,6 +6,7 @@ from sqlalchemy import select, func, desc
 from typing import List, Optional, Any, Dict, Tuple
 from datetime import datetime, timezone, timedelta
 import logging
+import uuid
 
 from src.db.session import get_db
 from src.db.models import (
@@ -62,6 +63,7 @@ def serialize_employee(emp: Any, mismatch_count: int = 0) -> EmployeeResponse:
         activeFlag=bool(emp.active_flag),
         mismatchCount30d=mismatch_count,
         hasFaceEnrolled=has_face,
+        hasPhoto=has_face,
         embeddingUpdatedAt=emb_ts,
     )
 
@@ -129,11 +131,15 @@ async def create_employee(
     session: AsyncSession = Depends(get_db),
 ):
     """Registers a new warehouse employee with RFID badge assignment."""
-    existing = await session.execute(
-        select(Employee).where(Employee.rfid_badge_id == body.rfidBadgeId)
-    )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail=f"Badge ID '{body.rfidBadgeId}' already assigned")
+    rfid = (body.rfidBadgeId or "").strip()
+    if not rfid:
+        rfid = f"RFID-{uuid.uuid4().hex[:8].upper()}"
+    else:
+        existing = await session.execute(
+            select(Employee).where(Employee.rfid_badge_id == rfid)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Badge ID '{rfid}' already assigned")
 
     # Generate atomic next employee code EMP-XXXXXX
     codes_res = await session.execute(
@@ -169,7 +175,7 @@ async def create_employee(
         employee_code=candidate_code,
         name=body.name,
         role=body.role,
-        rfid_badge_id=body.rfidBadgeId,
+        rfid_badge_id=rfid,
         shift_id=body.shiftId,
         active_flag=body.activeFlag,
     )

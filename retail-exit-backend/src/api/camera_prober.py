@@ -240,7 +240,7 @@ def capture_camera_frame_sync(
     is_rtsp_reachable = False
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.35)
+            s.settimeout(1.2)
             is_rtsp_reachable = (s.connect_ex((target_host, target_port)) == 0)
     except Exception:
         is_rtsp_reachable = False
@@ -251,23 +251,39 @@ def capture_camera_frame_sync(
     host_responds: bool = False
 
     if not is_rtsp_reachable:
-        # Probe configured fallback ports to distinguish host unreachable vs port closed
-        # and support smart multi-port camera auto-negotiation
-        for test_p in settings.camera.discovery_ports:
+        # Probe standard NVR/DVR/CCTV camera ports with robust timeout
+        ports_to_check = set(settings.camera.discovery_ports + [554, 80, 8080, 8000, 37777, 8554, 8899, 5000, 4747])
+        if target_port in ports_to_check:
+            ports_to_check.remove(target_port)
+
+        for test_p in sorted(ports_to_check):
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    s.settimeout(0.15)
+                    s.settimeout(0.35)
                     if s.connect_ex((target_host, test_p)) == 0:
                         open_ports.append(test_p)
             except Exception:
                 pass
 
         host_responds = len(open_ports) > 0
+
+        # Secondary fallback: check ICMP ping if TCP probes didn't answer
+        if not host_responds:
+            try:
+                import subprocess
+                ping_flag = "-n" if os.name == "nt" else "-c"
+                ping_cmd = ["ping", ping_flag, "1", "-w", "800", target_host]
+                ping_res = subprocess.run(ping_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=1.0)
+                if ping_res.returncode == 0:
+                    host_responds = True
+            except Exception:
+                pass
+
         diag_info["is_reachable"] = host_responds
         if not host_responds:
             diag_info["stage"] = "HOST_UNREACHABLE"
             diag_info["error_message"] = (
-                f"Host Unreachable: Camera at '{target_host}' did not respond to network probes. "
+                f"Host Unreachable: Camera at '{target_host}' did not respond to network probes on ports {target_port}, 80, 8080, 8000 (Hikvision), 37777 (Dahua), or ping. "
                 "Confirm camera is powered on and connected to the store network."
             )
         else:

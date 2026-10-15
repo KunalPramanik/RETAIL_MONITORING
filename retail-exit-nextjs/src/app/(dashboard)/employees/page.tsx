@@ -27,6 +27,7 @@ interface EmployeeItem {
   activeFlag: boolean;
   mismatchCount30d: number;
   hasPhoto?: boolean;
+  hasFaceEnrolled?: boolean;
 }
 
 export default function EmployeesPage() {
@@ -38,7 +39,7 @@ export default function EmployeesPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
 
-  // 360 Multi-Angle Face Enrollment State
+  // 360 Multi-Angle Face Enrollment State (Modal)
   const [enroll360Employee, setEnroll360Employee] = useState<EmployeeItem | null>(null);
   const [files360, setFiles360] = useState<{ [angle: string]: File | null }>({
     front: null,
@@ -49,11 +50,24 @@ export default function EmployeesPage() {
   });
   const [uploading360, setUploading360] = useState(false);
 
+  // Add Employee Form State
   const [formData, setFormData] = useState({
     name: "",
     role: "STORE_ASSOCIATE",
     rfidBadgeId: "",
   });
+
+  // Biometric Photo Enrollment within "Register New Employee" modal
+  const [addEnrollMode, setAddEnrollMode] = useState<"360" | "single" | "none">("360");
+  const [addSingleFile, setAddSingleFile] = useState<File | null>(null);
+  const [addFiles360, setAddFiles360] = useState<{ [angle: string]: File | null }>({
+    front: null,
+    left: null,
+    right: null,
+    up: null,
+    down: null,
+  });
+  const [isSubmittingAdd, setIsSubmittingAdd] = useState(false);
 
   const fetchEmployees = async () => {
     try {
@@ -79,25 +93,102 @@ export default function EmployeesPage() {
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!formData.name.trim()) {
+      alert("Please enter employee full name.");
+      return;
+    }
+
+    setIsSubmittingAdd(true);
     try {
+      // Step 1: Create employee record
+      const payload: any = {
+        name: formData.name.trim(),
+        role: formData.role,
+      };
+      if (formData.rfidBadgeId.trim()) {
+        payload.rfidBadgeId = formData.rfidBadgeId.trim();
+      }
+
       const res = await safeFetch("/api/employees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
-      if (res.ok) {
-        const createdEmp = await res.json();
-        setShowAddModal(false);
-        setFormData({ name: "", role: "STORE_ASSOCIATE", rfidBadgeId: "" });
-        fetchEmployees();
-        const code = createdEmp.employeeCode || createdEmp.employee_code || "EMP-ASSIGNED";
-        alert(`Employee registered successfully! Assigned Code: ${code}`);
-      } else {
+
+      if (!res.ok) {
         const err = await res.json();
         alert(err.detail || "Registration failed");
+        setIsSubmittingAdd(false);
+        return;
+      }
+
+      const createdEmp = await res.json();
+      const empId = createdEmp.employeeId;
+      const empCode = createdEmp.employeeCode || createdEmp.employee_code || "EMP-ASSIGNED";
+
+      let photoEnrolled = false;
+      let photoMsg = "";
+
+      // Step 2: Upload Biometric Face Photos based on chosen mode
+      if (addEnrollMode === "single" && addSingleFile) {
+        try {
+          const photoData = new FormData();
+          photoData.append("file", addSingleFile);
+          const pRes = await safeFetch(`/api/employees/${empId}/photo`, {
+            method: "POST",
+            body: photoData,
+          });
+          if (pRes.ok) {
+            photoEnrolled = true;
+            photoMsg = "Single portrait face enrolled. Live store cameras will authenticate as KNOWN STAFF.";
+          } else {
+            const pErr = await pRes.json();
+            photoMsg = `Warning: ${pErr.detail || "Face not detected in photo"}. Employee marked UNKNOWN until verified photo is added.`;
+          }
+        } catch (pe: any) {
+          photoMsg = `Photo upload error: ${pe.message}`;
+        }
+      } else if (addEnrollMode === "360") {
+        const active360 = Object.values(addFiles360).filter((f): f is File => f !== null);
+        if (active360.length > 0) {
+          try {
+            const data360 = new FormData();
+            active360.forEach((f) => data360.append("files", f));
+            const pRes = await safeFetch(`/api/employees/${empId}/face-360`, {
+              method: "POST",
+              body: data360,
+            });
+            if (pRes.ok) {
+              photoEnrolled = true;
+              photoMsg = `360° Multi-Angle Biometric Profile enrolled (${active360.length} angles). Live store cameras will authenticate as KNOWN STAFF from any angle.`;
+            } else {
+              const pErr = await pRes.json();
+              photoMsg = `Warning: ${pErr.detail || "Face detection failed"}. Employee marked UNKNOWN until photos are added.`;
+            }
+          } catch (pe: any) {
+            photoMsg = `360 upload error: ${pe.message}`;
+          }
+        }
+      }
+
+      // Close modal and reset form
+      setShowAddModal(false);
+      setFormData({ name: "", role: "STORE_ASSOCIATE", rfidBadgeId: "" });
+      setAddSingleFile(null);
+      setAddFiles360({ front: null, left: null, right: null, up: null, down: null });
+      fetchEmployees();
+
+      if (photoEnrolled) {
+        alert(`Success! Employee registered with Code: ${empCode}.\n\n${photoMsg}`);
+      } else if (photoMsg) {
+        alert(`Employee registered (${empCode}).\n${photoMsg}`);
+      } else {
+        alert(`Employee registered successfully! Assigned Code: ${empCode}.\nNote: No face enrolled yet (store cameras will recognize as Unknown until photo is uploaded).`);
       }
     } catch (e: any) {
       alert(e.message || "Request failed");
+    } finally {
+      setIsSubmittingAdd(false);
     }
   };
 
@@ -240,6 +331,7 @@ export default function EmployeesPage() {
                   <th className="p-4">NAME</th>
                   <th className="p-4">ROLE</th>
                   <th className="p-4">RFID BADGE ID</th>
+                  <th className="p-4">CAMERA STATUS</th>
                   <th className="p-4">BIOMETRICS</th>
                   <th className="p-4">30-DAY MISMATCHES</th>
                   <th className="p-4 text-right">ACTIONS</th>
@@ -271,6 +363,17 @@ export default function EmployeesPage() {
                     </td>
                     <td className="p-4 font-mono text-xs text-[#E8A33D]">{emp.rfidBadgeId}</td>
                     <td className="p-4">
+                      {emp.hasFaceEnrolled || emp.hasPhoto ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-bold bg-[#4FD1B3]/10 text-[#4FD1B3] border border-[#4FD1B3]/30">
+                          <ShieldCheck size={13} /> KNOWN STAFF
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-mono font-bold bg-[#E5484D]/10 text-[#E5484D] border border-[#E5484D]/30">
+                          <AlertTriangle size={13} /> UNKNOWN (NO FACE)
+                        </span>
+                      )}
+                    </td>
+                    <td className="p-4">
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
@@ -287,7 +390,7 @@ export default function EmployeesPage() {
                           className="px-2.5 py-1 bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-raised)] text-[#4FD1B3] border border-[var(--border-hairline)] hover:border-[#4FD1B3] rounded text-xs font-mono flex items-center gap-1.5 transition-colors"
                           title="Single Portrait Photo Enrollment"
                         >
-                          <Camera size={13} /> {emp.hasPhoto ? "Photo" : "Add Photo"}
+                          <Camera size={13} /> {emp.hasFaceEnrolled || emp.hasPhoto ? "Photo Update" : "Add Photo"}
                         </button>
                       </div>
                     </td>
@@ -316,72 +419,212 @@ export default function EmployeesPage() {
         )}
       </div>
 
-      {/* Add Employee Modal */}
+      {/* Add Employee Modal with Integrated Photo & 360 Face Enrollment */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <Users size={18} className="text-[#4FD1B3]" /> Register New Employee
+                <Users size={18} className="text-[#4FD1B3]" /> Register New Employee & Face Biometrics
               </h3>
               <button onClick={() => setShowAddModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateEmployee} className="space-y-3 text-sm">
+            <form onSubmit={handleCreateEmployee} className="space-y-4 text-sm">
               <div className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-3 text-xs font-mono space-y-1">
                 <div className="text-[var(--text-secondary)] flex justify-between items-center">
                   <span>EMPLOYEE CODE (SYSTEM SEQUENCED):</span>
                   <span className="text-[#38BDF8] font-bold px-2 py-0.5 bg-[#38BDF8]/10 rounded border border-[#38BDF8]/30">EMP-AUTO</span>
                 </div>
                 <p className="text-[11px] text-[var(--text-muted)]">
-                  Collision-safe sequence (e.g. EMP-000001) will be atomically assigned by the server. Operator manual editing is disabled.
+                  Collision-safe sequence (e.g. EMP-000001) will be atomically assigned by the server.
                 </p>
               </div>
 
-              <div>
-                <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">FULL NAME *</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g. Alice Chen"
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">FULL NAME *</label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="e.g. Alice Chen"
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">AUTHORIZATION ROLE</label>
+                  <select
+                    value={formData.role}
+                    onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
+                  >
+                    <option value="STORE_ASSOCIATE">Store Associate</option>
+                    <option value="OPERATOR">Loading Dock Operator</option>
+                    <option value="SECURITY">Store Security Guard</option>
+                    <option value="SUPERVISOR">Security Supervisor</option>
+                    <option value="ADMIN">Store Administrator</option>
+                  </select>
+                </div>
               </div>
 
               <div>
-                <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">AUTHORIZATION ROLE</label>
-                <select
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
-                >
-                  <option value="STORE_ASSOCIATE">Store Associate</option>
-                  <option value="OPERATOR">Loading Dock Operator</option>
-                  <option value="SECURITY">Store Security Guard</option>
-                  <option value="SUPERVISOR">Security Supervisor</option>
-                  <option value="ADMIN">Store Administrator</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">RFID BADGE ID *</label>
+                <label className="block text-xs font-mono text-[var(--text-secondary)] mb-1">
+                  RFID BADGE ID <span className="text-[var(--text-muted)]">(OPTIONAL - Auto-generated if blank)</span>
+                </label>
                 <input
                   type="text"
-                  required
                   value={formData.rfidBadgeId}
                   onChange={(e) => setFormData({ ...formData, rfidBadgeId: e.target.value })}
-                  placeholder="e.g. BADGE-0091"
+                  placeholder="Auto-generated if empty (e.g. RFID-8A3F)"
                   className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[#E8A33D] font-mono outline-none focus:border-[#38BDF8]"
                 />
+              </div>
+
+              {/* Integrated Biometric Face Enrollment Section */}
+              <div className="border border-[var(--border-hairline)] rounded-xl p-4 bg-[var(--bg-canvas)] space-y-3">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold font-mono text-[#38BDF8] flex items-center gap-1.5">
+                      <Camera size={14} /> BIOMETRIC FACE ENROLLMENT (STORE & EXIT CAMERAS)
+                    </h4>
+                    <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                      Enrolling photos allows AI surveillance cameras to authenticate this staff member as <b>Known Staff</b>. Un-enrolled staff are flagged as <b>Unknown Person</b>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Mode Selector */}
+                <div className="grid grid-cols-3 gap-2 text-xs font-mono">
+                  <button
+                    type="button"
+                    onClick={() => setAddEnrollMode("360")}
+                    className={`py-2 px-3 rounded-lg border flex items-center justify-center gap-1.5 transition-all text-center ${
+                      addEnrollMode === "360"
+                        ? "bg-gradient-to-r from-blue-600/30 to-teal-600/30 border-[#38BDF8] text-[#38BDF8] font-bold"
+                        : "bg-[var(--bg-panel)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <RotateCw size={13} /> 360° Multi-Angle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddEnrollMode("single")}
+                    className={`py-2 px-3 rounded-lg border flex items-center justify-center gap-1.5 transition-all text-center ${
+                      addEnrollMode === "single"
+                        ? "bg-[#2563EB]/20 border-[#2563EB] text-[#38BDF8] font-bold"
+                        : "bg-[var(--bg-panel)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    <Camera size={13} /> Single Portrait
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAddEnrollMode("none")}
+                    className={`py-2 px-3 rounded-lg border flex items-center justify-center gap-1.5 transition-all text-center ${
+                      addEnrollMode === "none"
+                        ? "bg-[var(--bg-panel-hover)] border-[var(--text-secondary)] text-[var(--text-primary)] font-bold"
+                        : "bg-[var(--bg-panel)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    Skip Photo
+                  </button>
+                </div>
+
+                {/* 360 Mode Slots */}
+                {addEnrollMode === "360" && (
+                  <div className="space-y-2 pt-2">
+                    <p className="text-[11px] text-[var(--text-muted)] font-mono">
+                      Select 1 to 5 face angle photos to compute ArcFace 360° omni-directional centroid:
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {[
+                        { key: "front", label: "0° Front (Main)" },
+                        { key: "left", label: "45° Left Profile" },
+                        { key: "right", label: "45° Right Profile" },
+                        { key: "up", label: "15° Tilted Up" },
+                        { key: "down", label: "15° Tilted Down" },
+                      ].map((slot) => (
+                        <div
+                          key={slot.key}
+                          className="border border-[var(--border-hairline)] hover:border-[#38BDF8] rounded-lg p-2.5 text-center bg-[var(--bg-panel)] transition-all flex flex-col justify-between"
+                        >
+                          <span className="text-[10px] font-mono text-[var(--text-secondary)] font-bold block mb-1.5">
+                            {slot.label}
+                          </span>
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp"
+                            id={`add-slot-${slot.key}`}
+                            className="hidden"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0] || null;
+                              setAddFiles360((prev) => ({ ...prev, [slot.key]: f }));
+                            }}
+                          />
+                          <label
+                            htmlFor={`add-slot-${slot.key}`}
+                            className="cursor-pointer block py-2 border border-dashed border-[var(--border-hairline)] hover:border-[#38BDF8] rounded bg-[var(--bg-canvas)]"
+                          >
+                            <Camera size={16} className="mx-auto text-[#38BDF8] mb-1" />
+                            <span className="text-[10px] text-[var(--text-muted)] block truncate px-1">
+                              {addFiles360[slot.key]?.name || "Select"}
+                            </span>
+                          </label>
+                          {addFiles360[slot.key] && (
+                            <span className="text-[10px] text-[#4FD1B3] font-mono font-bold mt-1 flex items-center justify-center gap-0.5">
+                              <CheckCircle size={10} /> Ready
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Single Portrait Mode */}
+                {addEnrollMode === "single" && (
+                  <div className="pt-2">
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      id="add-single-photo"
+                      className="hidden"
+                      onChange={(e) => setAddSingleFile(e.target.files?.[0] || null)}
+                    />
+                    <label
+                      htmlFor="add-single-photo"
+                      className="border-2 border-dashed border-[var(--border-hairline)] hover:border-[#38BDF8] rounded-xl p-4 text-center cursor-pointer transition-colors bg-[var(--bg-panel)] block"
+                    >
+                      <UploadCloud size={24} className="mx-auto text-[#38BDF8] mb-1" />
+                      {addSingleFile ? (
+                        <span className="font-mono text-xs text-[#4FD1B3] font-bold block">{addSingleFile.name}</span>
+                      ) : (
+                        <>
+                          <span className="text-xs font-semibold text-[var(--text-primary)] block">Click to select portrait image</span>
+                          <span className="text-[11px] text-[var(--text-secondary)] block mt-0.5">JPEG, PNG or WebP</span>
+                        </>
+                      )}
+                    </label>
+                  </div>
+                )}
+
+                {/* Skip Mode Notice */}
+                {addEnrollMode === "none" && (
+                  <p className="text-xs text-[#E8A33D] font-mono bg-[#E8A33D]/10 border border-[#E8A33D]/20 p-2.5 rounded-lg">
+                    Notice: This employee will be created without face biometrics. Live cameras will identify them as "Unknown Person" until a face photo is enrolled later.
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-hairline)]">
                 <button
                   type="button"
+                  disabled={isSubmittingAdd}
                   onClick={() => setShowAddModal(false)}
                   className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium"
                 >
@@ -389,9 +632,16 @@ export default function EmployeesPage() {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-900/30"
+                  disabled={isSubmittingAdd}
+                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-900/30 flex items-center gap-2 disabled:opacity-50"
                 >
-                  Register Employee
+                  {isSubmittingAdd ? (
+                    <>
+                      <RefreshCw size={15} className="animate-spin" /> Processing Biometrics...
+                    </>
+                  ) : (
+                    "Register & Enroll Staff"
+                  )}
                 </button>
               </div>
             </form>

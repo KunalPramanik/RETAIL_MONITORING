@@ -22,52 +22,10 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ==============================================================================
--- 2.1 CLEAN RESET: Drop existing tables cleanly to guarantee 100% clean deployment
+-- 2.1 NON-DESTRUCTIVE PRODUCTION ARCHITECTURE
+-- All tables and indexes are created with IF NOT EXISTS to preserve production data.
+-- For explicit test-only database resets, see retail-exit-backend/scripts/test_reset_db.sql.
 -- ==============================================================================
-DROP TABLE IF EXISTS public.platform_billing_invoice CASCADE;
-DROP TABLE IF EXISTS public.platform_store_subscription CASCADE;
-DROP TABLE IF EXISTS public.platform_subscription_tier CASCADE;
-DROP TABLE IF EXISTS public.platform_audit_log CASCADE;
-DROP TABLE IF EXISTS public.platform_super_admin CASCADE;
-DROP TABLE IF EXISTS public.platform_tenant CASCADE;
-DROP TABLE IF EXISTS public.alembic_version CASCADE;
-DROP TABLE IF EXISTS public.audit_log CASCADE;
-DROP TABLE IF EXISTS public.evidence_artifact CASCADE;
-DROP TABLE IF EXISTS public.smart_wall_layout CASCADE;
-DROP TABLE IF EXISTS public.static_image_detection CASCADE;
-DROP TABLE IF EXISTS public.vehicle_detection CASCADE;
-DROP TABLE IF EXISTS public.access_control_event CASCADE;
-DROP TABLE IF EXISTS public.tripwire_crossing_event CASCADE;
-DROP TABLE IF EXISTS public.dispatch_session CASCADE;
-DROP TABLE IF EXISTS public.material_defect_event CASCADE;
-DROP TABLE IF EXISTS public.material_movement_ledger CASCADE;
-DROP TABLE IF EXISTS public.material_inventory_balance CASCADE;
-DROP TABLE IF EXISTS public.alarm_dispatch CASCADE;
-DROP TABLE IF EXISTS public.alert CASCADE;
-DROP TABLE IF EXISTS public.person_appearance_summary CASCADE;
-DROP TABLE IF EXISTS public.face_match_attempt CASCADE;
-DROP TABLE IF EXISTS public.weight_reading CASCADE;
-DROP TABLE IF EXISTS public.rfid_read CASCADE;
-DROP TABLE IF EXISTS public.vision_detection CASCADE;
-DROP TABLE IF EXISTS public.exit_event_line_item CASCADE;
-DROP TABLE IF EXISTS public.exit_event CASCADE;
-DROP TABLE IF EXISTS public.invoice CASCADE;
-DROP TABLE IF EXISTS public.employee CASCADE;
-DROP TABLE IF EXISTS public.shift CASCADE;
-DROP TABLE IF EXISTS public.package_definition CASCADE;
-DROP TABLE IF EXISTS public.material CASCADE;
-DROP TABLE IF EXISTS public.pending_product_identification CASCADE;
-DROP TABLE IF EXISTS public.initial_stock_verification CASCADE;
-DROP TABLE IF EXISTS public.product CASCADE;
-DROP TABLE IF EXISTS public.virtual_tripwire_config CASCADE;
-DROP TABLE IF EXISTS public.camera_heartbeat CASCADE;
-DROP TABLE IF EXISTS public.camera_pairing_token CASCADE;
-DROP TABLE IF EXISTS public.camera CASCADE;
-DROP TABLE IF EXISTS public.lane CASCADE;
-DROP TABLE IF EXISTS public.app_user CASCADE;
-DROP TABLE IF EXISTS public.threshold_config CASCADE;
-DROP TABLE IF EXISTS public.store CASCADE;
-DROP VIEW IF EXISTS public.user CASCADE;
 
 -- ==============================================================================
 -- 3. CORE & TENANCY TABLES
@@ -895,41 +853,9 @@ VALUES (
 )
 ON CONFLICT (config_id) DO NOTHING;
 
--- 13.3 Deactivate or Remove any previous demo/test users to guarantee ONLY ONE ACTIVE USER
-UPDATE public.app_user
-SET is_active = FALSE
-WHERE email != 'ces@gmail.com';
-
--- 13.4 Insert or Activate the single Software Owner account (Store-level Admin)
-INSERT INTO public.app_user (
-    user_id,
-    email,
-    username,
-    password_hash,
-    role,
-    store_id,
-    mfa_enabled,
-    is_active,
-    created_at
-)
-VALUES (
-    '9f405af6-751b-44c4-8d27-4734d4a501db',
-    'ces@gmail.com',
-    'ces',
-    '$2b$12$eIacDSWnSJDpI8.p9m8znOFRvENN8n6MAGa9JJnjD/dy.G7DN0Xhm',
-    'ADMIN',
-    '0f8248a3-2947-4f6b-871d-5b6cb219e2c1',
-    FALSE,
-    TRUE,
-    NOW()
-)
-ON CONFLICT (email) DO UPDATE 
-SET 
-    username = EXCLUDED.username,
-    password_hash = EXCLUDED.password_hash,
-    role = EXCLUDED.role,
-    is_active = TRUE,
-    store_id = EXCLUDED.store_id;
+-- 13.3 Software Owner Platform Identity Provisioning
+-- The Software Owner identity is strictly stored in platform_super_admin ONLY.
+-- app_user remains completely unseeded (0 records) until authorized store tenants provision store users.
 
 -- 13.5 Insert or Activate Platform Super Admin account (Control-plane Owner)
 INSERT INTO public.platform_super_admin (
@@ -1041,8 +967,8 @@ ON CONFLICT (lane_id) DO NOTHING;
 -- ==============================================================================
 -- 14. VERIFICATION QUERIES
 -- ==============================================================================
--- Verify Single Active Store Admin
-SELECT 'APP_USER' AS source, user_id, email, username, role, is_active FROM public.app_user WHERE is_active = TRUE;
+-- Verify Zero Pre-Seeded Store Users (app_user is unseeded)
+SELECT 'APP_USER' AS source, count(*) AS total_store_users FROM public.app_user;
 
 -- Verify Single Active Platform Super Admin
 SELECT 'PLATFORM_SUPER_ADMIN' AS source, admin_id, email, username, role, is_active FROM public.platform_super_admin WHERE is_active = TRUE;

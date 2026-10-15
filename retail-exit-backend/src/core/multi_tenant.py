@@ -63,35 +63,38 @@ async def init_platform_db() -> None:
     logger.info("Platform control-plane schema verified.")
 
     # Bootstrap master super admin: Software Owner ONLY (ces@gmail.com)
+    owner_email = os.getenv("BOOTSTRAP_OWNER_EMAIL", "ces@gmail.com").strip().lower()
+    owner_password = os.getenv("BOOTSTRAP_OWNER_PASSWORD", "Ces@1234")
+    owner_username = owner_email.split("@")[0]
+
     async with PlatformAsyncSessionLocal() as session:
-        from sqlalchemy import delete
-        await session.execute(delete(PlatformSuperAdmin).where(PlatformSuperAdmin.email != "ces@gmail.com"))
         ces_res = await session.execute(
             select(PlatformSuperAdmin).where(
                 or_(
-                    PlatformSuperAdmin.email == "ces@gmail.com",
-                    PlatformSuperAdmin.username == "ces@gmail.com",
-                    PlatformSuperAdmin.username == "ces",
+                    PlatformSuperAdmin.email == owner_email,
+                    PlatformSuperAdmin.username == owner_email,
+                    PlatformSuperAdmin.username == owner_username,
                 )
             )
         )
         ces_super = ces_res.scalar_one_or_none()
         if not ces_super:
             ces_super_admin = PlatformSuperAdmin(
-                username="ces",
-                email="ces@gmail.com",
-                password_hash=get_password_hash("Ces@1234"),
+                username=owner_username,
+                email=owner_email,
+                password_hash=get_password_hash(owner_password),
                 role="SUPER_ADMIN",
                 is_active=True,
             )
             session.add(ces_super_admin)
             await session.commit()
-            logger.info("Software Owner account ces@gmail.com bootstrapped into PlatformSuperAdmin.")
+            logger.info("Software Owner account (%s) successfully bootstrapped into PlatformSuperAdmin.", owner_email)
         else:
-            ces_super.password_hash = get_password_hash("Ces@1234")
-            ces_super.role = "SUPER_ADMIN"
-            ces_super.is_active = True
-            await session.commit()
+            # Idempotent: preserve existing password and account state
+            if not ces_super.is_active:
+                ces_super.is_active = True
+                await session.commit()
+                logger.info("Software Owner account (%s) reactivated without modifying credentials.", owner_email)
 
 
 def sanitize_slug(name: str) -> str:

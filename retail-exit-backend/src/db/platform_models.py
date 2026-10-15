@@ -60,6 +60,14 @@ class PlatformSuperAdmin(PlatformBase):
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
     last_login_at: Any = Column(DateTime(timezone=True), nullable=True)
 
+    @property
+    def user_id(self) -> str:
+        return str(self.admin_id)
+
+    @property
+    def id(self) -> str:
+        return str(self.admin_id)
+
 
 class PlatformAuditLog(PlatformBase):
     """Platform-level immutable audit log."""

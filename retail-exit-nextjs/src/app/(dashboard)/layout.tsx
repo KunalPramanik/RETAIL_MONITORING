@@ -3,7 +3,7 @@
 import { safeFetch } from "@/lib/api-client";
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { ThemeToggle } from "@/lib/theme-provider";
 import {
@@ -29,10 +29,13 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const router = useRouter();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [currentTime, setCurrentTime] = useState("");
   const [apiHealth, setApiHealth] = useState<"HEALTHY" | "DEGRADED" | "OFFLINE" | "CHECKING">("CHECKING");
+
+  const currentTab = searchParams.get("tab") || (pathname === "/platform" ? "tenants" : null);
 
   // Authentication guard
   useEffect(() => {
@@ -74,22 +77,17 @@ export default function DashboardLayout({
     };
   }, []);
 
-  const role = (user?.role || "OPERATOR").toUpperCase();
+  const role = (user?.role || "SUPER_ADMIN").toUpperCase();
   const isSoftwareOwner = role === "SUPER_ADMIN";
 
   const allNavItems = [
-    { label: "Dashboard", href: "/", icon: Activity, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "SECURITY", "AUDITOR", "VIEWER"] },
-    { label: "Platform Fleet", href: "/platform", icon: ShieldAlert, roles: ["SUPER_ADMIN"] },
-    { label: "Store Onboarding", href: "/onboarding", icon: Sparkles, roles: ["SUPER_ADMIN"] },
-    { label: "Cameras & Fleet", href: "/settings/cameras", icon: Camera, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "SECURITY"] },
-    { label: "Security Alerts", href: "/alerts", icon: AlertTriangle, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "SECURITY"] },
-    { label: "Inventory & Ledger", href: "/inventory", icon: Box, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "AUDITOR", "VIEWER"] },
-    { label: "Products & Pack Math", href: "/products", icon: Layers, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"] },
-    { label: "Employees & Face ID", href: "/employees", icon: Users, roles: ["SUPER_ADMIN", "ADMIN", "SECURITY"] },
-    { label: "Invoices & OCR", href: "/invoices", icon: FileText, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "AUDITOR", "VIEWER"] },
-    { label: "Exit Events", href: "/events", icon: Layers, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "OPERATOR", "SECURITY", "AUDITOR", "VIEWER"] },
-    { label: "Reports & PDF", href: "/reports", icon: FileSpreadsheet, roles: ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "AUDITOR", "VIEWER"] },
-    { label: "Settings & Sensors", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { label: "Platform Overview", href: "/", icon: Activity, roles: ["SUPER_ADMIN", "ADMIN"] },
+    { label: "Companies & Tenants", href: "/platform?tab=tenants", icon: ShieldAlert, roles: ["SUPER_ADMIN"] },
+    { label: "Stores Fleet", href: "/platform?tab=stores", icon: Sparkles, roles: ["SUPER_ADMIN"] },
+    { label: "Subscriptions & Billing", href: "/platform?tab=billing", icon: FileSpreadsheet, roles: ["SUPER_ADMIN"] },
+    { label: "Camera Fleet Health", href: "/platform?tab=cameras", icon: Camera, roles: ["SUPER_ADMIN"] },
+    { label: "Platform Audit Logs", href: "/platform?tab=audit", icon: AlertTriangle, roles: ["SUPER_ADMIN"] },
+    { label: "Owner Settings & Security", href: "/settings", icon: Settings, roles: ["SUPER_ADMIN", "ADMIN"] },
   ];
 
   const navItems = allNavItems.filter((item) => item.roles.includes(role));
@@ -104,7 +102,7 @@ export default function DashboardLayout({
           <div className="text-sm font-bold tracking-tight">SEC-OPS V8 CONTROL CONSOLE</div>
           <div className="text-xs font-mono text-[var(--text-muted)] flex items-center gap-2">
             <Loader2 size={14} className="animate-spin text-[#38BDF8]" />
-            Verifying operator credentials...
+            Verifying owner credentials...
           </div>
         </div>
       </div>
@@ -116,8 +114,8 @@ export default function DashboardLayout({
   }
 
   const userInitial = (user?.username?.[0] || user?.email?.[0] || "O").toUpperCase();
-  const displayName = user?.username || user?.email?.split("@")[0] || "Operator";
-  const userRole = user?.role || "OPERATOR";
+  const displayName = user?.email || user?.username || "Software Owner";
+  const userRole = role === "SUPER_ADMIN" ? "SOFTWARE OWNER" : role;
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)] select-none transition-colors duration-200">
@@ -133,8 +131,8 @@ export default function DashboardLayout({
               <span className="font-bold text-base tracking-tight text-[var(--text-primary)] block leading-none">
                 SEC-OPS <span className="text-[#38BDF8] text-xs font-mono">V8</span>
               </span>
-              <span className="text-[10px] font-mono text-[var(--text-muted)] tracking-wider block mt-0.5 uppercase">
-                Surveillance AI
+              <span className="text-[10px] font-mono text-[#38BDF8] tracking-wider block mt-0.5 uppercase font-semibold">
+                Software Owner Control
               </span>
             </div>
           </Link>
@@ -143,10 +141,16 @@ export default function DashboardLayout({
         {/* Navigation Links */}
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
-            const isActive =
-              item.href === "/"
-                ? pathname === "/"
-                : pathname === item.href || pathname.startsWith(item.href + "/");
+            const isActive = (() => {
+              if (item.href === "/") {
+                return pathname === "/";
+              }
+              if (item.href.includes("?tab=")) {
+                const itemTab = item.href.split("?tab=")[1];
+                return pathname === "/platform" && currentTab === itemTab;
+              }
+              return pathname === item.href || pathname.startsWith(item.href + "/");
+            })();
 
             return (
               <Link
@@ -173,11 +177,11 @@ export default function DashboardLayout({
                 {userInitial}
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                <div className="text-xs font-bold text-[var(--text-primary)] truncate" title={displayName}>
                   {displayName}
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5">
-                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-semibold uppercase">
+                  <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-blue-500/10 text-[#38BDF8] border border-blue-500/20 font-semibold uppercase">
                     {userRole}
                   </span>
                 </div>
@@ -201,10 +205,16 @@ export default function DashboardLayout({
         {/* Top Control Room Header */}
         <header className="px-6 py-3 border-b border-[var(--border-hairline)] flex justify-between items-center bg-[var(--header-bg)] z-10 sticky top-0 shadow-sm transition-colors duration-200">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-mono text-[var(--text-muted)]">CONTROL CONSOLE //</span>
+            <span className="text-xs font-mono text-[var(--text-muted)]">SOFTWARE OWNER CONSOLE //</span>
             <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">
-              {navItems.find((n) => (n.href === "/" ? pathname === "/" : pathname.startsWith(n.href)))?.label ||
-                "Console"}
+              {navItems.find((n) => {
+                if (n.href === "/") return pathname === "/" && !currentTab;
+                if (n.href.includes("?tab=")) {
+                  const itemTab = n.href.split("?tab=")[1];
+                  return pathname === "/platform" && currentTab === itemTab;
+                }
+                return pathname === n.href || pathname.startsWith(n.href + "/");
+              })?.label || "Control Console"}
             </span>
           </div>
 

@@ -58,37 +58,7 @@ async def init_baseline_configuration(session: AsyncSession):
         session.add(store)
         await session.flush()
 
-    # 2. Ensure ONLY the Software Owner (ces@gmail.com) exists as Active ADMIN
-    from sqlalchemy import delete
-    await session.execute(delete(AppUser).where(AppUser.email != "ces@gmail.com"))
-
-    ces_user_res = await session.execute(
-        select(AppUser).where(
-            or_(
-                AppUser.email == "ces@gmail.com",
-                AppUser.username == "ces@gmail.com",
-                AppUser.username == "ces",
-            )
-        )
-    )
-    ces_user = ces_user_res.scalars().first()
-    if not ces_user:
-        ces_user = AppUser(
-            user_id=str(uuid.uuid4()),
-            email="ces@gmail.com",
-            username="ces",
-            password_hash=get_password_hash("Ces@1234"),
-            role="ADMIN",
-            store_id=store.store_id,
-            mfa_enabled=False,
-            is_active=True,
-        )
-        session.add(ces_user)
-    else:
-        ces_user.password_hash = get_password_hash("Ces@1234")
-        ces_user.is_active = True
-        ces_user.role = "ADMIN"
-        ces_user.store_id = store.store_id
+    # 2. Software Owner is strictly managed via platform_super_admin (AppUser remains unseeded)
 
     # 3. Base Threshold Config
     cfg = await session.execute(select(ThresholdConfig).limit(1))

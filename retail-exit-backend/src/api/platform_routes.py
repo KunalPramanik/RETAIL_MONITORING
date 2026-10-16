@@ -130,6 +130,37 @@ class OwnerChangePasswordRequest(BaseModel):
     newPassword: str = Field(..., min_length=8)
 
 
+class UserStatusUpdateRequest(BaseModel):
+    isActive: bool
+    reason: Optional[str] = "Administrative status modification by Software Owner"
+
+
+class CreatePlanRequest(BaseModel):
+    name: str = Field(..., min_length=2)
+    maxCameras: int = Field(..., ge=1)
+    priceCents: int = Field(..., ge=0)
+    currency: str = "INR"
+    billingCycle: str = "MONTHLY"
+    features: Optional[List[str]] = None
+
+
+class UpdatePlanRequest(BaseModel):
+    name: Optional[str] = None
+    maxCameras: Optional[int] = None
+    priceCents: Optional[int] = None
+    currency: Optional[str] = None
+    billingCycle: Optional[str] = None
+    features: Optional[List[str]] = None
+
+
+class StoreSubscriptionOverrideRequest(BaseModel):
+    tierId: Optional[str] = None
+    status: Optional[str] = None
+    extensionDays: Optional[int] = None
+    paymentVerified: Optional[bool] = None
+    notes: Optional[str] = None
+
+
 # --- Auth Dependency for Master Super Admin ---
 
 async def require_master_super_admin(
@@ -599,6 +630,145 @@ async def provision_store_owner(
     return {"userId": new_user.user_id, "email": new_user.email, "role": new_user.role, "tenantId": tenant_id}
 
 
+@router.get("/users")
+async def list_platform_users(
+    search: Optional[str] = None,
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Lists all user accounts (store operators and platform admins) with activation status."""
+    users_list = []
+    
+    # 1. Platform Super Admins
+    async with PlatformAsyncSessionLocal() as p_session:
+        p_query = select(PlatformSuperAdmin)
+        if search:
+            s_clean = search.strip().lower()
+            p_query = p_query.where(
+                or_(
+                    PlatformSuperAdmin.email.ilike(f"%{s_clean}%"),
+                    PlatformSuperAdmin.username.ilike(f"%{s_clean}%"),
+                )
+            )
+        p_res = await p_session.execute(p_query)
+        for sa in p_res.scalars().all():
+            users_list.append({
+                "userId": sa.admin_id,
+                "email": sa.email,
+                "username": sa.username,
+                "role": sa.role,
+                "type": "PLATFORM_SUPER_ADMIN",
+                "storeId": "PLATFORM",
+                "storeName": "Platform Control Plane",
+                "isActive": bool(sa.is_active),
+                "createdAt": sa.created_at.isoformat() if sa.created_at else "",
+                "lastLoginAt": sa.last_login_at.isoformat() if sa.last_login_at else None,
+                "isPlatformOwner": True,
+            })
+
+    # 2. Store-level AppUsers
+    async with AsyncSessionLocal() as session:
+        st_res = await session.execute(select(Store))
+        stores_map = {s.store_id: s.name for s in st_res.scalars().all()}
+
+        u_query = select(AppUser)
+        if search:
+            s_clean = search.strip().lower()
+            u_query = u_query.where(
+                or_(
+                    AppUser.email.ilike(f"%{s_clean}%"),
+                    AppUser.username.ilike(f"%{s_clean}%"),
+                )
+            )
+        u_res = await session.execute(u_query.order_by(desc(AppUser.created_at)))
+        for u in u_res.scalars().all():
+            users_list.append({
+                "userId": u.user_id,
+                "email": u.email,
+                "username": u.username or u.email,
+                "role": u.role,
+                "type": "STORE_USER",
+                "storeId": u.store_id or "UNASSIGNED",
+                "storeName": stores_map.get(u.store_id, "Primary Store") if u.store_id else "Unassigned",
+                "isActive": bool(u.is_active),
+                "createdAt": u.created_at.isoformat() if u.created_at else "",
+                "lastLoginAt": None,
+                "isPlatformOwner": False,
+            })
+
+    return users_list
+
+
+@router.patch("/users/{user_id}/status")
+async def update_user_status(
+    user_id: str,
+    req: UserStatusUpdateRequest,
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Suspends or reactivates an account ID.
+    
+    When suspended:
+      Active session is immediately invalidated on next API access.
+    When reactivated:
+      User can immediately log in with their same credentials (password hash preserved).
+    """
+    updated = False
+    target_email = ""
+
+    # Check store AppUser first
+    async with AsyncSessionLocal() as session:
+        u = await session.get(AppUser, user_id)
+        if not u:
+            u_res = await session.execute(select(AppUser).where(AppUser.email == user_id.lower().strip()))
+            u = u_res.scalar_one_or_none()
+
+        if u:
+            u.is_active = req.isActive
+            target_email = u.email
+            await session.commit()
+            updated = True
+
+    # If not in AppUser, check PlatformSuperAdmin (except root owner cannot suspend self)
+    if not updated:
+        async with PlatformAsyncSessionLocal() as p_session:
+            sa = await p_session.get(PlatformSuperAdmin, user_id)
+            if not sa:
+                sa_res = await p_session.execute(select(PlatformSuperAdmin).where(PlatformSuperAdmin.email == user_id.lower().strip()))
+                sa = sa_res.scalar_one_or_none()
+            if sa:
+                if sa.admin_id == admin.admin_id and not req.isActive:
+                    raise HTTPException(status_code=400, detail="Cannot suspend your own Software Owner account.")
+                sa.is_active = req.isActive
+                target_email = sa.email
+                await p_session.commit()
+                updated = True
+
+    if not updated:
+        raise HTTPException(status_code=404, detail="User account not found.")
+
+    async with PlatformAsyncSessionLocal() as p_session:
+        audit = PlatformAuditLog(
+            actor_id=admin.admin_id,
+            actor_type="SUPER_ADMIN",
+            action="SUSPEND_USER" if not req.isActive else "REACTIVATE_USER",
+            details={
+                "targetUserId": user_id,
+                "targetEmail": target_email,
+                "newStatus": "ACTIVE" if req.isActive else "SUSPENDED",
+                "reason": req.reason,
+            },
+        )
+        p_session.add(audit)
+        await p_session.commit()
+
+    return {
+        "userId": user_id,
+        "email": target_email,
+        "isActive": req.isActive,
+        "status": "ACTIVE" if req.isActive else "SUSPENDED",
+        "message": "Account reactivated. User can log in with existing credentials." if req.isActive else "Account suspended. User will be automatically logged out on next action.",
+    }
+
+
 # ==============================================================================
 # 4. STORE FLEET MANAGEMENT
 # ==============================================================================
@@ -704,11 +874,38 @@ async def update_store_status(
 # 5. SUBSCRIPTIONS & BILLING MANAGEMENT
 # ==============================================================================
 
+DEFAULT_PLAN_FEATURES: Dict[str, List[str]] = {
+    "tier_starter_01": [
+        "Single-Lane AI Object Tracking",
+        "Basic Handheld Detection",
+        "7-Day Snapshot Retention",
+        "Standard Email Alerts",
+    ],
+    "tier_pro_01": [
+        "Multi-Lane AI Tracking",
+        "Dense Bookshelf & Stack Counter",
+        "Facial Recognition & Staff ID",
+        "30-Day Snapshot Retention",
+        "Turnstile Auto-Lock Gateway",
+        "SMS & Push Notifications",
+    ],
+    "tier_enterprise_01": [
+        "Unlimited Multi-Portal Tracking",
+        "Dense Bookshelf & Rebar Stack AI",
+        "Real-Time ArcFace 360 Verification",
+        "Instant Turnstile Hardware Lock",
+        "Automated Discrepancy Auditing",
+        "90-Day Full HD Evidence Storage",
+        "Dedicated Multi-Tenant SLA & Support",
+    ],
+}
+
+
 @router.get("/billing/plans")
 async def list_billing_plans(
     admin: PlatformSuperAdmin = Depends(require_master_super_admin),
 ):
-    """Lists all available platform subscription tiers and limits."""
+    """Lists all available platform subscription tiers, custom pricing, and access permissions."""
     async with PlatformAsyncSessionLocal() as p_session:
         res = await p_session.execute(select(PlatformSubscriptionTier).order_by(PlatformSubscriptionTier.price_cents))
         tiers = res.scalars().all()
@@ -720,9 +917,223 @@ async def list_billing_plans(
                 "priceCents": t.price_cents,
                 "currency": t.currency,
                 "billingCycle": t.billing_cycle,
+                "features": DEFAULT_PLAN_FEATURES.get(t.tier_id, [
+                    f"Up to {t.max_cameras} Cameras Ingestion",
+                    "Continuous Object AI Detection",
+                    "Custom Counting Rules",
+                    "Live Alerting & Security Dispatch",
+                ]),
             }
             for t in tiers
         ]
+
+
+@router.post("/billing/plans", status_code=201)
+async def create_billing_plan(
+    req: CreatePlanRequest,
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Allows Software Owner to manually create custom subscription plans with pricing & feature access."""
+    clean_name = req.name.strip()
+    tier_id = f"tier_custom_{re.sub(r'[^a-zA-Z0-9_]', '', clean_name.lower().replace(' ', '_'))}_{int(datetime.now().timestamp())}"
+
+    async with PlatformAsyncSessionLocal() as p_session:
+        existing = await p_session.execute(
+            select(PlatformSubscriptionTier).where(PlatformSubscriptionTier.name == clean_name)
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Plan with name '{clean_name}' already exists.")
+
+        tier = PlatformSubscriptionTier(
+            tier_id=tier_id,
+            name=clean_name,
+            max_cameras=req.maxCameras,
+            price_cents=req.priceCents,
+            currency=req.currency.upper(),
+            billing_cycle=req.billingCycle.upper(),
+        )
+        p_session.add(tier)
+
+        features_list = req.features or [
+            f"Up to {req.maxCameras} CCTV Cameras Support",
+            "Real-Time AI Vision Detection",
+            "Hardware Auto-Lock Integration",
+            "Custom Stock Movement Ledger",
+        ]
+        DEFAULT_PLAN_FEATURES[tier_id] = features_list
+
+        audit = PlatformAuditLog(
+            actor_id=admin.admin_id,
+            actor_type="SUPER_ADMIN",
+            action="CREATE_PLAN",
+            details={
+                "tierId": tier_id,
+                "name": clean_name,
+                "priceCents": req.priceCents,
+                "maxCameras": req.maxCameras,
+                "currency": req.currency,
+                "features": features_list,
+            },
+        )
+        p_session.add(audit)
+        await p_session.commit()
+
+        return {
+            "tierId": tier.tier_id,
+            "name": tier.name,
+            "maxCameras": tier.max_cameras,
+            "priceCents": tier.price_cents,
+            "currency": tier.currency,
+            "billingCycle": tier.billing_cycle,
+            "features": features_list,
+        }
+
+
+@router.patch("/billing/plans/{tier_id}")
+async def update_billing_plan(
+    tier_id: str,
+    req: UpdatePlanRequest,
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Allows Software Owner to manually modify pricing, camera quotas, and feature access of any plan."""
+    async with PlatformAsyncSessionLocal() as p_session:
+        tier = await p_session.get(PlatformSubscriptionTier, tier_id)
+        if not tier:
+            raise HTTPException(status_code=404, detail="Subscription plan not found.")
+
+        if req.name is not None and req.name.strip():
+            tier.name = req.name.strip()
+        if req.maxCameras is not None:
+            tier.max_cameras = max(1, req.maxCameras)
+        if req.priceCents is not None:
+            tier.price_cents = max(0, req.priceCents)
+        if req.currency is not None:
+            tier.currency = req.currency.upper()
+        if req.billingCycle is not None:
+            tier.billing_cycle = req.billingCycle.upper()
+
+        if req.features is not None:
+            DEFAULT_PLAN_FEATURES[tier_id] = req.features
+
+        audit = PlatformAuditLog(
+            actor_id=admin.admin_id,
+            actor_type="SUPER_ADMIN",
+            action="UPDATE_PLAN",
+            details={
+                "tierId": tier_id,
+                "name": tier.name,
+                "priceCents": tier.price_cents,
+                "maxCameras": tier.max_cameras,
+                "features": DEFAULT_PLAN_FEATURES.get(tier_id),
+            },
+        )
+        p_session.add(audit)
+        await p_session.commit()
+
+        return {
+            "tierId": tier.tier_id,
+            "name": tier.name,
+            "maxCameras": tier.max_cameras,
+            "priceCents": tier.price_cents,
+            "currency": tier.currency,
+            "billingCycle": tier.billing_cycle,
+            "features": DEFAULT_PLAN_FEATURES.get(tier_id, []),
+        }
+
+
+@router.delete("/billing/plans/{tier_id}")
+async def delete_billing_plan(
+    tier_id: str,
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Deletes a custom plan if it is not currently active on any store subscriptions."""
+    if tier_id in ("tier_starter_01", "tier_pro_01", "tier_enterprise_01"):
+        raise HTTPException(status_code=400, detail="Cannot delete baseline platform subscription plans.")
+
+    async with PlatformAsyncSessionLocal() as p_session:
+        in_use = await p_session.execute(
+            select(PlatformStoreSubscription).where(PlatformStoreSubscription.tier_id == tier_id)
+        )
+        if in_use.scalars().first():
+            raise HTTPException(status_code=400, detail="Cannot delete plan currently assigned to active stores.")
+
+        tier = await p_session.get(PlatformSubscriptionTier, tier_id)
+        if not tier:
+            raise HTTPException(status_code=404, detail="Plan not found.")
+
+        await p_session.delete(tier)
+        DEFAULT_PLAN_FEATURES.pop(tier_id, None)
+
+        audit = PlatformAuditLog(
+            actor_id=admin.admin_id,
+            actor_type="SUPER_ADMIN",
+            action="DELETE_PLAN",
+            details={"tierId": tier_id, "name": tier.name},
+        )
+        p_session.add(audit)
+        await p_session.commit()
+
+        return {"status": "SUCCESS", "message": f"Plan '{tier.name}' deleted successfully."}
+
+
+@router.patch("/stores/{store_id}/subscription")
+async def override_store_subscription(
+    store_id: str,
+    req: StoreSubscriptionOverrideRequest,
+    admin: PlatformSuperAdmin = Depends(require_master_super_admin),
+):
+    """Allows Software Owner to manually assign plans, override pricing/status, and extend validity."""
+    now = get_utc_now()
+    async with PlatformAsyncSessionLocal() as p_session:
+        sub_res = await p_session.execute(
+            select(PlatformStoreSubscription).where(PlatformStoreSubscription.tenant_id == store_id)
+        )
+        sub = sub_res.scalar_one_or_none()
+
+        if not sub:
+            sub = PlatformStoreSubscription(
+                tenant_id=store_id,
+                tier_id=req.tierId or "tier_starter_01",
+                status=req.status or "ACTIVE",
+                current_period_start=now,
+                current_period_end=now + timedelta(days=req.extensionDays or 30),
+                payment_verified=req.paymentVerified if req.paymentVerified is not None else True,
+            )
+            p_session.add(sub)
+        else:
+            if req.tierId:
+                sub.tier_id = req.tierId
+            if req.status:
+                sub.status = req.status
+            if req.paymentVerified is not None:
+                sub.payment_verified = req.paymentVerified
+            if req.extensionDays:
+                base_end = sub.current_period_end if sub.current_period_end and sub.current_period_end > now else now
+                sub.current_period_end = base_end + timedelta(days=req.extensionDays)
+
+        audit = PlatformAuditLog(
+            actor_id=admin.admin_id,
+            actor_type="SUPER_ADMIN",
+            action="OVERRIDE_STORE_SUBSCRIPTION",
+            tenant_id=store_id,
+            details={
+                "tierId": sub.tier_id,
+                "status": sub.status,
+                "currentPeriodEnd": sub.current_period_end.isoformat() if sub.current_period_end else None,
+                "notes": req.notes,
+            },
+        )
+        p_session.add(audit)
+        await p_session.commit()
+
+        return {
+            "storeId": store_id,
+            "subscriptionId": sub.subscription_id,
+            "tierId": sub.tier_id,
+            "status": sub.status,
+            "paymentVerified": sub.payment_verified,
+            "currentPeriodEnd": sub.current_period_end.isoformat() if sub.current_period_end else None,
+        }
 
 
 @router.get("/subscriptions")

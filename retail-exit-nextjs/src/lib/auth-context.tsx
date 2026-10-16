@@ -111,9 +111,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       router.push("/login");
     };
 
+    // Listen for suspended/deactivated account events (instant forced logout)
+    const handleSuspended = (e: any) => {
+      try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
+      } catch (_) {}
+      setToken(null);
+      setUser(null);
+      router.push("/login?suspended=1");
+    };
+
     window.addEventListener("secops:unauthorized", handleUnauthorized);
+    window.addEventListener("secops:suspended", handleSuspended);
     return () => {
       window.removeEventListener("secops:unauthorized", handleUnauthorized);
+      window.removeEventListener("secops:suspended", handleSuspended);
     };
   }, [fetchProfile, router]);
 

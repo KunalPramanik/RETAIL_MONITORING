@@ -326,7 +326,7 @@ export default function StoreDashboard() {
         {/* Active Cameras Fleet -> Navigates to /settings/cameras */}
         <Link
           href="/settings/cameras"
-          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-[#38BDF8] hover:shadow-md cursor-pointer block group"
+          className="stat-box-3d flex justify-between items-start cursor-pointer block group"
           title="Click to manage and inspect camera fleet"
         >
           <div>
@@ -350,7 +350,7 @@ export default function StoreDashboard() {
         {/* Open Loss-Prevention Alerts -> Navigates to /alerts */}
         <Link
           href="/alerts"
-          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-rose-500 hover:shadow-md cursor-pointer block group"
+          className="stat-box-3d flex justify-between items-start cursor-pointer block group"
           title="Click to view and resolve security alarms queue"
         >
           <div>
@@ -372,7 +372,7 @@ export default function StoreDashboard() {
         {/* Throughput Items Verified -> Navigates to /events */}
         <Link
           href="/events"
-          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-amber-500 hover:shadow-md cursor-pointer block group"
+          className="stat-box-3d flex justify-between items-start cursor-pointer block group"
           title="Click to inspect audited exit event records"
         >
           <div>
@@ -395,7 +395,7 @@ export default function StoreDashboard() {
         {/* Fusion Consensus Accuracy -> Navigates to /reports */}
         <Link
           href="/reports"
-          className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] flex justify-between items-start shadow-sm transition-all hover:border-emerald-500 hover:shadow-md cursor-pointer block group"
+          className="stat-box-3d flex justify-between items-start cursor-pointer block group"
           title="Click to view sensor fusion analytics & reports"
         >
           <div>

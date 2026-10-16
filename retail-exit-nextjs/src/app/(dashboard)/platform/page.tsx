@@ -30,7 +30,27 @@ import {
   Radio,
   Server,
   Layers,
+  Users,
+  UserCheck,
+  Sparkles,
+  Trash2,
+  Edit,
+  ShieldCheck,
 } from "lucide-react";
+
+interface AccountItem {
+  userId: string;
+  email: string;
+  username: string;
+  role: string;
+  type: string;
+  storeId?: string;
+  storeName?: string;
+  isActive: boolean;
+  createdAt: string;
+  lastLoginAt?: string | null;
+  isPlatformOwner: boolean;
+}
 
 interface TenantItem {
   tenantId: string;
@@ -55,6 +75,9 @@ interface StoreItem {
   cameraCount: number;
   maxCameras?: number;
   cameraLimit?: number;
+  tierId?: string;
+  activeCamerasCount?: number;
+  subscriptionTier?: string;
   billingStatus?: string;
   paymentStatus?: string;
 }
@@ -62,10 +85,13 @@ interface StoreItem {
 interface PlanItem {
   tierId: string;
   name: string;
-  monthlyPriceCents: number;
+  monthlyPriceCents?: number;
+  priceCents?: number;
   maxCameras: number;
-  maxStores: number;
-  features: string[];
+  maxStores?: number;
+  currency?: string;
+  billingCycle?: string;
+  features?: string[];
 }
 
 interface SubscriptionItem {
@@ -122,18 +148,18 @@ function PlatformControlPanelInner() {
   const isSoftwareOwner = role === "SUPER_ADMIN" || user?.isPlatformOwner === true;
 
   const tabParam = searchParams.get("tab") || "tenants";
-  const [activeTab, setActiveTab] = useState<"tenants" | "stores" | "billing" | "cameras" | "audit">(
+  const [activeTab, setActiveTab] = useState<"tenants" | "stores" | "accounts" | "billing" | "cameras" | "audit">(
     (tabParam as any) || "tenants"
   );
 
   // Sync activeTab when query param changes
   useEffect(() => {
-    if (tabParam && ["tenants", "stores", "billing", "cameras", "audit"].includes(tabParam)) {
+    if (tabParam && ["tenants", "stores", "accounts", "billing", "cameras", "audit"].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
   }, [tabParam]);
 
-  const setTab = (newTab: "tenants" | "stores" | "billing" | "cameras" | "audit") => {
+  const setTab = (newTab: "tenants" | "stores" | "accounts" | "billing" | "cameras" | "audit") => {
     setActiveTab(newTab);
     router.push(`/platform?tab=${newTab}`);
   };
@@ -143,6 +169,7 @@ function PlatformControlPanelInner() {
   const [refreshing, setRefreshing] = useState(false);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [stores, setStores] = useState<StoreItem[]>([]);
+  const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [plans, setPlans] = useState<PlanItem[]>([]);
   const [subscriptions, setSubscriptions] = useState<SubscriptionItem[]>([]);
   const [invoices, setInvoices] = useState<InvoiceItem[]>([]);
@@ -152,6 +179,8 @@ function PlatformControlPanelInner() {
   // Search & Filters
   const [tenantSearch, setTenantSearch] = useState("");
   const [storeSearch, setStoreSearch] = useState("");
+  const [accountSearch, setAccountSearch] = useState("");
+  const [accountStatusFilter, setAccountStatusFilter] = useState<string>("ALL");
   const [storeStatusFilter, setStoreStatusFilter] = useState<string>("ALL");
   const [cameraStatusFilter, setCameraStatusFilter] = useState<string>("ALL");
 
@@ -159,7 +188,7 @@ function PlatformControlPanelInner() {
   const [showCreateTenantModal, setShowCreateTenantModal] = useState(false);
   const [showProvisionOwnerModal, setShowProvisionOwnerModal] = useState<TenantItem | null>(null);
   const [showStatusReasonModal, setShowStatusReasonModal] = useState<{
-    type: "tenant" | "store";
+    type: "tenant" | "store" | "account";
     id: string;
     name: string;
     currentStatus: string;
@@ -167,6 +196,35 @@ function PlatformControlPanelInner() {
   } | null>(null);
   const [statusReason, setStatusReason] = useState("");
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState<InvoiceItem | null>(null);
+
+  // Custom Plan Creator & Editor Modal
+  const [showPlanModal, setShowPlanModal] = useState<{ mode: "create" | "edit"; plan?: PlanItem } | null>(null);
+  const [planForm, setPlanForm] = useState({
+    name: "",
+    monthlyPriceRupees: 4999,
+    maxCameras: 4,
+    currency: "INR",
+    billingCycle: "MONTHLY",
+    features: [
+      "AI Object & Person Detection",
+      "Dense Bookshelf & Material Stack Counter",
+      "ArcFace 360 Biometrics & Staff Verification",
+      "Automatic Turnstile & Hardware Lock",
+      "Multi-Lane Crossings & Analytics",
+      "Invoice OCR Discrepancy Auditing",
+      "30-Day HD Snapshot Storage",
+    ],
+  });
+
+  // Override Store Subscription Modal
+  const [showOverrideSubModal, setShowOverrideSubModal] = useState<StoreItem | null>(null);
+  const [overrideSubForm, setOverrideSubForm] = useState({
+    tierId: "tier_starter_01",
+    status: "ACTIVE",
+    extensionDays: 30,
+    paymentVerified: true,
+    notes: "Manual subscription adjustment by Software Owner",
+  });
 
   // Form states
   const [createTenantForm, setCreateTenantForm] = useState({
@@ -203,7 +261,7 @@ function PlatformControlPanelInner() {
       if (isManual) setRefreshing(true);
       else setLoading(true);
 
-      const [resTenants, resStores, resPlans, resSubs, resInvoices, resCameras, resAudit] =
+      const [resTenants, resStores, resPlans, resSubs, resInvoices, resCameras, resAudit, resUsers] =
         await Promise.all([
           safeFetch("/api/platform/tenants"),
           safeFetch("/api/platform/stores"),
@@ -212,6 +270,7 @@ function PlatformControlPanelInner() {
           safeFetch("/api/platform/billing/invoices"),
           safeFetch("/api/platform/cameras/fleet-health"),
           safeFetch("/api/platform/audit-logs"),
+          safeFetch("/api/platform/users"),
         ]);
 
       if (resTenants.ok) setTenants(await resTenants.json());
@@ -221,6 +280,7 @@ function PlatformControlPanelInner() {
       if (resInvoices.ok) setInvoices(await resInvoices.json());
       if (resCameras.ok) setCameras(await resCameras.json());
       if (resAudit.ok) setAuditLogs(await resAudit.json());
+      if (resUsers.ok) setAccounts(await resUsers.json());
     } catch (e) {
       console.warn("Failed to load platform data:", e);
     } finally {
@@ -311,18 +371,33 @@ function PlatformControlPanelInner() {
 
     setActionSubmitting(true);
     try {
-      const url =
-        showStatusReasonModal.type === "tenant"
-          ? `/api/platform/tenants/${showStatusReasonModal.id}/status`
-          : `/api/platform/stores/${showStatusReasonModal.id}/status`;
+      let url = "";
+      let payload: any = {};
+
+      if (showStatusReasonModal.type === "tenant") {
+        url = `/api/platform/tenants/${showStatusReasonModal.id}/status`;
+        payload = {
+          status: showStatusReasonModal.targetStatus,
+          reason: statusReason.trim() || "Administrative action by Software Owner",
+        };
+      } else if (showStatusReasonModal.type === "store") {
+        url = `/api/platform/stores/${showStatusReasonModal.id}/status`;
+        payload = {
+          status: showStatusReasonModal.targetStatus,
+          reason: statusReason.trim() || "Administrative action by Software Owner",
+        };
+      } else {
+        url = `/api/platform/users/${showStatusReasonModal.id}/status`;
+        payload = {
+          isActive: showStatusReasonModal.targetStatus === "ACTIVE",
+          reason: statusReason.trim() || "Administrative action by Software Owner",
+        };
+      }
 
       const res = await safeFetch(url, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: showStatusReasonModal.targetStatus,
-          reason: statusReason.trim() || "Administrative action by Software Owner",
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (res.ok) {
@@ -426,6 +501,125 @@ function PlatformControlPanelInner() {
     }).format(cents / 100);
   };
 
+  const handleToggleUserStatus = (acc: AccountItem) => {
+    setShowStatusReasonModal({
+      type: "account",
+      id: acc.userId,
+      name: `${acc.username || acc.email} (${acc.role})`,
+      currentStatus: acc.isActive ? "ACTIVE" : "SUSPENDED",
+      targetStatus: acc.isActive ? "SUSPENDED" : "ACTIVE",
+    });
+    setStatusReason("");
+  };
+
+  const toggleFeature = (feat: string) => {
+    setPlanForm((prev) => {
+      const exists = prev.features.includes(feat);
+      return {
+        ...prev,
+        features: exists ? prev.features.filter((f) => f !== feat) : [...prev.features, feat],
+      };
+    });
+  };
+
+  const handleSavePlan = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!planForm.name.trim()) {
+      alert("Plan name is required.");
+      return;
+    }
+    setActionSubmitting(true);
+    try {
+      const priceCents = Math.round(Number(planForm.monthlyPriceRupees || 0) * 100);
+      const payload = {
+        name: planForm.name.trim(),
+        maxCameras: Number(planForm.maxCameras) || 4,
+        priceCents: priceCents,
+        currency: planForm.currency,
+        billingCycle: planForm.billingCycle,
+        features: planForm.features.filter(Boolean),
+      };
+
+      let res;
+      if (showPlanModal?.mode === "edit" && showPlanModal.plan) {
+        res = await safeFetch(`/api/platform/billing/plans/${showPlanModal.plan.tierId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        res = await safeFetch("/api/platform/billing/plans", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (res.ok) {
+        setShowPlanModal(null);
+        fetchAllData(true);
+        alert(`Subscription plan '${planForm.name.trim()}' saved successfully.`);
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(formatErrorMessage(err?.detail || err?.message || "Failed to save plan."));
+      }
+    } catch (err: any) {
+      alert(err?.message || "Network error saving plan.");
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleDeletePlan = async (tierId: string, planName: string) => {
+    if (!confirm(`Are you sure you want to delete the plan '${planName}'? This action cannot be undone.`)) return;
+    setActionSubmitting(true);
+    try {
+      const res = await safeFetch(`/api/platform/billing/plans/${tierId}`, { method: "DELETE" });
+      if (res.ok) {
+        fetchAllData(true);
+        alert(`Plan '${planName}' deleted successfully.`);
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(formatErrorMessage(err?.detail || err?.message || "Failed to delete plan."));
+      }
+    } catch (err: any) {
+      alert(err?.message || "Error deleting plan.");
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
+  const handleApplyStoreSubscription = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!showOverrideSubModal) return;
+    setActionSubmitting(true);
+    try {
+      const res = await safeFetch(`/api/platform/stores/${showOverrideSubModal.storeId}/subscription`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tierId: overrideSubForm.tierId,
+          status: overrideSubForm.status,
+          extensionDays: Number(overrideSubForm.extensionDays) || 30,
+          paymentVerified: overrideSubForm.paymentVerified,
+          notes: overrideSubForm.notes,
+        }),
+      });
+      if (res.ok) {
+        setShowOverrideSubModal(null);
+        fetchAllData(true);
+        alert(`Store subscription successfully updated.`);
+      } else {
+        const err = await res.json().catch(() => null);
+        alert(formatErrorMessage(err?.detail || err?.message || "Failed to override subscription."));
+      }
+    } catch (err: any) {
+      alert(err?.message || "Network error overriding subscription.");
+    } finally {
+      setActionSubmitting(false);
+    }
+  };
+
   // Filtered views
   const filteredTenants = useMemo(() => {
     return (tenants || []).filter((t) => {
@@ -448,6 +642,22 @@ function PlatformControlPanelInner() {
       return matchesSearch && matchesStatus;
     });
   }, [stores, storeSearch, storeStatusFilter]);
+
+  const filteredAccounts = useMemo(() => {
+    return (accounts || []).filter((acc) => {
+      const q = (accountSearch || "").toLowerCase();
+      const email = String(acc.email || "").toLowerCase();
+      const username = String(acc.username || "").toLowerCase();
+      const storeName = String(acc.storeName || "").toLowerCase();
+      const role = String(acc.role || "").toLowerCase();
+      const matchesSearch = email.includes(q) || username.includes(q) || storeName.includes(q) || role.includes(q);
+      const matchesStatus =
+        accountStatusFilter === "ALL" ||
+        (accountStatusFilter === "ACTIVE" && acc.isActive) ||
+        (accountStatusFilter === "SUSPENDED" && !acc.isActive);
+      return matchesSearch && matchesStatus;
+    });
+  }, [accounts, accountSearch, accountStatusFilter]);
 
   const filteredCameras = useMemo(() => {
     return (cameras || []).filter((c) => {
@@ -517,6 +727,17 @@ function PlatformControlPanelInner() {
           }`}
         >
           <Store size={15} /> Stores Fleet ({stores.length})
+        </button>
+
+        <button
+          onClick={() => setTab("accounts")}
+          className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all shrink-0 ${
+            activeTab === "accounts"
+              ? "border-violet-400 text-violet-400 font-bold"
+              : "border-transparent text-[var(--text-secondary)] hover:text-white"
+          }`}
+        >
+          <Users size={15} /> User Accounts & Security ({accounts.length})
         </button>
 
         <button
@@ -829,50 +1050,325 @@ function PlatformControlPanelInner() {
       )}
 
       {/* ============================================================ */}
+      {/* TAB: USER ACCOUNTS & SECURITY GOVERNANCE */}
+      {/* ============================================================ */}
+      {activeTab === "accounts" && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3.5 top-3 text-[var(--text-muted)]" size={15} />
+                <input
+                  type="text"
+                  placeholder="Search user, email, store, or role..."
+                  value={accountSearch}
+                  onChange={(e) => setAccountSearch(e.target.value)}
+                  className="w-full bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl pl-10 pr-4 py-2 text-xs text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8] shadow-inner font-mono"
+                />
+              </div>
+
+              <select
+                value={accountStatusFilter}
+                onChange={(e) => setAccountStatusFilter(e.target.value)}
+                className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl px-3 py-2 text-xs text-[var(--text-primary)] outline-none font-mono"
+              >
+                <option value="ALL">All Account Statuses</option>
+                <option value="ACTIVE">Active Users Only</option>
+                <option value="SUSPENDED">Suspended Users Only</option>
+              </select>
+            </div>
+
+            <div className="text-xs font-mono text-cyan-400 bg-cyan-950/30 border border-cyan-800/40 px-3.5 py-1.5 rounded-xl flex items-center gap-2">
+              <ShieldAlert size={14} className="text-cyan-400 shrink-0" />
+              <span>Instant auto-session termination on suspension; password preserved on reactivation</span>
+            </div>
+          </div>
+
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl overflow-hidden shadow-2xl">
+            {filteredAccounts.length === 0 ? (
+              <div className="p-12 text-center text-xs font-mono text-[var(--text-muted)] space-y-2">
+                <Users size={32} className="mx-auto opacity-30 mb-2" />
+                <div>No user accounts found matching query.</div>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
+                    <tr>
+                      <th className="p-4">STATUS</th>
+                      <th className="p-4">USER ACCOUNT</th>
+                      <th className="p-4">ROLE & ACCESS</th>
+                      <th className="p-4">STORE / ASSIGNMENT</th>
+                      <th className="p-4">LAST LOGIN</th>
+                      <th className="p-4 text-right">ADMIN ACTION</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
+                    {filteredAccounts.map((acc) => (
+                      <tr key={acc.userId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
+                        <td className="p-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wider ${
+                              acc.isActive
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-[0_0_8px_rgba(16,185,129,0.2)]"
+                                : "bg-rose-500/15 text-rose-400 border border-rose-500/30 shadow-[0_0_8px_rgba(244,63,94,0.2)]"
+                            }`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full ${acc.isActive ? "bg-emerald-400 animate-pulse" : "bg-rose-400"}`} />
+                            {acc.isActive ? "ACTIVE" : "SUSPENDED"}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <div className="font-bold text-[var(--text-primary)] font-sans text-sm">{acc.username || acc.email.split("@")[0]}</div>
+                          <div className="text-[11px] text-[var(--text-muted)] font-mono">{acc.email}</div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${
+                            acc.isPlatformOwner
+                              ? "bg-violet-500/15 text-violet-400 border border-violet-500/30"
+                              : acc.role === "ADMIN"
+                              ? "bg-blue-500/15 text-blue-400 border border-blue-500/30"
+                              : "bg-slate-500/15 text-slate-300 border border-slate-500/30"
+                          }`}>
+                            {acc.isPlatformOwner ? "PLATFORM OWNER" : acc.role}
+                          </span>
+                        </td>
+                        <td className="p-4 text-[var(--text-secondary)] font-sans">
+                          {acc.storeName ? (
+                            <span className="flex items-center gap-1.5 text-cyan-400 font-medium">
+                              <Store size={13} /> {acc.storeName}
+                            </span>
+                          ) : (
+                            <span className="text-[var(--text-muted)]">Global Management</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-[var(--text-muted)]">
+                          {acc.lastLoginAt ? new Date(acc.lastLoginAt).toLocaleString() : "Never"}
+                        </td>
+                        <td className="p-4 text-right">
+                          {acc.isPlatformOwner && (acc.userId === user?.user_id || acc.userId === user?.id) ? (
+                            <span className="text-[11px] text-[var(--text-muted)] italic">Current Session</span>
+                          ) : (
+                            <button
+                              onClick={() => handleToggleUserStatus(acc)}
+                              className={`btn-3d px-3.5 py-1.5 rounded-xl text-[11px] font-bold transition-all shadow-md ${
+                                acc.isActive
+                                  ? "btn-3d-danger text-rose-300 border border-rose-500/40"
+                                  : "btn-3d-success text-emerald-300 border border-emerald-500/40"
+                              }`}
+                            >
+                              {acc.isActive ? "Suspend & Terminate Session" : "Reactivate (Keep Credentials)"}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
       {/* TAB 3: SUBSCRIPTIONS & BILLING (Section 7.5) */}
       {/* ============================================================ */}
       {activeTab === "billing" && (
         <div className="space-y-6">
           {/* Subscription Tiers Catalog */}
           <div className="bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-4">
-            <div className="border-b border-[var(--border-hairline)] pb-4">
-              <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
-                <CreditCard size={18} className="text-indigo-400" /> SaaS Subscription Tier Catalog
-              </h2>
-              <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-                Configured platform pricing tiers, hardware quotas, and feature flags.
-              </p>
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-[var(--border-hairline)] pb-4">
+              <div>
+                <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <CreditCard size={18} className="text-indigo-400" /> SaaS Subscription Tier Catalog
+                </h2>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  Configure custom plans, set monthly pricing in INR, customize camera quotas, and assign access flags manually.
+                </p>
+              </div>
+
+              <button
+                onClick={() => {
+                  setShowPlanModal({ mode: "create" });
+                  setPlanForm({
+                    name: "",
+                    monthlyPriceRupees: 4999,
+                    maxCameras: 4,
+                    currency: "INR",
+                    billingCycle: "MONTHLY",
+                    features: [
+                      "AI Object & Person Detection",
+                      "Dense Bookshelf & Material Stack Counter",
+                      "ArcFace 360 Biometrics & Staff Verification",
+                      "Automatic Turnstile & Hardware Lock",
+                      "30-Day HD Snapshot Storage",
+                    ],
+                  });
+                }}
+                className="btn-3d btn-3d-primary px-4 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2 shadow-lg"
+              >
+                <Plus size={14} /> Create Custom Plan
+              </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {plans.map((p) => (
                 <div
                   key={p.tierId}
-                  className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-5 space-y-4"
+                  className="card-3d box-3d bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-2xl p-5 space-y-4 relative flex flex-col justify-between"
                 >
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider">{p.name}</span>
-                    <span className="text-xs font-mono text-[var(--text-muted)]">Max {p.maxStores} Stores</span>
-                  </div>
-                  <div className="text-2xl font-bold font-mono text-[var(--text-primary)]">
-                    {formatCurrency(p.monthlyPriceCents)}
-                    <span className="text-xs text-[var(--text-muted)] font-normal"> / month</span>
-                  </div>
-                  <div className="text-xs text-[var(--text-secondary)] font-mono space-y-1.5 pt-3 border-t border-[var(--border-hairline)]">
-                    <div className="flex items-center gap-1.5">
-                      <Camera size={13} className="text-[#38BDF8]" />
-                      <span>Up to {p.maxCameras} cameras per store</span>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-sm font-bold text-[var(--text-primary)] uppercase tracking-wider font-mono">
+                          {p.name}
+                        </span>
+                        <div className="text-[11px] text-[var(--text-muted)] font-mono">ID: {p.tierId}</div>
+                      </div>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 font-bold uppercase">
+                        {p.billingCycle || "MONTHLY"}
+                      </span>
                     </div>
-                    {p.features &&
-                      p.features.map((f, i) => (
-                        <div key={i} className="flex items-center gap-1.5 text-emerald-500 dark:text-emerald-400">
-                          <Check size={13} />
-                          <span>{f}</span>
-                        </div>
-                      ))}
+
+                    <div className="text-2xl font-bold font-mono text-[var(--text-primary)]">
+                      {formatCurrency(p.priceCents ?? p.monthlyPriceCents ?? 0, p.currency)}
+                      <span className="text-xs text-[var(--text-muted)] font-normal"> / month</span>
+                    </div>
+
+                    <div className="text-xs text-[var(--text-secondary)] font-mono space-y-2 pt-3 border-t border-[var(--border-hairline)]">
+                      <div className="flex items-center gap-1.5 text-[var(--text-primary)] font-semibold">
+                        <Camera size={14} className="text-[#38BDF8]" />
+                        <span>Up to {p.maxCameras} cameras quota</span>
+                      </div>
+                      <div className="space-y-1.5 pt-1">
+                        {(p.features && p.features.length > 0 ? p.features : [
+                          "AI Object & Person Detection",
+                          "Dense Material Counting",
+                          "Automatic Turnstile Lock"
+                        ]).map((f, i) => (
+                          <div key={i} className="flex items-center gap-2 text-emerald-400 text-[11px]">
+                            <Check size={12} className="shrink-0" />
+                            <span>{f}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t border-[var(--border-hairline)] flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => {
+                        setShowPlanModal({ mode: "edit", plan: p });
+                        setPlanForm({
+                          name: p.name,
+                          monthlyPriceRupees: Math.round(((p.priceCents ?? p.monthlyPriceCents ?? 0) / 100)),
+                          maxCameras: p.maxCameras,
+                          currency: p.currency || "INR",
+                          billingCycle: p.billingCycle || "MONTHLY",
+                          features: p.features && p.features.length > 0 ? p.features : [
+                            "AI Object & Person Detection",
+                            "Dense Bookshelf & Material Stack Counter",
+                            "Automatic Turnstile & Hardware Lock",
+                          ],
+                        });
+                      }}
+                      className="btn-3d px-3 py-1.5 rounded-xl bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-cyan-300 border border-cyan-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                    >
+                      <Edit size={13} /> Edit Pricing & Access
+                    </button>
+                    <button
+                      onClick={() => handleDeletePlan(p.tierId, p.name)}
+                      className="p-1.5 rounded-xl hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 transition-colors"
+                      title="Delete Plan"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+
+          {/* Store Subscriptions & Manual Plan Assignment */}
+          <div className="card-3d bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] overflow-hidden shadow-2xl space-y-4">
+            <div className="p-5 border-b border-[var(--border-hairline)] flex justify-between items-center bg-[var(--bg-canvas)]">
+              <div>
+                <h3 className="text-sm font-bold font-mono text-[var(--text-primary)] flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-emerald-400" /> ACTIVE STORE SUBSCRIPTIONS & MANUAL PLAN ASSIGNMENTS
+                </h3>
+                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                  Directly customize subscription plans, payment approvals, and active access rules per individual store location.
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono">
+                <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
+                  <tr>
+                    <th className="p-4">STORE LOCATION</th>
+                    <th className="p-4">COMPANY / TENANT</th>
+                    <th className="p-4">CURRENT PLAN</th>
+                    <th className="p-4">CAMERAS QUOTA</th>
+                    <th className="p-4">SUBSCRIPTION STATUS</th>
+                    <th className="p-4 text-right">MANUAL OVERRIDE</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
+                  {stores.map((s) => {
+                    const matchedPlan = plans.find((p) => p.tierId === s.tierId);
+                    return (
+                      <tr key={s.storeId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
+                        <td className="p-4">
+                          <div className="font-bold text-[var(--text-primary)] font-sans text-sm flex items-center gap-2">
+                            <Store size={14} className="text-cyan-400" /> {s.name}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-muted)] font-mono">{s.storeId}</div>
+                        </td>
+                        <td className="p-4 text-[var(--text-secondary)] font-sans">{s.tenantName}</td>
+                        <td className="p-4">
+                          <span className="px-2.5 py-1 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 font-bold uppercase text-[11px]">
+                            {matchedPlan?.name || s.tierId}
+                          </span>
+                        </td>
+                        <td className="p-4 text-cyan-400 font-bold">
+                          {s.activeCamerasCount} / {matchedPlan?.maxCameras ?? s.maxCameras} Allowed
+                        </td>
+                        <td className="p-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold ${
+                              s.status === "ACTIVE"
+                                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                                : "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                            }`}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                            {s.status}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => {
+                              setShowOverrideSubModal(s);
+                              setOverrideSubForm({
+                                tierId: s.tierId || "tier_starter_01",
+                                status: s.status || "ACTIVE",
+                                extensionDays: 30,
+                                paymentVerified: true,
+                                notes: "Plan manually assigned by Software Owner",
+                              });
+                            }}
+                            className="btn-3d px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-900/30"
+                          >
+                            Assign / Override Plan
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -1192,7 +1688,7 @@ function PlatformControlPanelInner() {
                 >
                   {plans.map((p) => (
                     <option key={p.tierId} value={p.tierId}>
-                      {p.name} ({formatCurrency(p.monthlyPriceCents)}/mo, max {p.maxCameras} cams)
+                      {p.name} ({formatCurrency(p.priceCents ?? p.monthlyPriceCents ?? 0)}/mo, max {p.maxCameras} cams)
                     </option>
                   ))}
                 </select>
@@ -1542,6 +2038,294 @@ function PlatformControlPanelInner() {
                   className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-900/30 disabled:opacity-50"
                 >
                   {actionSubmitting ? "Recording..." : "Record Payment & Settle"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL 5: CREATE / EDIT CUSTOM SUBSCRIPTION PLAN */}
+      {/* ============================================================ */}
+      {showPlanModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <CreditCard size={18} className="text-indigo-400" />
+                {showPlanModal.mode === "create" ? "Create Custom SaaS Subscription Plan" : `Edit Plan: ${showPlanModal.plan?.name}`}
+              </h3>
+              <button
+                onClick={() => setShowPlanModal(null)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePlan} className="space-y-4 text-xs font-mono">
+              <div>
+                <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Plan Display Name *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Enterprise Retail Ultra, Supermarket Pro"
+                  value={planForm.name}
+                  onChange={(e) => setPlanForm((prev) => ({ ...prev, name: e.target.value }))}
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Monthly Price (INR ₹) *</label>
+                  <input
+                    type="number"
+                    required
+                    min={0}
+                    step={1}
+                    value={planForm.monthlyPriceRupees}
+                    onChange={(e) => setPlanForm((prev) => ({ ...prev, monthlyPriceRupees: Number(e.target.value) }))}
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  />
+                  <div className="text-[10px] text-[var(--text-muted)] mt-1 font-sans">
+                    Equivalent to ₹{Number(planForm.monthlyPriceRupees || 0).toLocaleString("en-IN")}/mo
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Max Cameras Quota *</label>
+                  <input
+                    type="number"
+                    required
+                    min={1}
+                    max={128}
+                    value={planForm.maxCameras}
+                    onChange={(e) => setPlanForm((prev) => ({ ...prev, maxCameras: Number(e.target.value) }))}
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  />
+                  <div className="text-[10px] text-[var(--text-muted)] mt-1 font-sans">
+                    Physical RTSP/CCTV channels allowed
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Billing Frequency</label>
+                  <select
+                    value={planForm.billingCycle}
+                    onChange={(e) => setPlanForm((prev) => ({ ...prev, billingCycle: e.target.value }))}
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  >
+                    <option value="MONTHLY">Monthly Renewal</option>
+                    <option value="ANNUAL">Annual Contract</option>
+                    <option value="QUARTERLY">Quarterly Renewal</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Currency</label>
+                  <select
+                    value={planForm.currency}
+                    onChange={(e) => setPlanForm((prev) => ({ ...prev, currency: e.target.value }))}
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  >
+                    <option value="INR">INR (₹)</option>
+                    <option value="USD">USD ($)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="GBP">GBP (£)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[var(--text-secondary)] mb-2 uppercase font-semibold">
+                  Feature Flags & Access Permissions (Manual Software Owner Override)
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] max-h-44 overflow-y-auto">
+                  {[
+                    "AI Object & Person Detection",
+                    "Dense Bookshelf & Material Stack Counter",
+                    "ArcFace 360 Biometrics & Staff Verification",
+                    "Automatic Turnstile & Hardware Lock",
+                    "Multi-Lane Crossings & Analytics",
+                    "Invoice OCR Discrepancy Auditing",
+                    "30-Day HD Snapshot Storage",
+                    "90-Day HD Snapshot Storage",
+                    "Dedicated API & Webhook Dispatch",
+                  ].map((feat) => {
+                    const isChecked = planForm.features.includes(feat);
+                    return (
+                      <label
+                        key={feat}
+                        onClick={() => toggleFeature(feat)}
+                        className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-[11px] transition-colors border ${
+                          isChecked
+                            ? "bg-indigo-950/40 border-indigo-500/40 text-indigo-300 font-semibold"
+                            : "bg-[var(--bg-panel)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-white"
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
+                          isChecked ? "bg-indigo-600 border-indigo-400 text-white" : "border-slate-600"
+                        }`}>
+                          {isChecked && <Check size={11} />}
+                        </div>
+                        <span className="truncate">{feat}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => setShowPlanModal(null)}
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionSubmitting}
+                  className="btn-3d btn-3d-primary px-5 py-2 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/30 text-xs disabled:opacity-50"
+                >
+                  {actionSubmitting ? "Saving..." : showPlanModal.mode === "create" ? "Create Plan" : "Update Plan"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* MODAL 6: MANUAL STORE SUBSCRIPTION OVERRIDE */}
+      {/* ============================================================ */}
+      {showOverrideSubModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
+              <div>
+                <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
+                  <ShieldCheck size={18} className="text-emerald-400" /> Manual Store Plan Override
+                </h3>
+                <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
+                  Store: <span className="text-white font-bold">{showOverrideSubModal.name}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowOverrideSubModal(null)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleApplyStoreSubscription} className="space-y-4 text-xs font-mono">
+              <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)] space-y-1.5">
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">Parent Company:</span>
+                  <span className="text-[var(--text-primary)] font-bold">{showOverrideSubModal.tenantName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">Store ID:</span>
+                  <span className="text-cyan-400 font-bold">{showOverrideSubModal.storeId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-[var(--text-secondary)]">Active Cameras:</span>
+                  <span className="text-white font-bold">
+                    {showOverrideSubModal.activeCamerasCount ?? showOverrideSubModal.cameraCount ?? 0} cameras
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Assign Subscription Tier</label>
+                <select
+                  value={overrideSubForm.tierId}
+                  onChange={(e) => setOverrideSubForm((prev) => ({ ...prev, tierId: e.target.value }))}
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none font-sans"
+                >
+                  {plans.map((p) => (
+                    <option key={p.tierId} value={p.tierId}>
+                      {p.name} — {formatCurrency(p.priceCents ?? p.monthlyPriceCents ?? 0, p.currency)}/mo ({p.maxCameras} Cams)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Subscription Status</label>
+                  <select
+                    value={overrideSubForm.status}
+                    onChange={(e) => setOverrideSubForm((prev) => ({ ...prev, status: e.target.value }))}
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="TRIAL">TRIAL</option>
+                    <option value="SUSPENDED">SUSPENDED</option>
+                    <option value="EXPIRED">EXPIRED</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Add Extension Days</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={730}
+                    value={overrideSubForm.extensionDays}
+                    onChange={(e) => setOverrideSubForm((prev) => ({ ...prev, extensionDays: Number(e.target.value) }))}
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-hairline)]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={overrideSubForm.paymentVerified}
+                    onChange={(e) => setOverrideSubForm((prev) => ({ ...prev, paymentVerified: e.target.checked }))}
+                    className="w-4 h-4 rounded text-emerald-500 focus:ring-0 accent-emerald-500"
+                  />
+                  <span className="text-[11px] text-[var(--text-primary)] font-semibold font-sans">
+                    Offline Commercial Settlement Confirmed
+                  </span>
+                </label>
+                <p className="text-[10px] text-[var(--text-muted)] mt-1 font-sans pl-6">
+                  Check this if the company owner paid offline or through direct bank contract.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[var(--text-secondary)] mb-1 uppercase font-semibold">Audit Remarks / Notes</label>
+                <textarea
+                  rows={2}
+                  placeholder="Reason for manual tier upgrade or subscription modification..."
+                  value={overrideSubForm.notes}
+                  onChange={(e) => setOverrideSubForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-[var(--border-hairline)]">
+                <button
+                  type="button"
+                  onClick={() => setShowOverrideSubModal(null)}
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionSubmitting}
+                  className="btn-3d btn-3d-primary px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg shadow-indigo-900/30 text-xs disabled:opacity-50"
+                >
+                  {actionSubmitting ? "Applying..." : "Confirm & Save Override"}
                 </button>
               </div>
             </form>

@@ -45,10 +45,28 @@ export async function safeFetch(path: string, options: RequestInit = {}): Promis
       },
     });
 
-    if (res.status === 401 && typeof window !== "undefined") {
-      // If 401 on an authenticated endpoint (not the login endpoint itself), notify auth provider
+    if ((res.status === 401 || res.status === 403) && typeof window !== "undefined") {
+      // If 401 or 403 on an authenticated endpoint, notify auth provider for automatic logout
       if (!path.includes("/auth/login") && !path.includes("/auth/register")) {
-        window.dispatchEvent(new CustomEvent("secops:unauthorized"));
+        try {
+          const clone = res.clone();
+          clone.json().then((errData) => {
+            const detail = String(errData?.detail || "").toLowerCase();
+            if (detail.includes("suspended") || detail.includes("deactivated") || detail.includes("inactive")) {
+              window.dispatchEvent(new CustomEvent("secops:suspended", { detail: { reason: errData?.detail } }));
+            } else if (res.status === 401) {
+              window.dispatchEvent(new CustomEvent("secops:unauthorized"));
+            }
+          }).catch(() => {
+            if (res.status === 401) {
+              window.dispatchEvent(new CustomEvent("secops:unauthorized"));
+            }
+          });
+        } catch (_) {
+          if (res.status === 401) {
+            window.dispatchEvent(new CustomEvent("secops:unauthorized"));
+          }
+        }
       }
     }
 

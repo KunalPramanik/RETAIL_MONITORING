@@ -120,6 +120,20 @@ function LoginForm() {
               </p>
             </div>
 
+            {/* Suspended Alert Banner */}
+            {searchParams.get("suspended") === "1" && (
+              <div
+                role="alert"
+                className="mb-5 p-4 rounded-xl border border-rose-500/50 bg-rose-500/15 text-rose-300 text-xs flex items-start gap-3 shadow-lg shadow-rose-950/40 backdrop-blur-sm animate-pulse"
+              >
+                <ShieldAlert size={18} className="text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1 leading-relaxed">
+                  <span className="font-bold block text-rose-200">Account Suspended & Session Terminated</span>
+                  Your account has been deactivated by the platform owner and all active sessions were terminated. Once your account is reactivated, your existing login credentials will continue to work normally.
+                </div>
+              </div>
+            )}
+
             {/* Error Banner */}
             {errorMessage && (
               <div

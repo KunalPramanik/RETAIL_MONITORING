@@ -137,6 +137,7 @@ export default function DashboardLayout({
   const softwareOwnerNavItems = [
     { label: "Platform Overview", href: "/", icon: Activity },
     { label: "Companies & Tenants", href: "/platform?tab=tenants", icon: ShieldAlert },
+    { label: "User Accounts & Security", href: "/platform?tab=accounts", icon: Users },
     { label: "Stores Fleet", href: "/platform?tab=stores", icon: Sparkles },
     { label: "Subscriptions & Billing", href: "/platform?tab=billing", icon: FileSpreadsheet },
     { label: "Camera Fleet Health", href: "/platform?tab=cameras", icon: Camera },

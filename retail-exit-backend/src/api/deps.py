@@ -34,24 +34,47 @@ async def get_current_user(db: AsyncSession = Depends(get_db), token: str = Depe
             admin = await p_session.get(PlatformSuperAdmin, user_id)
             if not admin:
                 stmt = select(PlatformSuperAdmin).where(
-                    (PlatformSuperAdmin.email == payload.get("email", "").lower()) &
-                    (PlatformSuperAdmin.is_active == True)
+                    PlatformSuperAdmin.email == payload.get("email", "").lower()
                 )
                 res = await p_session.execute(stmt)
                 admin = res.scalar_one_or_none()
-            if admin and admin.is_active:
+            if admin:
+                if not getattr(admin, "is_active", True):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Platform administrator account is suspended or deactivated.",
+                    )
                 return admin
 
     # 2. Check AppUser in store database
     result = await db.execute(select(User).where(User.user_id == user_id))
     user = result.scalars().first()
     if user:
+        if not getattr(user, "is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Account is suspended or deactivated. Automatic session termination enforced.",
+            )
+        if getattr(user, "store_id", None):
+            async with PlatformAsyncSessionLocal() as p_session:
+                from src.db.platform_models import PlatformTenant
+                tenant = await p_session.get(PlatformTenant, user.store_id)
+                if tenant and tenant.status == "SUSPENDED":
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Company store subscription has been suspended by platform administrator.",
+                    )
         return user
 
     # 3. Fallback check in PlatformSuperAdmin
     async with PlatformAsyncSessionLocal() as p_session:
         admin = await p_session.get(PlatformSuperAdmin, user_id)
-        if admin and admin.is_active:
+        if admin:
+            if not getattr(admin, "is_active", True):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Platform administrator account is suspended or deactivated.",
+                )
             return admin
 
     raise credentials_exception

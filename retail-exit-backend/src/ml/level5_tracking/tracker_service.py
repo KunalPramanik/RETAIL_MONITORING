@@ -12,6 +12,7 @@ import time
 import math
 import uuid
 import logging
+from src.core.config import settings
 
 logger = logging.getLogger("secops.tracker")
 
@@ -225,9 +226,9 @@ class IntraCameraObjectTracker:
     - Anti-flicker / duplicate count suppression
     """
 
-    def __init__(self, iou_threshold: float = 0.25, max_lost_frames: int = 15, min_hits: int = 1):
-        self.iou_threshold = iou_threshold
-        self.max_lost_frames = max_lost_frames
+    def __init__(self, iou_threshold: Optional[float] = None, max_lost_frames: Optional[int] = None, min_hits: int = 1):
+        self.iou_threshold = iou_threshold if iou_threshold is not None else getattr(settings.tracking, "tracker_iou_threshold", 0.30)
+        self.max_lost_frames = max_lost_frames if max_lost_frames is not None else getattr(settings.tracking, "tracker_max_lost_frames", 15)
         self.min_hits = min_hits
         self._camera_tracks: Dict[str, Dict[str, SingleCameraTrack]] = {}
         self._next_id: int = 1

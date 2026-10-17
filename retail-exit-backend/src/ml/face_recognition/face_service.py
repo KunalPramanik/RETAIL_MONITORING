@@ -395,9 +395,10 @@ class FaceRecognitionService:
                     area_inter = w_inter * h_inter
                     area1 = (x2 - x1) * (y2 - y1)
                     area2 = (kx2 - kx1) * (ky2 - ky1)
-                    iou = area_inter / float(area1 + area2 - area_inter + 1e-6)
-                    # Suppress vertical ghost duplicates on chest/collar while preserving distinct persons
-                    if iou > 0.40 or (abs(cx - kcx) < 40 and abs(cy - kcy) < 70) or np.hypot(cx - kcx, cy - kcy) < 55:
+                    kw = max(1, kx2 - kx1)
+                    kh = max(1, ky2 - ky1)
+                    # Suppress vertical ghost duplicates on chest/collar using dynamic ratios of face dimensions
+                    if iou > 0.40 or (abs(cx - kcx) < (kw * 0.45) and abs(cy - kcy) < (kh * 0.70)) or np.hypot(cx - kcx, cy - kcy) < (max(kw, kh) * 0.55):
                         too_close = True
                         break
 

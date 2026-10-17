@@ -69,27 +69,28 @@ async def init_platform_db() -> None:
 
     if not owner_email:
         if env in ("development", "test", "testing"):
-            owner_email = "ces@gmail.com"
+            import secrets
+            owner_email = f"owner_{secrets.token_hex(4)}@secops.local"
         else:
             raise RuntimeError(
                 "CRITICAL SECURITY CONFIGURATION ERROR: BOOTSTRAP_OWNER_EMAIL must be explicitly provided in production."
             )
 
     if not owner_password:
-        if env in ("development", "test", "testing"):
-            owner_password = "Ces@1234"
+        import secrets
+        owner_password = secrets.token_urlsafe(24)
+        if env != "production":
+            logger.info("Generated bootstrap owner password for non-prod %s: %s", owner_email, owner_password)
         else:
-            import secrets
-            owner_password = secrets.token_urlsafe(24)
             logger.critical("=" * 60)
             logger.critical("BOOTSTRAP SUPER ADMIN CREATED")
             logger.critical("Email: %s", owner_email)
             logger.critical("Generated Password: %s", owner_password)
             logger.critical("Save this credential immediately. It will not be shown again.")
             logger.critical("=" * 60)
-    elif env == "production" and owner_password in ("Ces@1234", "admin123", "password", "changeme", "12345678"):
+    elif env == "production" and len(owner_password) < 12:
         raise RuntimeError(
-            "CRITICAL SECURITY CONFIGURATION ERROR: Weak/default BOOTSTRAP_OWNER_PASSWORD is strictly prohibited in production."
+            "CRITICAL SECURITY CONFIGURATION ERROR: Weak BOOTSTRAP_OWNER_PASSWORD is strictly prohibited in production."
         )
 
     owner_username = owner_email.split("@")[0]

@@ -1,15 +1,15 @@
-﻿import numpy as np
-from typing import List, Dict, Any, Tuple
+import numpy as np
+from typing import List, Dict, Any, Tuple, Optional
 from scipy.optimize import linear_sum_assignment
-Any # type placeholder
+from src.core.config import settings
 
 class SimpleByteTrack:
     """Lightweight deterministic implementation of ByteTrack (IoU + Hungarian Matching).
     Maintains temporal ID persistence across frames to solve occlusion and double-counting.
     """
-    def __init__(self, track_buffer: int = 30, match_thresh: float = 0.8, min_box_area: float = 100):
-        self.track_buffer = track_buffer
-        self.match_thresh = match_thresh
+    def __init__(self, track_buffer: Optional[int] = None, match_thresh: Optional[float] = None, min_box_area: float = 100):
+        self.track_buffer = track_buffer if track_buffer is not None else getattr(settings.tracking, "tracker_max_lost_frames", 15)
+        self.match_thresh = match_thresh if match_thresh is not None else (1.0 - getattr(settings.tracking, "tracker_iou_threshold", 0.30))
         self.min_box_area = min_box_area
         self.tracked_objects: Dict[int, Dict[str, Any]] = {}
         self.next_id = 1

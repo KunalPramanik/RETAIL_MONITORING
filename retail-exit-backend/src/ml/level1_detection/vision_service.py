@@ -155,7 +155,7 @@ class VisionInferenceService:
                 else:
                     raise FileNotFoundError(f"YOLOX weights not found at {target_path}")
             opts = ort.SessionOptions()
-            opts.intra_op_num_threads = 2
+            opts.intra_op_num_threads = getattr(settings.detection, "intra_op_num_threads", 2)
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
             avail_providers = ort.get_available_providers()
             active_providers = [p for p in ["TensorrtExecutionProvider", "CUDAExecutionProvider", "DmlExecutionProvider", "OpenVINOExecutionProvider"] if p in avail_providers]

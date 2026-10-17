@@ -43,6 +43,8 @@ def test_zero_insecure_hardcoded_defaults_in_source():
         re.compile(r"test-secret", re.IGNORECASE),
         re.compile(r"secops-enterprise-hmac-shared-key-2026", re.IGNORECASE),
         re.compile(r"DEFAULT_SECRET_KEY\s*=", re.IGNORECASE),
+        re.compile(r"ces@gmail\.com", re.IGNORECASE),
+        re.compile(r"Ces@1234", re.IGNORECASE),
     ]
 
     violations = []
@@ -54,3 +56,18 @@ def test_zero_insecure_hardcoded_defaults_in_source():
                 violations.append(f"{py_file.name}: matched forbidden pattern '{pattern.pattern}'")
 
     assert len(violations) == 0, f"Found hardcoded secret violations: {violations}"
+
+
+def test_dynamic_motion_and_tracking_configuration_bindings():
+    """V2-02: Verifies that motion pixel threshold and tracking frames derive dynamically from config."""
+    from src.core.config import settings
+
+    # Motion threshold scales with area ratio
+    area_ratio = settings.motion.area_ratio_threshold
+    expected_px = int(area_ratio * settings.motion.resize_width * settings.motion.resize_height)
+    assert settings.motion.pixel_threshold == expected_px
+
+    # Tracker lost frames scales with seconds * default FPS
+    expected_frames = int(settings.tracking.tracker_max_lost_seconds * settings.camera.default_fps)
+    assert settings.tracking.tracker_max_lost_frames == expected_frames
+    assert settings.detection.intra_op_num_threads >= 1

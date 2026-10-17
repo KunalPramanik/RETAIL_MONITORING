@@ -102,10 +102,20 @@ class DetectionConfig(BaseModel):
     posture_smoothing_window: int = Field(default_factory=lambda: int(os.getenv("SECOPS_POSTURE_SMOOTHING_WINDOW", "5")))
     concealment_posture_seconds: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CONCEALMENT_POSTURE_SEC", "4.0")))
     concealment_crouch_aspect_ratio: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CONCEALMENT_CROUCH_RATIO", "1.35")))
+    intra_op_num_threads: int = Field(default_factory=lambda: int(os.getenv("SECOPS_INTRA_OP_NUM_THREADS", "2")))
+    min_box_area_ratio: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MIN_BOX_AREA_RATIO", "0.0001")))
 
 
 class TrackingConfig(BaseModel):
-    tracker_max_lost_frames: int = Field(default_factory=lambda: int(os.getenv("SECOPS_TRACKER_MAX_LOST_FRAMES", "15")))
+    tracker_max_lost_seconds: float = Field(default_factory=lambda: float(os.getenv("SECOPS_TRACKER_MAX_LOST_SEC", "0.5")))
+    tracker_max_lost_frames: int = Field(
+        default_factory=lambda: int(
+            os.getenv(
+                "SECOPS_TRACKER_MAX_LOST_FRAMES",
+                str(int(float(os.getenv("SECOPS_TRACKER_MAX_LOST_SEC", "0.5")) * int(os.getenv("SECOPS_CAMERA_DEFAULT_FPS", "30"))))
+            )
+        )
+    )
     tracker_iou_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_TRACKER_IOU_THRESHOLD", "0.30")))
 
 
@@ -145,8 +155,15 @@ class MotionConfig(BaseModel):
     resize_height: int = Field(default_factory=lambda: int(os.getenv("SECOPS_MOTION_RESIZE_HEIGHT", "180")))
     blur_kernel_size: int = Field(default_factory=lambda: int(os.getenv("SECOPS_MOTION_BLUR_KERNEL_SIZE", "21")))
     diff_threshold: int = Field(default_factory=lambda: int(os.getenv("SECOPS_MOTION_DIFF_THRESHOLD", "25")))
-    pixel_threshold: int = Field(default_factory=lambda: int(os.getenv("SECOPS_MOTION_PIXEL_THRESHOLD", "3500")))
     area_ratio_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MOTION_AREA_RATIO_THRESHOLD", "0.05")))
+    pixel_threshold: int = Field(
+        default_factory=lambda: int(
+            os.getenv(
+                "SECOPS_MOTION_PIXEL_THRESHOLD",
+                str(int(float(os.getenv("SECOPS_MOTION_AREA_RATIO_THRESHOLD", "0.05")) * int(os.getenv("SECOPS_MOTION_RESIZE_WIDTH", "320")) * int(os.getenv("SECOPS_MOTION_RESIZE_HEIGHT", "180"))))
+            )
+        )
+    )
     debounce_seconds: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MOTION_DEBOUNCE_SEC", "6.0")))
 
 

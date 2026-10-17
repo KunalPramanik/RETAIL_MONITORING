@@ -25,8 +25,14 @@ logger = logging.getLogger("secops.bootstrap")
 
 async def bootstrap_software_owner(force_reset_password: bool = False) -> None:
     """Idempotently ensures the Software Owner account exists in PlatformSuperAdmin."""
-    owner_email = os.getenv("BOOTSTRAP_OWNER_EMAIL", "ces@gmail.com").strip().lower()
-    owner_password = os.getenv("BOOTSTRAP_OWNER_PASSWORD", "Ces@1234")
+    owner_email = os.getenv("BOOTSTRAP_OWNER_EMAIL", "").strip().lower()
+    owner_password = os.getenv("BOOTSTRAP_OWNER_PASSWORD", "")
+    if not owner_email:
+        raise ValueError("BOOTSTRAP_OWNER_EMAIL environment variable must be specified.")
+    if not owner_password:
+        import secrets
+        owner_password = secrets.token_urlsafe(24)
+        logger.info("Generated bootstrap owner password for %s: %s", owner_email, owner_password)
     owner_username = owner_email.split("@")[0]
 
     # Ensure platform schema exists

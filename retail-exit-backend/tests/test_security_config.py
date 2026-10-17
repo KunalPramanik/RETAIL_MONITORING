@@ -38,7 +38,8 @@ def test_centralized_configuration_hierarchy(monkeypatch):
     assert settings.fusion.baseline_scale_weight == 0.20
     assert settings.rate_limit.auth_per_minute == 20
     assert settings.motion.debounce_seconds == 6.0
-    assert settings.motion.pixel_threshold == 3500
+    expected_pixels = int(settings.motion.area_ratio_threshold * settings.motion.resize_width * settings.motion.resize_height)
+    assert settings.motion.pixel_threshold == expected_pixels
     assert settings.verdict.unit_tolerance == 0
     assert settings.camera.capture_timeout_sec == 2.5
     assert settings.biometric.face_match_threshold == 0.65

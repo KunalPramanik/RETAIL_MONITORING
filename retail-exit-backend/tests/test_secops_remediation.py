@@ -341,7 +341,8 @@ async def test_authentic_health_endpoint(async_client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_kpi_live_store_timezone_start_of_day(async_client: AsyncClient):
-    response = await async_client.get("/api/kpis/live")
+    token = create_access_token(subject="viewer_01", role="VIEWER")
+    response = await async_client.get("/api/kpis/live", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
     data = response.json()
     
@@ -436,8 +437,13 @@ async def test_employee_face_enrollment_disabled_by_default(async_client: AsyncC
     orig_enabled = settings.biometric.enabled
     try:
         settings.biometric.enabled = False
+        admin_token = create_access_token(subject="ADMIN-1", role="ADMIN")
         files = {"file": ("face.jpg", b"fake_image_bytes_1234567890", "image/jpeg")}
-        resp = await async_client.post("/api/employees/emp-123/photo", files=files)
+        resp = await async_client.post(
+            "/api/employees/emp-123/photo",
+            files=files,
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
         assert resp.status_code == 403
         assert "disabled by default" in resp.json()["detail"]
     finally:

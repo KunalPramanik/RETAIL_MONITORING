@@ -100,6 +100,8 @@ class DetectionConfig(BaseModel):
     circuit_breaker_failure_threshold: int = Field(default_factory=lambda: int(os.getenv("SECOPS_CIRCUIT_BREAKER_FAILURES", "3")))
     circuit_breaker_cooldown_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CIRCUIT_BREAKER_COOLDOWN_SEC", "30.0")))
     posture_smoothing_window: int = Field(default_factory=lambda: int(os.getenv("SECOPS_POSTURE_SMOOTHING_WINDOW", "5")))
+    concealment_posture_seconds: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CONCEALMENT_POSTURE_SEC", "4.0")))
+    concealment_crouch_aspect_ratio: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CONCEALMENT_CROUCH_RATIO", "1.35")))
 
 
 class TrackingConfig(BaseModel):

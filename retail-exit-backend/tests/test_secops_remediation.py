@@ -375,3 +375,57 @@ async def test_employee_face_enrollment_disabled_by_default(async_client: AsyncC
         assert "disabled by default" in resp.json()["detail"]
     finally:
         settings.biometric.enabled = orig_enabled
+
+
+# =============================================================================
+# 11. Concealment Posture & Non-Accusatory Alert Tests (R7 / Req 9.5)
+# =============================================================================
+
+def test_concealment_posture_innocent_actions_no_false_positives():
+    """Verify innocent customer actions (standing, sitting, walking) never trigger concealment alerts."""
+    cam_id = "test_cam_innocent"
+    tid = "track_innocent_1"
+    PostureClassifier.cleanup_track(cam_id, tid)
+
+    # 1. Standing posture
+    stand_res = PostureClassifier.classify_posture([100, 100, 80, 240], camera_id=cam_id, track_id=tid)
+    is_anomaly, details = PostureClassifier.evaluate_concealment_risk(cam_id, tid, stand_res)
+    assert is_anomaly is False
+    assert details is None
+
+    # 2. Sitting posture
+    sit_res = PostureClassifier.classify_posture([100, 100, 100, 150], camera_id=cam_id, track_id=tid)
+    is_anomaly, details = PostureClassifier.evaluate_concealment_risk(cam_id, tid, sit_res)
+    assert is_anomaly is False
+    assert details is None
+
+
+def test_concealment_posture_sustained_crouch_detection():
+    """Verify sustained crouching in merchandise area generates non-accusatory alert per Req 9.5."""
+    cam_id = "test_cam_crouch"
+    tid = "track_crouch_1"
+    PostureClassifier.cleanup_track(cam_id, tid)
+
+    now = 1000.0
+    crouch_res = PostureClassifier.classify_posture(
+        [100, 100, 100, 120],  # crouching aspect ratio
+        camera_id=cam_id,
+        track_id=tid,
+        timestamp=now,
+    )
+    assert crouch_res.posture == PostureState.CROUCHING
+
+    # Momentary crouch (1 second) -> No alert
+    is_anomaly, details = PostureClassifier.evaluate_concealment_risk(cam_id, tid, crouch_res, timestamp=now + 1.0)
+    assert is_anomaly is False
+
+    # Sustained crouch (5 seconds >= threshold) -> Triggers alert
+    is_anomaly, details = PostureClassifier.evaluate_concealment_risk(cam_id, tid, crouch_res, timestamp=now + 5.0)
+    assert is_anomaly is True
+    assert details is not None
+    assert details["non_accusatory"] is True
+    assert details["requirement_id"] == "REQ_9_5"
+    assert "Possible Concealment Anomaly" in details["description"]
+    # Check that forbidden accusatory words are NOT in the description
+    for forbidden in ["theft", "thief", "steal", "stealing", "criminal", "guilty", "shoplifter"]:
+        assert forbidden not in details["description"].lower()

@@ -53,6 +53,7 @@ class PostureClassifier:
     _track_positions: Dict[str, Dict[Any, List[Tuple[float, float, float]]]] = {}  # track_id -> [(x_mid, y_mid, timestamp)]
     _track_first_seen: Dict[str, Dict[Any, float]] = {}  # track_id -> initial timestamp
     _track_initial_pos: Dict[str, Dict[Any, Tuple[float, float]]] = {}  # track_id -> (initial_cx, initial_cy)
+    _posture_state_start: Dict[str, Dict[Any, Tuple[str, float]]] = {}  # track_id -> (state, start_timestamp)
 
     @classmethod
     def get_smoothing_window(cls) -> int:
@@ -199,6 +200,51 @@ class PostureClassifier:
         )
 
     @classmethod
+    def evaluate_concealment_risk(
+        cls,
+        camera_id: str,
+        track_id: Any,
+        posture_res: PostureResult,
+        timestamp: Optional[float] = None,
+        is_merchandise_zone: bool = True,
+    ) -> Tuple[bool, Optional[Dict[str, Any]]]:
+        """Maps to Req 9.5: Detects unusual sustained crouching/bending or kinematic concealment patterns.
+        Alerts are strictly non-accusatory ('Possible Concealment Anomaly').
+        """
+        now = timestamp or time.time()
+        tid = track_id if track_id is not None else "ephemeral"
+        cam_states = cls._posture_state_start.setdefault(camera_id, {})
+
+        current_posture = posture_res.posture
+        if tid not in cam_states:
+            cam_states[tid] = (current_posture, now)
+            duration = 0.0
+        else:
+            prev_posture, start_ts = cam_states[tid]
+            if current_posture != prev_posture:
+                cam_states[tid] = (current_posture, now)
+                duration = 0.0
+            else:
+                duration = now - start_ts
+
+        # Only sustained crouching/bending indicates potential physical concealment
+        threshold_sec = getattr(settings.detection, "concealment_posture_seconds", 4.0)
+        if current_posture == PostureState.CROUCHING and duration >= threshold_sec and is_merchandise_zone:
+            details = {
+                "anomaly_type": "POSSIBLE_CONCEALMENT_POSTURE",
+                "posture": current_posture,
+                "duration_seconds": round(duration, 1),
+                "threshold_seconds": threshold_sec,
+                "confidence": posture_res.confidence,
+                "description": f"Possible Concealment Anomaly: Sustained {current_posture.lower()} pattern observed for {duration:.1f}s. Requires staff verification.",
+                "non_accusatory": True,
+                "requirement_id": "REQ_9_5",
+            }
+            return True, details
+
+        return False, None
+
+    @classmethod
     def cleanup_track(cls, camera_id: str, track_id: Any) -> None:
         """Removes tracklet posture buffers when track is terminated."""
         if camera_id in cls._history and track_id in cls._history[camera_id]:
@@ -211,3 +257,5 @@ class PostureClassifier:
             del cls._track_first_seen[camera_id][track_id]
         if camera_id in cls._track_initial_pos and track_id in cls._track_initial_pos[camera_id]:
             del cls._track_initial_pos[camera_id][track_id]
+        if camera_id in cls._posture_state_start and track_id in cls._posture_state_start[camera_id]:
+            del cls._posture_state_start[camera_id][track_id]

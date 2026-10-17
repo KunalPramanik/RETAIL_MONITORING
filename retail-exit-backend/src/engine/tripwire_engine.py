@@ -130,57 +130,8 @@ class TripwireEngine:
         3. Trailing track exhibits anomalously suppressed confidence (0.30 <= conf < 0.60)
         4. Co-directional velocity vectors (cos_theta >= 0.80)
         """
-        l_box = leading_track.get("bbox", [0, 0, 0, 0])
-        t_box = trailing_track.get("bbox", [0, 0, 0, 0])
-
-        # Overlap computation
-        xA = max(l_box[0], t_box[0])
-        yA = max(l_box[1], t_box[1])
-        xB = min(l_box[0] + l_box[2], t_box[0] + t_box[2])
-        yB = min(l_box[1] + l_box[3], t_box[1] + t_box[3])
-        inter_area = max(0, xB - xA) * max(0, yB - yA)
-        box_a_area = l_box[2] * l_box[3]
-        box_b_area = t_box[2] * t_box[3]
-        denom = float(box_a_area + box_b_area - inter_area)
-        iou = inter_area / denom if denom > 0 else 0.0
-
-        # Horizontal overlap
-        h_inter = max(0, min(l_box[0] + l_box[2], t_box[0] + t_box[2]) - max(l_box[0], t_box[0]))
-        h_overlap = h_inter / float(min(l_box[2], t_box[2])) if min(l_box[2], t_box[2]) > 0 else 0.0
-
-        l_conf = leading_track.get("confidence", 0.85)
-        t_conf = trailing_track.get("confidence", 0.40)
-
-        # Distance between centroids
-        lcx = l_box[0] + l_box[2] / 2.0
-        lcy = l_box[1] + l_box[3] / 2.0
-        tcx = t_box[0] + t_box[2] / 2.0
-        tcy = t_box[1] + t_box[3] / 2.0
-        dist = math.hypot(lcx - tcx, lcy - tcy)
-
-        # Direction alignment
-        l_vel = leading_track.get("velocity", (0.0, 1.0))
-        t_vel = trailing_track.get("velocity", (0.0, 1.0))
-        l_mag = math.hypot(l_vel[0], l_vel[1])
-        t_mag = math.hypot(t_vel[0], t_vel[1])
-        cos_theta = 1.0
-        if l_mag > 0.01 and t_mag > 0.01:
-            cos_theta = (l_vel[0] * t_vel[0] + l_vel[1] * t_vel[1]) / (l_mag * t_mag)
-
-        # Concealment trigger
-        if (iou >= 0.25 or h_overlap >= 0.50 or dist < 60) and l_conf >= 0.65 and (t_conf < l_conf - 0.15) and cos_theta >= 0.75:
-            details = {
-                "reason": "SILHOUETTE_CONCEALMENT",
-                "iou": round(iou, 3),
-                "h_overlap": round(h_overlap, 3),
-                "leading_track_id": leading_track.get("track_id"),
-                "leading_confidence": l_conf,
-                "trailing_confidence": t_conf,
-                "vector_alignment": round(cos_theta, 3),
-            }
-            return (True, details)
-
-        return (False, None)
+        from src.ml.anti_tailgating.concealment_service import ConcealmentDetectionService
+        return ConcealmentDetectionService.evaluate_pair(leading_track, trailing_track)
 
     @classmethod
     async def record_crossing(
@@ -261,8 +212,8 @@ class TripwireEngine:
             severity = "HIGH" if is_tailgating else "MEDIUM"
             alert_type = "UNAUTHORIZED_ACCESS" if is_tailgating else "INTRUSION"
             desc = (
-                f"Perimeter Violation [{direction}]: "
-                f"{'TAILGATING / CONCEALMENT DETECTED' if is_tailgating else 'UNKNOWN INTRUDER'} "
+                f"Perimeter Anomaly [{direction}]: "
+                f"{'Possible Concealment / Tailgating Anomaly' if is_tailgating else 'Unverified Individual'} "
                 f"at tripwire '{tripwire_id}' (Camera: {camera_id}). Track: {track_id}."
             )
             alert = Alert(

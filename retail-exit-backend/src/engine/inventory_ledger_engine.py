@@ -276,7 +276,7 @@ class InventoryLedgerEngine:
                 alert_id=f"alt_neg_{uuid.uuid4().hex[:8]}",
                 camera_id=camera_id,
                 event_id=None,
-                alert_type="INVENTORY_ANOMALY",
+                alert_type="NEGATIVE_STOCK",
                 severity="HIGH",
                 delta_units=abs(balance.current_stock),
                 status="OPEN",
@@ -287,9 +287,9 @@ class InventoryLedgerEngine:
                 created_at=now,
             )
             session.add(negative_alert)
-            if not allow_neg and tx_type == "ADJUSTMENT":
+            if not allow_neg:
                 raise ValueError(
-                    f"Negative stock prohibited by inventory policy: Adjustment would reduce '{material.name}' balance to {balance.current_stock} units."
+                    f"Negative stock prohibited by inventory policy: {tx_type} transaction would reduce '{material.name}' balance to {balance.current_stock} units."
                 )
 
         # Defect tracking partition
@@ -404,6 +404,8 @@ class InventoryLedgerEngine:
         })
 
         return (ledger_entry, balance, defect_alert)
+
+    record_movement = record_confirmed_movement
 
     @classmethod
     async def get_inventory_balance(

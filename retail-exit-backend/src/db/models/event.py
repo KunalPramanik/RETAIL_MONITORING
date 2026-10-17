@@ -26,6 +26,7 @@ class ExitEvent(Base):
     severity: Any = Column(String(32), nullable=False, default="NONE", index=True)
     snapshot_url: Any = Column(Text, nullable=True)
     clip_url: Any = Column(Text, nullable=True)
+    legal_hold: Any = Column(Boolean, nullable=False, default=False, index=True)
     notes: Any = Column(Text, nullable=True)
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 

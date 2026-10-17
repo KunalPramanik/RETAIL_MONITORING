@@ -48,7 +48,7 @@ class Alert(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "alert_type IN ('SENSOR_DISAGREEMENT', 'OVER_CARRY', 'UNDER_DECLARE', 'UNAUTHORIZED_ACCESS', 'INTRUSION', 'CAMERA_OFFLINE', 'FIRE_HAZARD', 'SUSPICIOUS_BEHAVIOR', 'PPE_VIOLATION', 'MATERIAL_DEFECT')",
+            "alert_type IN ('SENSOR_DISAGREEMENT', 'OVER_CARRY', 'UNDER_DECLARE', 'UNAUTHORIZED_ACCESS', 'INTRUSION', 'CAMERA_OFFLINE', 'FIRE_HAZARD', 'SUSPICIOUS_BEHAVIOR', 'PPE_VIOLATION', 'MATERIAL_DEFECT', 'NEGATIVE_STOCK', 'INVENTORY_ANOMALY')",
             name="chk_alert_type",
         ),
         CheckConstraint("severity IN ('LOW', 'MEDIUM', 'HIGH')", name="chk_alert_severity"),

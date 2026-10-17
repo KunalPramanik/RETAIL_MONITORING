@@ -1,0 +1,132 @@
+name: SEC-OPS Continuous Integration & Quality Gate
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend-ci:
+    name: Backend CI (Tests, Migrations, Postgres, Redis, Security Scans)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: secops_user
+          POSTGRES_PASSWORD: secops_password
+          POSTGRES_DB: retail_secops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: ./retail-exit-backend
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install System Dependencies for OpenCV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-glx libglib2.0-0
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-asyncio httpx alembic asyncpg psycopg2-binary
+
+      - name: Secret Scan & No-Hardcode Gate
+        env:
+          ENVIRONMENT: test
+          JWT_SECRET_KEY: ci_test_jwt_secret_key_at_least_32_chars_long!
+          DATABASE_URL: postgresql+asyncpg://secops_user:secops_password@localhost:5432/retail_secops
+          PLATFORM_DATABASE_URL: postgresql+asyncpg://secops_user:secops_password@localhost:5432/retail_secops
+        run: |
+          pytest tests/test_no_hardcode_audit.py -v
+          pytest tests/test_zero_fake_policy.py -v
+
+      - name: License Audit Gate
+        working-directory: .
+        run: |
+          test -f THIRD_PARTY_LICENSES.md || (echo "Missing THIRD_PARTY_LICENSES.md" && exit 1)
+          # Ensure no unapproved AGPL/copyleft dependencies in requirements
+          ! grep -i "ultralytics" retail-exit-backend/requirements.txt || (echo "Prohibited AGPL dependency found" && exit 1)
+
+      - name: Run Alembic Migrations Up and Down
+        env:
+          DATABASE_URL: postgresql+asyncpg://secops_user:secops_password@localhost:5432/retail_secops
+          PLATFORM_DATABASE_URL: postgresql+asyncpg://secops_user:secops_password@localhost:5432/retail_secops
+        run: |
+          python -m alembic upgrade head
+          python -m alembic downgrade base
+          python -m alembic upgrade head
+
+      - name: Run Full Pytest Suite
+        env:
+          ENVIRONMENT: test
+          JWT_SECRET_KEY: ci_test_jwt_secret_key_at_least_32_chars_long!
+          DATABASE_URL: postgresql+asyncpg://secops_user:secops_password@localhost:5432/retail_secops
+          PLATFORM_DATABASE_URL: postgresql+asyncpg://secops_user:secops_password@localhost:5432/retail_secops
+          REDIS_URL: redis://localhost:6379/0
+          ALLOW_NEGATIVE_STOCK: "false"
+          BIOMETRIC_ENABLED: "false"
+        run: |
+          pytest tests/ -v
+
+  frontend-ci:
+    name: Frontend CI (Lint, Type Check, Build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./retail-exit-nextjs
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "npm"
+          cache-dependency-path: retail-exit-nextjs/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: ESLint Quality Gate
+        run: npm run lint
+
+      - name: TypeScript Strict Type Check
+        run: npx tsc --noEmit
+
+      - name: Frontend Production Build
+        run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1

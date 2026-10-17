@@ -88,10 +88,12 @@ desktop.ini
 .gemini/
 .gsd/
 
-# Test Suites, SQLite DB and Pytest Cache (Production Cleanliness)
-retail-exit-backend/tests/
+# Pytest Cache & Temporary Test Databases
 .pytest_cache/
-.github/
+tests/*.db
+tests/*.sqlite*
+retail-exit-backend/tests/*.db
+retail-exit-backend/tests/*.sqlite*
 retail-exit-backend/ml/
 retail-exit-backend/src/ml/weights/checkpoints/*.onnx
 !retail-exit-backend/src/ml/weights/checkpoints/.gitkeep

@@ -49,7 +49,8 @@ Thumbs.db
 
 # Hardware Runtime State & Local Diagnostic Scripts
 src/hardware/usb_state.json
-tests/
+tests/*.db
+tests/*.sqlite*
 run_local_backend_and_tunnel.py
 scripts/apply_clean_db.py
 scripts/init_db.py

@@ -48,6 +48,8 @@ export interface DetectionBox {
   is_defect?: boolean;
   defect_type?: string;
   polygon?: number[][]; // [x, y] coordinates for OBB / segmentation masks
+  posture?: string;
+  posture_confidence?: number;
 }
 
 interface StreamPlayerProps {
@@ -808,6 +810,64 @@ export default function StreamPlayer({
             )}
           </div>
         </div>
+      </div>
+
+      {/* 3b. Live Detections & Kinematic Posture HUD Panel */}
+      <div className="px-4 py-2 bg-[var(--bg-panel)] border-t border-[var(--border-hairline)]">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="text-[11px] font-mono font-bold text-[var(--text-secondary)] flex items-center gap-1.5">
+            <Eye size={13} className="text-[#38BDF8]" />
+            <span>LIVE DETECTIONS TELEMETRY</span>
+            <span className="px-1.5 py-0.2 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded text-[10px] text-[#FACC15]">
+              {boxes.length} Active
+            </span>
+          </div>
+          <div className="text-[10px] font-mono text-[var(--text-muted)]">
+            OpenCV Server-Rendered HUD
+          </div>
+        </div>
+
+        {boxes.length === 0 ? (
+          <div className="py-2 px-3 bg-[var(--bg-canvas)] rounded border border-[var(--border-hairline)] text-center text-xs text-[var(--text-muted)] font-mono">
+            No entities detected in current camera field of view.
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+            {boxes.map((b, idx) => {
+              const confPct = Math.round(b.confidence <= 1.0 ? b.confidence * 100 : b.confidence);
+              const isPerson = b.type?.includes("PERSON") || b.label?.toLowerCase().includes("person");
+              return (
+                <div
+                  key={`det-${b.track_id ?? idx}`}
+                  className="bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded px-2 py-1 flex items-center gap-2 text-xs font-mono shadow-sm"
+                >
+                  <span className={`w-2 h-2 rounded-full ${isPerson ? "bg-emerald-400" : "bg-sky-400"}`}></span>
+                  <span className="font-bold text-[var(--text-primary)]">
+                    {b.entity || b.label || "Object"}
+                  </span>
+                  {b.track_id !== undefined && (
+                    <span className="text-[var(--text-muted)] text-[10px]">
+                      #{b.track_id}
+                    </span>
+                  )}
+                  {b.posture && (
+                    <span className="px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[10px] font-semibold">
+                      {b.posture}
+                    </span>
+                  )}
+                  {b.direction && b.direction !== "PRESENT" && (
+                    <span className="px-1 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/30 text-[10px]">
+                      {b.direction}
+                    </span>
+                  )}
+                  <span className="text-[var(--status-ok)] text-[10px] font-bold">
+                    {confPct}%
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* 4. Bottom Action Controls Bar (All Buttons Operational) */}

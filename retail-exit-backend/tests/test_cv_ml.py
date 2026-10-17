@@ -164,3 +164,79 @@ def test_dynamic_tracking_settings_integration():
     tracker = VisionInferenceService._trackers[cam_id]
     assert tracker.track_buffer == settings.tracking.tracker_max_lost_frames
     assert pytest.approx(tracker.match_thresh, 0.01) == 1.0 - settings.tracking.tracker_iou_threshold
+
+
+def test_posture_classification_crouching_and_states():
+    """V2-01: Verifies that PostureClassifier emits clean 'Crouching' and standard posture states."""
+    from src.ml.posture_service import PostureClassifier, PostureState
+
+    assert PostureState.CROUCHING == "Crouching"
+    assert PostureState.STANDING == "Standing"
+    assert PostureState.SITTING == "Sitting"
+    assert PostureState.WALKING == "Walking"
+    assert PostureState.LYING == "Lying"
+
+    # Crouching aspect ratio (h/w <= 1.35)
+    crouch_res = PostureClassifier.classify_posture(
+        person_bbox=[100, 100, 100, 110],  # w=100, h=110 -> aspect 1.10 <= 1.35
+        camera_id="test_posture_cam",
+        track_id="trk_crouch_1",
+    )
+    assert crouch_res.posture == "Crouching"
+
+    # Seated person (aspect ratio ~1.65, standing baseline ~2.5)
+    sit_res = PostureClassifier.classify_posture(
+        person_bbox=[100, 100, 60, 95],  # aspect 1.58
+        camera_id="test_posture_cam",
+        track_id="trk_sit_1",
+    )
+    assert sit_res.posture == "Sitting"
+
+
+def test_posture_classification_with_skeletal_keypoints():
+    """V2-01: Verifies that anatomical skeletal keypoints drive posture classification."""
+    from src.ml.posture_service import PostureClassifier
+
+    # Upright keypoints: neck vertically above mid_hip
+    upright_kpts = {
+        "neck": (200, 100),
+        "mid_hip": (200, 250),
+    }
+    upright_res = PostureClassifier.classify_posture(
+        person_bbox=[150, 80, 100, 240],
+        camera_id="test_posture_cam",
+        track_id="trk_upright_1",
+        keypoints=upright_kpts,
+    )
+    assert upright_res.posture == "Standing"
+
+    # Crouching/bending keypoints: tilted torso (torso_angle_deg > 38)
+    tilted_kpts = {
+        "neck": (150, 100),
+        "mid_hip": (220, 160),  # dx=70, dy=60 -> angle ~49 deg
+    }
+    tilted_res = PostureClassifier.classify_posture(
+        person_bbox=[140, 90, 110, 120],
+        camera_id="test_posture_cam",
+        track_id="trk_tilted_1",
+        keypoints=tilted_kpts,
+    )
+    assert tilted_res.posture == "Crouching"
+
+
+def test_frame_renderer_seated_person_label_no_unverified_direction():
+    """V2-01: Verifies that FrameRenderer formats seated person as Sitting without unverified In/Out direction."""
+    from src.services.vision_detection.frame_renderer import FrameRenderer
+
+    label = FrameRenderer.format_box_label({
+        "class_label": "person",
+        "track_id": 12,
+        "confidence": 0.91,
+        "posture": "Sitting",
+    })
+    assert label == "Person #12 · Sitting · 91%"
+    assert "In" not in label
+    assert "Out" not in label
+    assert "Entering" not in label
+    assert "Exiting" not in label
+

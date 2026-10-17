@@ -1128,24 +1128,8 @@ class CameraIngestionWorker:
                 if not hasattr(self, "_person_dir_cache"):
                     self._person_dir_cache = {}
                 dir_cache = self._person_dir_cache.setdefault(cam.camera_id, {})
-                prev_dir = dir_cache.get(track_id, "PRESENT")
-
-                person_dir = prev_dir
-                if prev_pt:
-                    dx = curr_pt[0] - prev_pt[0]
-                    dy = curr_pt[1] - prev_pt[1]
-                    disp = math.hypot(dx, dy)
-                    if disp < 0.020:
-                        # Person is staying in place (stationary)
-                        person_dir = prev_dir if prev_dir != "STATIONARY" else "PRESENT"
-                    elif dy < -0.020:
-                        person_dir = "IN"
-                    elif dy > 0.020:
-                        person_dir = "OUT"
-                    else:
-                        person_dir = prev_dir if prev_dir != "STATIONARY" else "PRESENT"
-
-                dir_cache[track_id] = person_dir
+                # Direction is strictly None unless confirmed by a configured virtual tripwire crossing
+                person_dir = dir_cache.get(track_id, None)
                 ob["direction"] = person_dir
 
                 carried_mats: Dict[str, int] = {}
@@ -1213,9 +1197,11 @@ class CameraIngestionWorker:
                 if is_person:
                     mat_parts = [f"{cnt}x {cname.split(' (')[0].split(' / ')[0]}" for cname, cnt in carried_mats.items()]
                     mat_desc = ", ".join(mat_parts) if mat_parts else ""
+                    dir_part = f" [{person_dir}]" if person_dir in ("IN", "OUT") else ""
+                    posture_part = f" · {ob.get('posture')}" if ob.get("posture") else ""
 
                     if carried_mats:
-                        summary_carrier = f"{person_name} [{person_dir}] ({mat_desc})"
+                        summary_carrier = f"{person_name}{dir_part} ({mat_desc})"
                         ob["label"] = summary_carrier
                         carrier_rec = {
                             "personName": person_name,
@@ -1231,7 +1217,7 @@ class CameraIngestionWorker:
                         if not cam_logs or cam_logs[-1]["text"] != carrier_log:
                             cam_logs.append({"id": str(uuid.uuid4()), "timestamp": time_str, "text": carrier_log, "type": "PERSON"})
                     else:
-                        ob["label"] = f"{person_name} [{person_dir}]"
+                        ob["label"] = f"{person_name}{dir_part}{posture_part}"
         except Exception as _tw_err:
             logger.warning("Tripwire evaluation error on %s: %s", cam.camera_id, _tw_err)
 

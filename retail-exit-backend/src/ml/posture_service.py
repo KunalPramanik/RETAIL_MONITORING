@@ -29,7 +29,7 @@ class PostureState:
     STANDING = "Standing"
     SITTING = "Sitting"
     WALKING = "Walking"
-    CROUCHING = "Crouching/Bending"
+    CROUCHING = "Crouching"
     LYING = "Lying"
     UNKNOWN = "Unknown"
 
@@ -129,7 +129,7 @@ class PostureClassifier:
                 raw_posture = "Lying"
                 raw_conf = 0.90
             elif torso_angle_deg > 38.0 or aspect_ratio < 1.45:
-                raw_posture = "Crouching/Bending"
+                raw_posture = "Crouching"
                 raw_conf = 0.88
             elif aspect_ratio < (standing_baseline * 0.70) or aspect_ratio < 1.85:
                 raw_posture = "Sitting"
@@ -146,7 +146,7 @@ class PostureClassifier:
                 raw_posture = "Lying"
                 raw_conf = 0.85
             elif aspect_ratio <= 1.35:
-                raw_posture = "Crouching/Bending"
+                raw_posture = "Crouching"
                 raw_conf = 0.82
             elif aspect_ratio < (standing_baseline * 0.72) or aspect_ratio <= 1.85:
                 # Compression of person box without horizontal lying orientation indicates seated position

@@ -462,19 +462,29 @@ class VisionInferenceService:
                 w_box = cand_boxes[:, 2]
                 h_box = cand_boxes[:, 3]
 
-                x1 = (x_center - w_box / 2) / ratio
-                y1 = (y_center - h_box / 2) / ratio
+                # Explicit un-letterbox calculation: subtract letterbox padding offsets and rescale
+                pad_x = 0.0
+                pad_y = 0.0
+                x1 = (x_center - w_box / 2.0 - pad_x) / ratio
+                y1 = (y_center - h_box / 2.0 - pad_y) / ratio
                 w_orig = w_box / ratio
                 h_orig = h_box / ratio
 
-                # Clip to image frame
+                # Clip to image frame boundary and filter zero or sub-pixel area boxes
                 x1 = np.clip(x1, 0, orig_w - 1)
                 y1 = np.clip(y1, 0, orig_h - 1)
-                w_orig = np.clip(w_orig, 1, orig_w - x1)
-                h_orig = np.clip(h_orig, 1, orig_h - y1)
+                w_clamped = np.clip(w_orig, 0, orig_w - x1)
+                h_clamped = np.clip(h_orig, 0, orig_h - y1)
 
-                nms_boxes = [[int(x1[k]), int(y1[k]), int(w_orig[k]), int(h_orig[k])] for k in range(len(x1))]
-                nms_scores = [float(s) for s in cand_scores]
+                min_area = orig_w * orig_h * getattr(cfg, "min_box_area_ratio", 0.0001)
+                valid_mask = (w_clamped >= 1.0) & (h_clamped >= 1.0) & ((w_clamped * h_clamped) >= min_area)
+
+                nms_boxes = [
+                    [int(x1[k]), int(y1[k]), int(w_clamped[k]), int(h_clamped[k])]
+                    for k in range(len(x1)) if valid_mask[k]
+                ]
+                nms_scores = [float(cand_scores[k]) for k in range(len(x1)) if valid_mask[k]]
+                cand_cls = [cand_cls[k] for k in range(len(x1)) if valid_mask[k]]
 
                 # Class-aware per-class NMS:
                 # Partitions candidate boxes by class ID before running NMSBoxes.
@@ -828,12 +838,21 @@ class VisionInferenceService:
         orig_h, orig_w = img.shape[:2] if img is not None else (1080, 1920)
         try:
             from src.ml.posture_service import PostureClassifier
+            from src.ml.pose_service import SuspiciousBehaviorDetector
             for d in detections:
                 if d.class_label == "person":
+                    kpts = None
+                    try:
+                        if img is not None:
+                            skel = SuspiciousBehaviorDetector.estimate_pose_and_behavior(img, d.bbox)
+                            kpts = getattr(skel, "keypoints", None)
+                    except Exception as _sk_err:
+                        kpts = None
                     p_res = PostureClassifier.classify_posture(
                         person_bbox=d.bbox,
                         camera_id=camera_id or "default",
                         track_id=d.track_id,
+                        keypoints=kpts,
                         frame_h=orig_h,
                         frame_w=orig_w,
                     )

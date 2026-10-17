@@ -1,17 +1,16 @@
-"""SEC-OPS V8 Canonical Production Migration
+"""SEC-OPS V8 Canonical Platform Migration
 
 Revision ID: 4f8910b2c1d3
 Revises: 3a419bf4a775
 Create Date: 2026-10-15 19:49:00.000000
 
-Non-destructive upgrade ensuring platform control-plane and store operational tables,
-constraints, and indexes exist without dropping historical business data.
+Non-destructive upgrade ensuring platform control-plane tables exist
+with full compatibility across PostgreSQL and SQLite.
 """
 
 from typing import Sequence, Union
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 
 revision: str = '4f8910b2c1d3'
@@ -21,121 +20,123 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Platform Control-Plane Tables (Non-Destructive)
-    conn = op.get_bind()
-    
-    # platform_tenant
-    op.execute("""
-    CREATE TABLE IF NOT EXISTS public.platform_tenant (
-        tenant_id VARCHAR(36) PRIMARY KEY,
-        name VARCHAR(255) UNIQUE NOT NULL,
-        slug VARCHAR(64) UNIQUE NOT NULL,
-        db_identifier VARCHAR(255) UNIQUE NOT NULL,
-        status VARCHAR(32) NOT NULL DEFAULT 'PROVISIONING',
-        timezone VARCHAR(64) NOT NULL DEFAULT 'Asia/Kolkata',
-        currency VARCHAR(16) NOT NULL DEFAULT 'INR',
-        contact_email VARCHAR(255),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    """)
+    # 1. platform_tenant
+    op.create_table(
+        'platform_tenant',
+        sa.Column('tenant_id', sa.String(length=36), nullable=False),
+        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('slug', sa.String(length=64), nullable=False),
+        sa.Column('db_identifier', sa.String(length=255), nullable=False),
+        sa.Column('status', sa.String(length=32), server_default='PROVISIONING', nullable=False),
+        sa.Column('timezone', sa.String(length=64), server_default='Asia/Kolkata', nullable=False),
+        sa.Column('currency', sa.String(length=16), server_default='INR', nullable=False),
+        sa.Column('contact_email', sa.String(length=255), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint('tenant_id'),
+        sa.UniqueConstraint('db_identifier'),
+        sa.UniqueConstraint('name'),
+        sa.UniqueConstraint('slug'),
+    )
+    op.create_index('idx_platform_tenant_status', 'platform_tenant', ['status'], unique=False)
 
-    # platform_super_admin
-    op.execute("""
-    CREATE TABLE IF NOT EXISTS public.platform_super_admin (
-        admin_id VARCHAR(36) PRIMARY KEY,
-        username VARCHAR(64) UNIQUE NOT NULL,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password_hash VARCHAR(255) NOT NULL,
-        role VARCHAR(32) NOT NULL DEFAULT 'SUPER_ADMIN',
-        is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        last_login_at TIMESTAMPTZ
-    );
-    """)
+    # 2. platform_super_admin
+    op.create_table(
+        'platform_super_admin',
+        sa.Column('admin_id', sa.String(length=36), nullable=False),
+        sa.Column('username', sa.String(length=64), nullable=False),
+        sa.Column('email', sa.String(length=255), nullable=False),
+        sa.Column('password_hash', sa.String(length=255), nullable=False),
+        sa.Column('role', sa.String(length=32), server_default='SUPER_ADMIN', nullable=False),
+        sa.Column('is_active', sa.Boolean(), server_default=sa.true(), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column('last_login_at', sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint('admin_id'),
+        sa.UniqueConstraint('email'),
+        sa.UniqueConstraint('username'),
+    )
+    op.create_index('idx_platform_super_admin_email', 'platform_super_admin', ['email'], unique=False)
 
-    # platform_subscription_tier
-    op.execute("""
-    CREATE TABLE IF NOT EXISTS public.platform_subscription_tier (
-        tier_id VARCHAR(36) PRIMARY KEY,
-        name VARCHAR(64) UNIQUE NOT NULL,
-        max_cameras INTEGER NOT NULL DEFAULT 4,
-        price_cents INTEGER NOT NULL DEFAULT 0,
-        currency VARCHAR(16) NOT NULL DEFAULT 'INR',
-        billing_cycle VARCHAR(16) NOT NULL DEFAULT 'MONTHLY',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    """)
+    # 3. platform_subscription_tier
+    op.create_table(
+        'platform_subscription_tier',
+        sa.Column('tier_id', sa.String(length=36), nullable=False),
+        sa.Column('name', sa.String(length=64), nullable=False),
+        sa.Column('max_cameras', sa.Integer(), server_default='4', nullable=False),
+        sa.Column('price_cents', sa.Integer(), server_default='0', nullable=False),
+        sa.Column('currency', sa.String(length=16), server_default='INR', nullable=False),
+        sa.Column('billing_cycle', sa.String(length=16), server_default='MONTHLY', nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint('tier_id'),
+        sa.UniqueConstraint('name'),
+    )
 
-    # platform_store_subscription
-    op.execute("""
-    CREATE TABLE IF NOT EXISTS public.platform_store_subscription (
-        subscription_id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) UNIQUE NOT NULL,
-        tier_id VARCHAR(36) NOT NULL,
-        status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
-        current_period_start TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        current_period_end TIMESTAMPTZ NOT NULL,
-        grace_period_days INTEGER NOT NULL DEFAULT 7,
-        payment_verified BOOLEAN NOT NULL DEFAULT TRUE,
-        auto_renew BOOLEAN NOT NULL DEFAULT TRUE,
-        last_payment_at TIMESTAMPTZ,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    """)
+    # 4. platform_store_subscription
+    op.create_table(
+        'platform_store_subscription',
+        sa.Column('subscription_id', sa.String(length=36), nullable=False),
+        sa.Column('tenant_id', sa.String(length=36), nullable=False),
+        sa.Column('tier_id', sa.String(length=36), nullable=False),
+        sa.Column('status', sa.String(length=32), server_default='ACTIVE', nullable=False),
+        sa.Column('current_period_start', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column('current_period_end', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('grace_period_days', sa.Integer(), server_default='7', nullable=False),
+        sa.Column('payment_verified', sa.Boolean(), server_default=sa.true(), nullable=False),
+        sa.Column('auto_renew', sa.Boolean(), server_default=sa.true(), nullable=False),
+        sa.Column('last_payment_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint('subscription_id'),
+        sa.UniqueConstraint('tenant_id'),
+    )
+    op.create_index('idx_platform_sub_tenant', 'platform_store_subscription', ['tenant_id'], unique=False)
+    op.create_index('idx_platform_sub_status', 'platform_store_subscription', ['status'], unique=False)
 
-    # platform_billing_invoice
-    op.execute("""
-    CREATE TABLE IF NOT EXISTS public.platform_billing_invoice (
-        invoice_id VARCHAR(36) PRIMARY KEY,
-        tenant_id VARCHAR(36) NOT NULL,
-        subscription_id VARCHAR(36),
-        amount_cents INTEGER NOT NULL DEFAULT 0,
-        currency VARCHAR(16) NOT NULL DEFAULT 'INR',
-        status VARCHAR(32) NOT NULL DEFAULT 'PAID',
-        due_date TIMESTAMPTZ NOT NULL,
-        paid_at TIMESTAMPTZ,
-        payment_reference VARCHAR(128),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    """)
+    # 5. platform_billing_invoice
+    op.create_table(
+        'platform_billing_invoice',
+        sa.Column('invoice_id', sa.String(length=36), nullable=False),
+        sa.Column('tenant_id', sa.String(length=36), nullable=False),
+        sa.Column('subscription_id', sa.String(length=36), nullable=True),
+        sa.Column('amount_cents', sa.Integer(), server_default='0', nullable=False),
+        sa.Column('currency', sa.String(length=16), server_default='INR', nullable=False),
+        sa.Column('status', sa.String(length=32), server_default='PAID', nullable=False),
+        sa.Column('due_date', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('paid_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('payment_reference', sa.String(length=128), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint('invoice_id'),
+    )
+    op.create_index('idx_platform_inv_tenant', 'platform_billing_invoice', ['tenant_id'], unique=False)
+    op.create_index('idx_platform_inv_status', 'platform_billing_invoice', ['status'], unique=False)
 
-    # platform_audit_log
-    op.execute("""
-    CREATE TABLE IF NOT EXISTS public.platform_audit_log (
-        log_id VARCHAR(36) PRIMARY KEY,
-        actor_id VARCHAR(36) NOT NULL,
-        actor_type VARCHAR(32) NOT NULL DEFAULT 'SUPER_ADMIN',
-        action VARCHAR(64) NOT NULL,
-        tenant_id VARCHAR(36),
-        details JSONB,
-        ip_address VARCHAR(64),
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-    """)
-
-    # Indexes
-    op.execute("""
-    CREATE INDEX IF NOT EXISTS idx_platform_tenant_status ON public.platform_tenant(status);
-    CREATE INDEX IF NOT EXISTS idx_platform_super_admin_email ON public.platform_super_admin(email);
-    CREATE INDEX IF NOT EXISTS idx_platform_sub_tenant ON public.platform_store_subscription(tenant_id);
-    CREATE INDEX IF NOT EXISTS idx_platform_sub_status ON public.platform_store_subscription(status);
-    CREATE INDEX IF NOT EXISTS idx_platform_inv_tenant ON public.platform_billing_invoice(tenant_id);
-    CREATE INDEX IF NOT EXISTS idx_platform_inv_status ON public.platform_billing_invoice(status);
-    CREATE INDEX IF NOT EXISTS idx_platform_audit_created ON public.platform_audit_log(created_at DESC);
-    """)
+    # 6. platform_audit_log
+    op.create_table(
+        'platform_audit_log',
+        sa.Column('log_id', sa.String(length=36), nullable=False),
+        sa.Column('actor_id', sa.String(length=36), nullable=False),
+        sa.Column('actor_type', sa.String(length=32), server_default='SUPER_ADMIN', nullable=False),
+        sa.Column('action', sa.String(length=64), nullable=False),
+        sa.Column('tenant_id', sa.String(length=36), nullable=True),
+        sa.Column('details', sa.JSON(), nullable=True),
+        sa.Column('ip_address', sa.String(length=64), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.PrimaryKeyConstraint('log_id'),
+    )
+    op.create_index('idx_platform_audit_created', 'platform_audit_log', ['created_at'], unique=False)
 
 
 def downgrade() -> None:
-    # Non-destructive downgrade: drops views/indexes only, preserves core table data
-    op.execute("""
-    DROP INDEX IF EXISTS idx_platform_audit_created;
-    DROP INDEX IF EXISTS idx_platform_inv_status;
-    DROP INDEX IF EXISTS idx_platform_inv_tenant;
-    DROP INDEX IF EXISTS idx_platform_sub_status;
-    DROP INDEX IF EXISTS idx_platform_sub_tenant;
-    DROP INDEX IF EXISTS idx_platform_super_admin_email;
-    DROP INDEX IF EXISTS idx_platform_tenant_status;
-    """)
-
+    op.drop_index('idx_platform_audit_created', table_name='platform_audit_log')
+    op.drop_table('platform_audit_log')
+    op.drop_index('idx_platform_inv_status', table_name='platform_billing_invoice')
+    op.drop_index('idx_platform_inv_tenant', table_name='platform_billing_invoice')
+    op.drop_table('platform_billing_invoice')
+    op.drop_index('idx_platform_sub_status', table_name='platform_store_subscription')
+    op.drop_index('idx_platform_sub_tenant', table_name='platform_store_subscription')
+    op.drop_table('platform_store_subscription')
+    op.drop_table('platform_subscription_tier')
+    op.drop_index('idx_platform_super_admin_email', table_name='platform_super_admin')
+    op.drop_table('platform_super_admin')
+    op.drop_index('idx_platform_tenant_status', table_name='platform_tenant')
+    op.drop_table('platform_tenant')

@@ -25,7 +25,19 @@ from src.db.session import get_db, AsyncSessionLocal
 from src.db.models import AppUser as User
 from src.core.multi_tenant import PlatformAsyncSessionLocal
 from src.db.platform_models import PlatformSuperAdmin, PlatformAuditLog
-from src.security import verify_password, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from src.security import (
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    create_refresh_token,
+    record_failed_login,
+    is_account_locked,
+    reset_failed_logins,
+    is_token_revoked,
+    revoke_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+)
+from jose import jwt
 from src.api.deps import get_current_user
 from src.core.config import settings
 from src.core.rate_limit import RateLimiter
@@ -40,6 +52,11 @@ class Token(BaseModel):
     token_type: str
     role: Optional[str] = None
     isPlatformOwner: Optional[bool] = False
+    refresh_token: Optional[str] = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 
 class UserCreate(BaseModel):
@@ -90,6 +107,15 @@ async def login_for_access_token(
     identifier = raw_identifier.strip()
     identifier_lower = identifier.lower()
 
+    # Pre-flight Check: Login Lockout
+    is_locked, rem_secs = is_account_locked(identifier)
+    if is_locked:
+        logger.warning("Authentication rejected: Account '%s' temporarily locked (%ds remaining)", identifier, rem_secs)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Account temporarily locked due to excessive failed attempts. Please try again in {rem_secs} seconds.",
+        )
+
     # 1. Primary Check: Software Owner in PlatformSuperAdmin
     async with PlatformAsyncSessionLocal() as p_session:
         p_res = await p_session.execute(
@@ -110,6 +136,7 @@ async def login_for_access_token(
                         status_code=status.HTTP_403_FORBIDDEN,
                         detail="Account is deactivated. Access denied.",
                     )
+                reset_failed_logins(identifier)
                 admin.last_login_at = datetime.now(timezone.utc)
                 await p_session.commit()
                 access_token = create_access_token(
@@ -118,14 +145,28 @@ async def login_for_access_token(
                     email=admin.email,
                     expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
                 )
+                refresh_token = create_refresh_token(
+                    subject=admin.admin_id,
+                    role="SUPER_ADMIN",
+                    email=admin.email,
+                )
                 logger.info("Software Owner successfully authenticated: %s (role: SUPER_ADMIN)", admin.email)
                 return {
                     "access_token": access_token,
+                    "refresh_token": refresh_token,
                     "token_type": "bearer",
                     "role": "SUPER_ADMIN",
                     "isPlatformOwner": True,
                 }
             else:
+                attempts, is_now_locked = record_failed_login(identifier)
+                lockout_sec = getattr(settings.security, "lockout_duration_seconds", 900)
+                if is_now_locked:
+                    logger.warning("Software Owner '%s' locked out after %d failed attempts", identifier, attempts)
+                    raise HTTPException(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        detail=f"Account temporarily locked due to excessive failed attempts ({attempts}). Locked for {lockout_sec} seconds.",
+                    )
                 logger.warning("Authentication failed for identifier: %s", identifier)
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -151,19 +192,35 @@ async def login_for_access_token(
                 detail="Inactive user account. Access denied.",
             )
 
+        reset_failed_logins(identifier)
         access_token = create_access_token(
             subject=user.user_id,
             role=user.role,
             email=user.email,
             expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
         )
+        refresh_token = create_refresh_token(
+            subject=user.user_id,
+            role=user.role,
+            email=user.email,
+        )
         logger.info("Operator successfully authenticated: %s (role: %s)", identifier, user.role)
         return {
             "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "role": user.role,
             "isPlatformOwner": False,
         }
+
+    attempts, is_now_locked = record_failed_login(identifier)
+    lockout_sec = getattr(settings.security, "lockout_duration_seconds", 900)
+    if is_now_locked:
+        logger.warning("Account '%s' locked out after %d failed attempts", identifier, attempts)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Account temporarily locked due to excessive failed attempts ({attempts}). Locked for {lockout_sec} seconds.",
+        )
 
     logger.warning("Authentication failed for identifier: %s", identifier)
     raise HTTPException(
@@ -171,6 +228,60 @@ async def login_for_access_token(
         detail="Incorrect email or password",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+@router.post("/refresh", response_model=Token)
+async def refresh_access_token(
+    body: RefreshRequest,
+    _rate_limit: bool = Depends(RateLimiter(times=settings.rate_limit.auth_per_minute, seconds=60, scope="auth_refresh")),
+):
+    """Refreshes an expired access token using a valid refresh token with automatic token rotation."""
+    raw_token = body.refresh_token.strip()
+    if not raw_token or is_token_revoked(raw_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or revoked refresh token. Please log in again.",
+        )
+    try:
+        payload = jwt.decode(raw_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token.",
+        )
+
+    if payload.get("token_use") != "refresh":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Provided token is not a refresh token.",
+        )
+
+    # Invalidate the consumed refresh token (token rotation)
+    revoke_token(raw_token)
+
+    subject = payload.get("sub")
+    role = payload.get("role")
+    email = payload.get("email")
+
+    new_access_token = create_access_token(
+        subject=subject,
+        role=role,
+        email=email,
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+    )
+    new_refresh_token = create_refresh_token(
+        subject=subject,
+        role=role,
+        email=email,
+    )
+
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+        "role": role,
+        "isPlatformOwner": role == "SUPER_ADMIN",
+    }
 
 
 @router.post("/logout")

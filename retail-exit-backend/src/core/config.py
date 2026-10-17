@@ -205,6 +205,12 @@ class WebSocketConfig(BaseModel):
     require_token_auth: bool = Field(default_factory=lambda: os.getenv("SECOPS_WS_REQUIRE_AUTH", "false").lower() == "true")
 
 
+class SecurityPolicyConfig(BaseModel):
+    max_login_attempts: int = Field(default_factory=lambda: int(os.getenv("SECURITY_MAX_LOGIN_ATTEMPTS", "5")))
+    lockout_duration_seconds: int = Field(default_factory=lambda: int(os.getenv("SECURITY_LOCKOUT_DURATION_SECONDS", "900")))
+    refresh_token_expire_days: int = Field(default_factory=lambda: int(os.getenv("SECURITY_REFRESH_EXPIRE_DAYS", "7")))
+
+
 class Settings(BaseSettings):
     APP_NAME: str = os.getenv("APP_NAME", "SEC-OPS Retail Exit Monitoring Platform")
     APP_VERSION: str = os.getenv("APP_VERSION", "2.0.0")
@@ -267,6 +273,7 @@ class Settings(BaseSettings):
     camera: CameraConfig = Field(default_factory=CameraConfig)
     biometric: BiometricConfig = Field(default_factory=BiometricConfig)
     websocket: WebSocketConfig = Field(default_factory=WebSocketConfig)
+    security: SecurityPolicyConfig = Field(default_factory=SecurityPolicyConfig)
     
     model_config = SettingsConfigDict(
         env_file=".env",

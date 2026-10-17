@@ -1,6 +1,8 @@
 """System Threshold & Operational Settings Endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException
+import os
+from typing import Optional, Dict, Any
+from fastapi import APIRouter, Depends, HTTPException, status
 from src.api.deps import get_current_user, role_required
 from src.db.models import AppUser as User
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +14,7 @@ from src.db.audit import log_audit_entry
 from src.schemas.settings import ThresholdConfigSchema
 from src.cache import cache_service
 from src.api.deps_auth import require_roles
+from src.core.config import settings
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -103,11 +106,30 @@ async def update_thresholds(
 
 @router.post("/reset-database")
 async def reset_database(
+    body: Optional[Dict[str, Any]] = None,
     session: AsyncSession = Depends(get_db),
-    _role: str = Depends(require_roles(["ADMIN", "SUPERVISOR"])),
+    _role: str = Depends(require_roles(["SUPER_ADMIN"])),
 ):
     """Purges all operational records (products, employees, cameras, lanes, events, alerts)
-    and restores the database to a clean zero-state baseline."""
+    and restores the database to a clean zero-state baseline.
+    Strictly restricted to SUPER_ADMIN with mandatory confirmation token.
+    Disabled in production.
+    """
+    env = getattr(settings, "ENVIRONMENT", "production").lower()
+    allow_reset = os.getenv("ALLOW_DATABASE_RESET", "false").lower() == "true"
+    if env == "production" and not allow_reset:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Database reset is strictly prohibited in production environments.",
+        )
+
+    confirm_token = (body or {}).get("confirmation_token")
+    if confirm_token != "CONFIRM_RESET_ALL_DATA":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing or invalid confirmation token. 'CONFIRM_RESET_ALL_DATA' is required to execute database reset.",
+        )
+
     from sqlalchemy import delete
     from src.db.models import (
         TripwireCrossingEvent,
@@ -160,6 +182,16 @@ async def reset_database(
     await session.execute(delete(Employee))
     await session.execute(delete(Product))
     await session.execute(delete(AuditLog))
+
+    # Record persistent audit trail of the database purge
+    purge_audit = AuditLog(
+        entity_type="SYSTEM",
+        entity_id="DATABASE",
+        action="DATABASE_RESET_EXECUTED",
+        actor_type="SUPER_ADMIN",
+        details="Database purged to pure zero-state baseline under SUPER_ADMIN authorization.",
+    )
+    session.add(purge_audit)
     await session.commit()
 
     await cache_service.clear()

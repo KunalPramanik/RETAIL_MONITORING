@@ -380,13 +380,21 @@ async def websocket_live_gateway(
     token: Optional[str] = Query(None),
 ):
     """Real-time WebSocket connection endpoint for control room consoles."""
-    # Optional token verification if token provided or mandatory if configured
-    if settings.websocket.require_token_auth or token is not None:
+    # WebSocket authentication is strictly enforced outside development,
+    # or whenever explicitly enabled via settings, or when a token parameter is provided.
+    is_dev = getattr(settings, "ENVIRONMENT", "").lower() in ("development", "dev", "test", "testing")
+    require_auth = (not is_dev) or settings.websocket.require_token_auth or (token is not None)
+    if require_auth:
         if not token:
             await websocket.close(code=4001, reason="Authentication token required")
             return
         try:
             from jose import jwt
+            from src.security import is_token_revoked
+            if is_token_revoked(token):
+                logger.warning("WebSocket token rejected: token has been revoked")
+                await websocket.close(code=4003, reason="Token has been revoked")
+                return
             jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         except Exception as auth_err:
             logger.warning(f"WebSocket token authentication rejected: {auth_err}")

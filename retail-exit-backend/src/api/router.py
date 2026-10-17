@@ -1,6 +1,7 @@
-﻿"""API Route Aggregator Module"""
+"""API Route Aggregator Module"""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from src.api.deps import get_current_user
 
 from src.api.kpis import router as kpis_router
 from src.api.events import router as events_router
@@ -33,32 +34,37 @@ from src.api.platform_routes import router as platform_router
 
 api_router = APIRouter(prefix="/api")
 
-api_router.include_router(kpis_router)
-api_router.include_router(events_router)
-api_router.include_router(alerts_router)
-api_router.include_router(products_router)
-api_router.include_router(material_flow_router)
-api_router.include_router(materials_router)
-api_router.include_router(employees_router)
-api_router.include_router(invoices_router)
-api_router.include_router(reports_router)
-api_router.include_router(settings_router)
-api_router.include_router(lanes_router)
-api_router.include_router(ingest_router)
-api_router.include_router(cameras_router)
-api_router.include_router(hardware_router)
-api_router.include_router(discovery_router)
-api_router.include_router(model_router)
-api_router.include_router(forensics_router)
-api_router.include_router(smart_wall_router)
-api_router.include_router(evidence_router)
+auth_dep = [Depends(get_current_user)]
+
+# Data routes with mandatory JWT authentication
+api_router.include_router(kpis_router, dependencies=auth_dep)
+api_router.include_router(events_router, dependencies=auth_dep)
+api_router.include_router(alerts_router, dependencies=auth_dep)
+api_router.include_router(products_router, dependencies=auth_dep)
+api_router.include_router(material_flow_router, dependencies=auth_dep)
+api_router.include_router(materials_router, dependencies=auth_dep)
+api_router.include_router(employees_router, dependencies=auth_dep)
+api_router.include_router(invoices_router, dependencies=auth_dep)
+api_router.include_router(reports_router, dependencies=auth_dep)
+api_router.include_router(settings_router, dependencies=auth_dep)
+api_router.include_router(lanes_router, dependencies=auth_dep)
+api_router.include_router(ingest_router, dependencies=auth_dep)
+api_router.include_router(cameras_router, dependencies=auth_dep)
+api_router.include_router(hardware_router, dependencies=auth_dep)
+api_router.include_router(discovery_router, dependencies=auth_dep)
+api_router.include_router(model_router, dependencies=auth_dep)
+api_router.include_router(forensics_router, dependencies=auth_dep)
+api_router.include_router(smart_wall_router, dependencies=auth_dep)
+api_router.include_router(evidence_router, dependencies=auth_dep)
+api_router.include_router(integration_router, dependencies=auth_dep)
+api_router.include_router(inventory_router, dependencies=auth_dep)
+api_router.include_router(dispatch_router, dependencies=auth_dep)
+api_router.include_router(tripwire_router, dependencies=auth_dep)
+api_router.include_router(analytics_router, dependencies=auth_dep)
+api_router.include_router(advanced_router, dependencies=auth_dep)
+
+# Allow-listed routers with public entrypoints
 api_router.include_router(health_router)
-api_router.include_router(integration_router)
-api_router.include_router(inventory_router)
-api_router.include_router(dispatch_router)
-api_router.include_router(tripwire_router)
-api_router.include_router(analytics_router)
-api_router.include_router(advanced_router)
 api_router.include_router(auth_router)
 api_router.include_router(platform_router)
 

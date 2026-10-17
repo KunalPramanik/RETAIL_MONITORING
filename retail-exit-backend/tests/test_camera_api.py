@@ -21,14 +21,14 @@ async def test_camera_crud_endpoints(async_client: AsyncClient):
         session.add(lane)
         await session.commit()
 
-    # 1. List cameras
-    list_resp = await async_client.get("/api/cameras")
-    assert list_resp.status_code == 200
-    initial_count = len(list_resp.json())
-
     from src.security import create_access_token
     admin_token = create_access_token(subject="ADMIN-1", role="ADMIN")
     admin_headers = {"Authorization": f"Bearer {admin_token}"}
+
+    # 1. List cameras
+    list_resp = await async_client.get("/api/cameras", headers=admin_headers)
+    assert list_resp.status_code == 200
+    initial_count = len(list_resp.json())
 
     # 2. Register new camera without token is rejected
     cam_payload = {
@@ -50,7 +50,7 @@ async def test_camera_crud_endpoints(async_client: AsyncClient):
     camera_id = cam_data["cameraId"]
 
     # 4. Retrieve camera by ID
-    get_resp = await async_client.get(f"/api/cameras/{camera_id}")
+    get_resp = await async_client.get(f"/api/cameras/{camera_id}", headers=admin_headers)
     assert get_resp.status_code == 200
     assert get_resp.json()["cameraId"] == camera_id
 

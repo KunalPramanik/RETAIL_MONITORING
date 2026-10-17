@@ -7,7 +7,7 @@ AppUser roles ('SUPER_ADMIN', 'ADMIN', 'SUPERVISOR', 'VIEWER').
 
 from typing import List, Optional
 import logging
-from fastapi import Header, HTTPException, status, Depends
+from fastapi import Header, HTTPException, status, Depends, Query
 from jose import jwt, JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,16 +23,22 @@ def require_roles(allowed_roles: List[str]):
     """Returns a FastAPI dependency that cryptographically verifies the bearer token and checks RBAC permissions."""
     async def role_checker(
         authorization: Optional[str] = Header(None, description="Bearer token header"),
+        token_query: Optional[str] = Query(None, alias="token", description="Query token parameter"),
         db: AsyncSession = Depends(get_db),
     ) -> str:
-        if not authorization or not authorization.lower().startswith("bearer "):
+        token = None
+        if authorization and authorization.lower().startswith("bearer "):
+            token = authorization[7:].strip()
+        elif token_query:
+            token = token_query.strip()
+
+        if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication credentials were not provided. Bearer token required.",
                 headers={"WWW-Authenticate": "Bearer"},
             )
 
-        token = authorization[7:].strip()
         from src.security import is_token_revoked
         if is_token_revoked(token):
             raise HTTPException(

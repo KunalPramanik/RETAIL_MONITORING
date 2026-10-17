@@ -43,7 +43,8 @@ async def test_live_camera_detections(async_client: AsyncClient):
         session.add_all([store, lane, cam, prod])
         await session.commit()
 
-    resp = await async_client.get("/api/cameras/detections/live?limit=10")
+    token = create_access_token(subject="AUDITOR-1", role="ADMIN")
+    resp = await async_client.get("/api/cameras/detections/live?limit=10", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -51,7 +52,8 @@ async def test_live_camera_detections(async_client: AsyncClient):
 
 @pytest.mark.anyio
 async def test_movement_monitor(async_client: AsyncClient):
-    resp = await async_client.get("/api/events/movement-monitor?limit=10")
+    token = create_access_token(subject="AUDITOR-1", role="ADMIN")
+    resp = await async_client.get("/api/events/movement-monitor?limit=10", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     data = resp.json()
     assert isinstance(data, list)
@@ -96,7 +98,9 @@ async def test_initial_stock_verification_workflow(async_client: AsyncClient):
         await session.commit()
 
     # 1. Fetch initial stock verification list (auto-proposes baseline for new catalog products)
-    list_resp = await async_client.get("/api/inventory/verification")
+    admin_token = create_access_token(subject="AUDITOR-1", role="ADMIN")
+    admin_headers = {"Authorization": f"Bearer {admin_token}"}
+    list_resp = await async_client.get("/api/inventory/verification", headers=admin_headers)
     assert list_resp.status_code == 200
     verifications = list_resp.json()
     assert len(verifications) > 0

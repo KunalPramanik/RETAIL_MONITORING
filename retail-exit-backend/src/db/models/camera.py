@@ -32,10 +32,10 @@ class Camera(Base):
     label: Any = Column(String(255), nullable=False)  # e.g. "Exit Lane 3 — North"
     lane_id: Any = Column(String(36), ForeignKey("lane.lane_id"), nullable=True)
     ip_address: Any = Column(String(64), nullable=False)
-    rtsp_path: Any = Column(String(255), nullable=False)
-    sub_stream_path: Any = Column(String(255), nullable=True)
+    rtsp_path: Any = Column(EncryptedStringType, nullable=False)
+    sub_stream_path: Any = Column(EncryptedStringType, nullable=True)
     credentials_ref: Any = Column(EncryptedStringType, nullable=True)  # Fernet encrypted credentials at rest
-    stream_url: Any = Column(Text, nullable=True)  # media-server WebRTC/HLS URL
+    stream_url: Any = Column(EncryptedStringType, nullable=True)  # Fernet encrypted media-server WebRTC/HLS/RTSP URL
     pairing_method: Any = Column(String(32), nullable=False, default="MANUAL")
     resolution: Any = Column(String(32), nullable=True, default="1920x1080")
     fps: Any = Column(Integer, nullable=True, default=30)

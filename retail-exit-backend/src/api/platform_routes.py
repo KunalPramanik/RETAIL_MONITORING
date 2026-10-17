@@ -175,6 +175,13 @@ async def require_master_super_admin(
         )
 
     token = authorization[7:].strip()
+    from src.security import is_token_revoked
+    if is_token_revoked(token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication token has been revoked or session terminated.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         caller_id: Optional[str] = payload.get("sub")

@@ -431,8 +431,8 @@ export default function StreamPlayer({
     }
   };
 
-  // Video Source URL (continuous stream from FastAPI)
-  const videoSrc = `/api/cameras/${cameraId}/stream?raw=true&stream=${streamQuality}&t=${snapshotKey}`;
+  // Video Source URL (continuous stream from FastAPI, server-side OpenCV annotated)
+  const videoSrc = `/api/cameras/${cameraId}/stream?stream=${streamQuality}&t=${snapshotKey}`;
   const currentSnapshotUrl = `/api/cameras/${cameraId}/snapshot?t=${snapshotKey}`;
 
   // Helper to match Part P.1 and CC.2 color & styling system with explicit object shapes
@@ -614,146 +614,7 @@ export default function StreamPlayer({
           </div>
         )}
 
-        {/* Solid Pinned Badges with CC.2 Strict Bracketed Format & Oriented Polygons */}
-        <div className="absolute inset-0 pointer-events-none z-20">
-          <svg className="absolute inset-0 w-full h-full pointer-events-none">
-            {boxes.map((b, idx) => {
-              if (!b.polygon || b.polygon.length < 3) return null;
-              const style = getBoxStyle(b);
-              const pointsStr = b.polygon
-                .map(([x, y]) => {
-                  const px =
-                    x <= 1.0
-                      ? x * 100
-                      : (x / (resolution.includes("1920") ? 1920 : 1280)) * 100;
-                  const py =
-                    y <= 1.0
-                      ? y * 100
-                      : (y / (resolution.includes("1080") ? 1080 : 720)) * 100;
-                  return `${px}%,${py}%`;
-                })
-                .join(" ");
-              return (
-                <polygon
-                  key={`poly-${idx}`}
-                  points={pointsStr}
-                  fill={style.bg}
-                  fillOpacity={0.25}
-                  stroke={style.border}
-                  strokeWidth={2}
-                  strokeLinejoin="round"
-                />
-              );
-            })}
-          </svg>
-
-          {boxes.map((b, idx) => {
-            if (!b.box || b.box.length < 4) return null;
-            const rawType = (b.type || "").toUpperCase();
-            const rawLabel = (b.label || "").toUpperCase();
-            if (rawType === "WALL_PICTURE" && !rawLabel.includes("STATIC ARTIFACT")) {
-              return null;
-            }
-
-            const style = getBoxStyle(b);
-            const isNorm = b.box.every((v) => typeof v === "number" && v >= 0 && v <= 1.0);
-            const frameW = resolution?.includes("1920") ? 1920 : 1280;
-            const frameH = resolution?.includes("1080") ? 1080 : 720;
-
-            let left = isNorm ? b.box[0] * 100 : (b.box[0] / frameW) * 100;
-            let top = isNorm ? b.box[1] * 100 : (b.box[1] / frameH) * 100;
-            let width = isNorm ? b.box[2] * 100 : (b.box[2] / frameW) * 100;
-            let height = isNorm ? b.box[3] * 100 : (b.box[3] / frameH) * 100;
-
-            // Handle [x1, y1, x2, y2] coordinate format safely
-            if (!isNorm && width > left && (left + width) > 105) {
-              width = width - left;
-              height = height - top;
-            }
-
-            left = Math.max(0, Math.min(98, left));
-            top = Math.max(0, Math.min(98, top));
-            width = Math.max(1.5, Math.min(100 - left, width));
-            height = Math.max(1.5, Math.min(100 - top, height));
-
-            const isPerson = style.shape === "person_matched" || style.shape === "person_unmatched";
-            const isCase = style.shape === "case";
-            const isDevice = style.shape === "electronics";
-            const isDoor = style.shape === "door";
-            const isHazard = style.shape === "hazard";
-
-            let cleanTag = (b.label || "").trim();
-            if (!cleanTag.startsWith("[")) {
-              const confVal = typeof b.confidence === "number"
-                ? (b.confidence <= 1.0 ? b.confidence * 100 : b.confidence).toFixed(0)
-                : "";
-              const confPct = confVal ? `${confVal}%` : "";
-              const trackId = b.track_id ? ` ID:${b.track_id}` : ` #${idx + 1}`;
-              const baseName = String(cleanTag || style.category).replace(/\s*\(\d+%\)/g, "").trim();
-              cleanTag = `[${baseName} ${confPct}${trackId}]`;
-            }
-            const badgePlacement = top < 7 ? "top-0 left-0" : "-top-5 left-0";
-
-            // Shape border classes
-            let shapeBorderClass = "rounded-md border-2";
-            if (isPerson) shapeBorderClass = "rounded-2xl border-2 shadow-[0_0_12px_rgba(16,185,129,0.3)]";
-            else if (isCase) shapeBorderClass = "rounded-none border-2 shadow-[0_0_8px_rgba(168,85,247,0.3)]";
-            else if (isDevice) shapeBorderClass = "rounded-md border-2 border-dashed";
-            else if (isDoor) shapeBorderClass = "rounded-t-xl border-2 border-dashed";
-            else if (isHazard) shapeBorderClass = "rounded-sm border-2 animate-pulse";
-
-            return (
-              <div
-                key={idx}
-                className={`absolute transition-all duration-100 ease-out pointer-events-none ${shapeBorderClass}`}
-                style={{
-                  left: `${left}%`,
-                  top: `${top}%`,
-                  width: `${width}%`,
-                  height: `${height}%`,
-                  borderColor: style.border,
-                }}
-              >
-                {/* Corner reticles for industrial cases/merchandise */}
-                {isCase && (
-                  <>
-                    <div className="absolute -top-1 -left-1 w-2.5 h-2.5 border-t-2 border-l-2 border-white" />
-                    <div className="absolute -top-1 -right-1 w-2.5 h-2.5 border-t-2 border-r-2 border-white" />
-                    <div className="absolute -bottom-1 -left-1 w-2.5 h-2.5 border-b-2 border-l-2 border-white" />
-                    <div className="absolute -bottom-1 -right-1 w-2.5 h-2.5 border-b-2 border-r-2 border-white" />
-                  </>
-                )}
-
-                {/* Primary Object Detection & Category Badge */}
-                <div
-                  className={`absolute ${badgePlacement} px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider font-mono shadow-md flex items-center gap-1 whitespace-nowrap rounded-sm z-30`}
-                  style={{
-                    backgroundColor: style.bg,
-                    color: style.text,
-                  }}
-                >
-                  {isPerson && <Users size={10} className="shrink-0" />}
-                  {isCase && <Package size={10} className="shrink-0" />}
-                  {isHazard && <AlertCircle size={10} className="shrink-0" />}
-                  <span>{cleanTag}</span>
-                </div>
-
-                {/* Optional Traversal Direction Pill */}
-                {b.direction && (
-                  <div
-                    className={`absolute -bottom-5 right-0 px-1.5 py-0.2 text-[9px] font-mono font-bold uppercase tracking-wider shadow rounded z-30 ${
-                      b.direction === "IN"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-blue-600 text-white"
-                    }`}
-                  >
-                    {b.direction === "IN" ? "IN ↑" : "OUT ↓"}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        {/* Server-side OpenCV FrameRenderer burns boxes directly into MJPEG/JPEG stream to prevent client duplication and alignment drift */}
 
         {/* Interactive ROI Polygon Layer */}
         <RoiCanvas
@@ -772,7 +633,7 @@ export default function StreamPlayer({
               </span>
               <button
                 onClick={() => setShowPtz(false)}
-                className="text-[#8B93A1] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-0.5 rounded transition-colors"
               >
                 <X size={12} />
               </button>
@@ -986,7 +847,7 @@ export default function StreamPlayer({
                   setSuggestedGateLine(null);
                   handleClearRoi();
                 }}
-                className="px-1.5 py-0.5 text-[var(--text-muted)] hover:text-white text-[11px]"
+                className="px-1.5 py-0.5 text-[var(--text-muted)] hover:text-[var(--text-primary)] text-[11px] transition-colors"
               >
                 Cancel
               </button>
@@ -1121,8 +982,8 @@ export default function StreamPlayer({
 
       {/* Snapshot Modal */}
       {showSnapshotModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-3xl w-full p-5 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-3xl w-full p-5 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div className="flex items-center gap-2 font-mono text-sm font-bold text-[var(--text-primary)]">
                 <CameraIcon size={18} className="text-[#38BDF8]" />
@@ -1132,13 +993,13 @@ export default function StreamPlayer({
               </div>
               <button
                 onClick={() => setShowSnapshotModal(false)}
-                className="p-1 text-[var(--text-secondary)] hover:text-white rounded"
+                className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-subtle)]"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
+            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center box-3d p-1">
               {snapshotFailed ? (
                 <div className="flex flex-col items-center justify-center p-6 text-center space-y-2">
                   <div className="p-3 rounded-full bg-neutral-800 text-neutral-400">
@@ -1175,14 +1036,14 @@ export default function StreamPlayer({
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSnapshotKey(Date.now())}
-                  className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg flex items-center gap-1.5 transition-colors"
+                  className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-lg flex items-center gap-1.5 transition-colors shadow-sm"
                 >
                   <RefreshCw size={13} /> Refresh Frame
                 </button>
                 <a
                   href={`/api/cameras/${cameraId}/snapshot?download=1`}
                   download={`snapshot_${cameraId}.jpg`}
-                  className="px-3 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg flex items-center gap-1.5 shadow transition-colors"
+                  className="btn-3d btn-3d-primary text-xs flex items-center gap-1.5"
                 >
                   <Download size={13} /> Download JPEG
                 </a>
@@ -1194,8 +1055,8 @@ export default function StreamPlayer({
 
       {/* Detection History Modal */}
       {showHistoryModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-4xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div className="flex items-center gap-2 font-mono text-base font-bold text-[var(--text-primary)]">
                 <History size={20} className="text-[#E8A33D]" />
@@ -1205,14 +1066,14 @@ export default function StreamPlayer({
                 <button
                   onClick={fetchCameraHistory}
                   disabled={historyLoading}
-                  className="p-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-white rounded border border-[var(--border-hairline)] transition-colors"
+                  className="p-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg border border-[var(--border-subtle)] transition-colors shadow-sm"
                   title="Refresh History"
                 >
                   <RefreshCw size={14} className={historyLoading ? "animate-spin" : ""} />
                 </button>
                 <button
                   onClick={() => setShowHistoryModal(false)}
-                  className="p-1 text-[var(--text-secondary)] hover:text-white rounded"
+                  className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-subtle)]"
                 >
                   <X size={18} />
                 </button>

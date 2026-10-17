@@ -15,6 +15,7 @@ import socket
 import logging
 import threading
 import asyncio
+import queue
 from datetime import datetime, timezone
 from typing import Optional, Dict, Tuple, AsyncGenerator
 import numpy as np
@@ -44,12 +45,32 @@ class CameraStreamSession:
         self.fps_observed: float = 0.0
         self.resolution: Tuple[int, int] = (1280, 720)
         self.lock = threading.Lock()
+        self._newest_frame_queue: queue.Queue = queue.Queue(maxsize=1)
         
         # V8 Health Metrics
         self.reconnect_count: int = 0
         self.decode_failure_count: int = 0
         self.codec: str = "UNKNOWN"
         self.latency_ms: float = 0.0
+
+    def push_newest_frame(self, frame_bytes: bytes, frame_bgr: np.ndarray, timestamp: float) -> None:
+        """Pushes frame into size-1 newest-frame queue, dropping oldest if full (F4)."""
+        try:
+            if self._newest_frame_queue.full():
+                try:
+                    self._newest_frame_queue.get_nowait()
+                except Exception:
+                    pass
+            self._newest_frame_queue.put_nowait((frame_bytes, frame_bgr, timestamp))
+        except Exception:
+            pass
+
+    def pop_newest_frame(self) -> Optional[Tuple[bytes, np.ndarray, float]]:
+        """Consumes freshest available frame from size-1 queue without latency accumulation."""
+        try:
+            return self._newest_frame_queue.get_nowait()
+        except Exception:
+            return None
 
 
 
@@ -356,6 +377,7 @@ class CameraStreamSession:
                     if frame is not None and frame.size > 0:
                         h, w = frame.shape[:2]
                         now = time.time()
+                        self.push_newest_frame(jpeg_bytes, frame, now)
                         with self.lock:
                             self.last_frame_bytes = jpeg_bytes
                             self.last_real_frame_bytes = jpeg_bytes
@@ -433,6 +455,7 @@ class CameraStreamSession:
                     if ret_enc:
                         jpeg_bytes = buf.tobytes()
                         now = time.time()
+                        self.push_newest_frame(jpeg_bytes, frame, now)
                         with self.lock:
                             self.last_frame_bytes = jpeg_bytes
                             self.last_real_frame_bytes = jpeg_bytes
@@ -598,11 +621,15 @@ class CameraStreamManager:
 
         deadline = time.time() + max_wait_sec
         while time.time() < deadline:
+            q_item = session.pop_newest_frame()
+            if q_item is not None:
+                latency = round((time.perf_counter() - t0) * 1000.0, 1)
+                return q_item[0], latency
             with session.lock:
                 if session.has_real_frame and session.last_real_frame_bytes is not None:
                     latency = round((time.perf_counter() - t0) * 1000.0, 1)
                     return session.last_real_frame_bytes, latency
-            time.sleep(0.05)
+            time.sleep(0.01)
 
         latency = round((time.perf_counter() - t0) * 1000.0, 1)
         return None, latency

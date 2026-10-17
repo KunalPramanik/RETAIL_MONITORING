@@ -62,9 +62,36 @@ async def init_platform_db() -> None:
         await conn.run_sync(PlatformBase.metadata.create_all)
     logger.info("Platform control-plane schema verified.")
 
-    # Bootstrap master super admin: Software Owner ONLY (ces@gmail.com)
-    owner_email = os.getenv("BOOTSTRAP_OWNER_EMAIL", "ces@gmail.com").strip().lower()
-    owner_password = os.getenv("BOOTSTRAP_OWNER_PASSWORD", "Ces@1234")
+    # Bootstrap master super admin: Software Owner
+    env = os.getenv("ENVIRONMENT", "production").lower()
+    owner_email = os.getenv("BOOTSTRAP_OWNER_EMAIL", "").strip().lower()
+    owner_password = os.getenv("BOOTSTRAP_OWNER_PASSWORD", "")
+
+    if not owner_email:
+        if env in ("development", "test", "testing"):
+            owner_email = "ces@gmail.com"
+        else:
+            raise RuntimeError(
+                "CRITICAL SECURITY CONFIGURATION ERROR: BOOTSTRAP_OWNER_EMAIL must be explicitly provided in production."
+            )
+
+    if not owner_password:
+        if env in ("development", "test", "testing"):
+            owner_password = "Ces@1234"
+        else:
+            import secrets
+            owner_password = secrets.token_urlsafe(24)
+            logger.critical("=" * 60)
+            logger.critical("BOOTSTRAP SUPER ADMIN CREATED")
+            logger.critical("Email: %s", owner_email)
+            logger.critical("Generated Password: %s", owner_password)
+            logger.critical("Save this credential immediately. It will not be shown again.")
+            logger.critical("=" * 60)
+    elif env == "production" and owner_password in ("Ces@1234", "admin123", "password", "changeme", "12345678"):
+        raise RuntimeError(
+            "CRITICAL SECURITY CONFIGURATION ERROR: Weak/default BOOTSTRAP_OWNER_PASSWORD is strictly prohibited in production."
+        )
+
     owner_username = owner_email.split("@")[0]
 
     async with PlatformAsyncSessionLocal() as session:

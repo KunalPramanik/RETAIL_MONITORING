@@ -183,7 +183,7 @@ export default function SoftwareOwnerSettingsPage() {
         <button
           onClick={() => fetchProfile(true)}
           disabled={refreshing}
-          className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-xl text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
+          className="btn-3d px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-xl text-xs font-medium flex items-center gap-2 transition-colors disabled:opacity-50"
         >
           <RefreshCw size={14} className={refreshing ? "animate-spin text-[#38BDF8]" : ""} />
           <span>Refresh Status</span>
@@ -194,7 +194,7 @@ export default function SoftwareOwnerSettingsPage() {
         {/* Left Column: Software Owner Identity & Platform Status */}
         <div className="space-y-6">
           {/* Identity Card */}
-          <div className="bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-4">
+          <div className="card-3d bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-4">
             <div className="flex items-center gap-3 pb-4 border-b border-[var(--border-hairline)]">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-lg shadow-blue-900/30 font-bold text-lg">
                 {isSoftwareOwner ? "SO" : (profile?.email?.[0] || "A").toUpperCase()}
@@ -244,7 +244,7 @@ export default function SoftwareOwnerSettingsPage() {
           </div>
 
           {/* Security & System Health */}
-          <div className="bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-4">
+          <div className="card-3d bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-4">
             <h3 className="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
               <ShieldCheck size={16} className="text-emerald-500 dark:text-emerald-400" /> Platform Security Telemetry
             </h3>
@@ -274,7 +274,7 @@ export default function SoftwareOwnerSettingsPage() {
         </div>
 
         {/* Right Column: Password Change Form (Section 7.8) */}
-        <div className="lg:col-span-2 bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-6">
+        <div className="lg:col-span-2 card-3d bg-[var(--bg-panel)] rounded-2xl border border-[var(--border-hairline)] p-6 shadow-xl space-y-6">
           <div className="border-b border-[var(--border-hairline)] pb-4">
             <h2 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
               <Key size={18} className="text-[#38BDF8]" /> {isSoftwareOwner ? "Update Software Owner Password" : "Update Account Password"}
@@ -316,7 +316,7 @@ export default function SoftwareOwnerSettingsPage() {
                   placeholder="Enter current password (e.g. Ces@1234)"
                   value={currentPassword}
                   onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
                 <button
                   type="button"
@@ -348,7 +348,7 @@ export default function SoftwareOwnerSettingsPage() {
                   placeholder="Enter new strong password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
                 <button
                   type="button"
@@ -376,7 +376,7 @@ export default function SoftwareOwnerSettingsPage() {
                   placeholder="Repeat new password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-3 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
                 <button
                   type="button"
@@ -392,7 +392,7 @@ export default function SoftwareOwnerSettingsPage() {
               <button
                 type="submit"
                 disabled={savingPassword}
-                className="px-6 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50 flex items-center gap-2"
+                className="btn-3d btn-3d-primary px-6 py-2.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50 flex items-center gap-2"
               >
                 {savingPassword ? "Updating Password..." : "Update Master Password"}
               </button>

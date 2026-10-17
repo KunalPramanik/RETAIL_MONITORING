@@ -712,7 +712,7 @@ function PlatformControlPanelInner() {
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all shrink-0 ${
             activeTab === "tenants"
               ? "border-[#38BDF8] text-[#38BDF8] font-bold"
-              : "border-transparent text-[var(--text-secondary)] hover:text-white"
+              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
           }`}
         >
           <Building size={15} /> Companies & Tenants ({tenants.length})
@@ -723,7 +723,7 @@ function PlatformControlPanelInner() {
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all shrink-0 ${
             activeTab === "stores"
               ? "border-[#4FD1B3] text-[#4FD1B3] font-bold"
-              : "border-transparent text-[var(--text-secondary)] hover:text-white"
+              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
           }`}
         >
           <Store size={15} /> Stores Fleet ({stores.length})
@@ -734,7 +734,7 @@ function PlatformControlPanelInner() {
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all shrink-0 ${
             activeTab === "accounts"
               ? "border-violet-400 text-violet-400 font-bold"
-              : "border-transparent text-[var(--text-secondary)] hover:text-white"
+              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
           }`}
         >
           <Users size={15} /> User Accounts & Security ({accounts.length})
@@ -745,7 +745,7 @@ function PlatformControlPanelInner() {
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all shrink-0 ${
             activeTab === "billing"
               ? "border-indigo-400 text-indigo-400 font-bold"
-              : "border-transparent text-[var(--text-secondary)] hover:text-white"
+              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
           }`}
         >
           <CreditCard size={15} /> Subscriptions & Billing ({subscriptions.length})
@@ -756,7 +756,7 @@ function PlatformControlPanelInner() {
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all shrink-0 ${
             activeTab === "cameras"
               ? "border-amber-400 text-amber-400 font-bold"
-              : "border-transparent text-[var(--text-secondary)] hover:text-white"
+              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
           }`}
         >
           <Camera size={15} /> Camera Fleet Health ({cameras.length})
@@ -767,7 +767,7 @@ function PlatformControlPanelInner() {
           className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-all shrink-0 ${
             activeTab === "audit"
               ? "border-rose-400 text-rose-400 font-bold"
-              : "border-transparent text-[var(--text-secondary)] hover:text-white"
+              : "border-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)]"
           }`}
         >
           <Clock size={15} /> Audit Ledger ({auditLogs.length})
@@ -1596,8 +1596,8 @@ function PlatformControlPanelInner() {
       {/* MODAL 1: REGISTER NEW COMPANY / TENANT */}
       {/* ============================================================ */}
       {showCreateTenantModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Building size={18} className="text-[#38BDF8]" /> Register New Company / Tenant
@@ -1643,7 +1643,7 @@ function PlatformControlPanelInner() {
                       slug: prev.slug || val.toLowerCase().replace(/[^a-z0-9]/g, "-"),
                     }));
                   }}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1660,7 +1660,7 @@ function PlatformControlPanelInner() {
                       slug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""),
                     }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[#38BDF8] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[#38BDF8] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1673,7 +1673,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setCreateTenantForm((prev) => ({ ...prev, contactEmail: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1684,7 +1684,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setCreateTenantForm((prev) => ({ ...prev, tierId: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 >
                   {plans.map((p) => (
                     <option key={p.tierId} value={p.tierId}>
@@ -1707,7 +1707,7 @@ function PlatformControlPanelInner() {
                       onChange={(e) =>
                         setCreateTenantForm((prev) => ({ ...prev, adminEmail: e.target.value }))
                       }
-                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                      className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                     />
                   </div>
                   <div className="relative">
@@ -1718,7 +1718,7 @@ function PlatformControlPanelInner() {
                       onChange={(e) =>
                         setCreateTenantForm((prev) => ({ ...prev, adminPassword: e.target.value }))
                       }
-                      className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 pr-8 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                      className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2 pr-8 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                     />
                     <button
                       type="button"
@@ -1737,14 +1737,14 @@ function PlatformControlPanelInner() {
                 <button
                   type="button"
                   onClick={() => setShowCreateTenantModal(false)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionSubmitting}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
                 >
                   {actionSubmitting ? "Registering..." : "Create Tenant"}
                 </button>
@@ -1758,8 +1758,8 @@ function PlatformControlPanelInner() {
       {/* MODAL 2: SUSPEND / REACTIVATE REASON PROMPT (Section 7.3 & 7.4) */}
       {/* ============================================================ */}
       {showStatusReasonModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <AlertTriangle
@@ -1802,7 +1802,7 @@ function PlatformControlPanelInner() {
                   placeholder="State the commercial or security reason for this action (e.g. Past due payment notice #1024, requested maintenance window)..."
                   value={statusReason}
                   onChange={(e) => setStatusReason(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1810,17 +1810,17 @@ function PlatformControlPanelInner() {
                 <button
                   type="button"
                   onClick={() => setShowStatusReasonModal(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionSubmitting}
-                  className={`px-5 py-2 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 ${
+                  className={`btn-3d px-5 py-2 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 ${
                     showStatusReasonModal.targetStatus === "SUSPENDED"
-                      ? "bg-rose-600 hover:bg-rose-700 shadow-rose-900/30"
-                      : "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/30"
+                      ? "btn-3d-danger bg-rose-600 hover:bg-rose-700 shadow-rose-900/30"
+                      : "btn-3d-success bg-emerald-600 hover:bg-emerald-700 shadow-emerald-900/30"
                   }`}
                 >
                   {actionSubmitting ? "Applying..." : "Confirm Action"}
@@ -1835,8 +1835,8 @@ function PlatformControlPanelInner() {
       {/* MODAL 3: PROVISION STORE OWNER ACCOUNT (Section 7.3) */}
       {/* ============================================================ */}
       {showProvisionOwnerModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <UserPlus size={18} className="text-[#38BDF8]" /> Provision Store Administrator
@@ -1883,7 +1883,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setProvisionOwnerForm((prev) => ({ ...prev, email: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1896,7 +1896,7 @@ function PlatformControlPanelInner() {
                   onChange={(e) =>
                     setProvisionOwnerForm((prev) => ({ ...prev, username: e.target.value }))
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1912,7 +1912,7 @@ function PlatformControlPanelInner() {
                     onChange={(e) =>
                       setProvisionOwnerForm((prev) => ({ ...prev, password: e.target.value }))
                     }
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 pr-10 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                   />
                   <button
                     type="button"
@@ -1933,14 +1933,14 @@ function PlatformControlPanelInner() {
                 <button
                   type="button"
                   onClick={() => setShowProvisionOwnerModal(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionSubmitting}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
                 >
                   {actionSubmitting ? "Provisioning..." : "Provision Account"}
                 </button>
@@ -1954,8 +1954,8 @@ function PlatformControlPanelInner() {
       {/* MODAL 4: RECORD INVOICE PAYMENT (Section 7.5) */}
       {/* ============================================================ */}
       {showRecordPaymentModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <DollarSign size={18} className="text-emerald-500 dark:text-emerald-400" /> Record Offline Payment
@@ -1994,7 +1994,7 @@ function PlatformControlPanelInner() {
                   placeholder="e.g. UTR-9021849102"
                   value={paymentForm.paymentRef}
                   onChange={(e) => setPaymentForm((prev) => ({ ...prev, paymentRef: e.target.value }))}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -2003,7 +2003,7 @@ function PlatformControlPanelInner() {
                 <select
                   value={paymentForm.paymentMethod}
                   onChange={(e) => setPaymentForm((prev) => ({ ...prev, paymentMethod: e.target.value }))}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
                 >
                   <option value="BANK_TRANSFER">Bank Transfer / NEFT / RTGS</option>
                   <option value="UPI">UPI / Digital Gateway</option>
@@ -2020,7 +2020,7 @@ function PlatformControlPanelInner() {
                   placeholder="Optional audit notes regarding offline verification..."
                   value={paymentForm.notes}
                   onChange={(e) => setPaymentForm((prev) => ({ ...prev, notes: e.target.value }))}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
+                  className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-xl p-2.5 text-[var(--text-primary)] outline-none"
                 />
               </div>
 
@@ -2028,14 +2028,14 @@ function PlatformControlPanelInner() {
                 <button
                   type="button"
                   onClick={() => setShowRecordPaymentModal(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={actionSubmitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-success px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold shadow-lg shadow-emerald-900/30 disabled:opacity-50"
                 >
                   {actionSubmitting ? "Recording..." : "Record Payment & Settle"}
                 </button>
@@ -2049,7 +2049,7 @@ function PlatformControlPanelInner() {
       {/* MODAL 5: CREATE / EDIT CUSTOM SUBSCRIPTION PLAN */}
       {/* ============================================================ */}
       {showPlanModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -2164,7 +2164,7 @@ function PlatformControlPanelInner() {
                         className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-[11px] transition-colors border ${
                           isChecked
                             ? "bg-indigo-950/40 border-indigo-500/40 text-indigo-300 font-semibold"
-                            : "bg-[var(--bg-panel)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-white"
+                            : "bg-[var(--bg-panel)] border-[var(--border-hairline)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                         }`}
                       >
                         <div className={`w-4 h-4 rounded flex items-center justify-center border transition-all ${
@@ -2183,7 +2183,7 @@ function PlatformControlPanelInner() {
                 <button
                   type="button"
                   onClick={() => setShowPlanModal(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
                 >
                   Cancel
                 </button>
@@ -2204,7 +2204,7 @@ function PlatformControlPanelInner() {
       {/* MODAL 6: MANUAL STORE SUBSCRIPTION OVERRIDE */}
       {/* ============================================================ */}
       {showOverrideSubModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
           <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div>
@@ -2212,7 +2212,7 @@ function PlatformControlPanelInner() {
                   <ShieldCheck size={18} className="text-emerald-400" /> Manual Store Plan Override
                 </h3>
                 <p className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                  Store: <span className="text-white font-bold">{showOverrideSubModal.name}</span>
+                  Store: <span className="text-[var(--text-primary)] font-bold">{showOverrideSubModal.name}</span>
                 </p>
               </div>
               <button
@@ -2235,7 +2235,7 @@ function PlatformControlPanelInner() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--text-secondary)]">Active Cameras:</span>
-                  <span className="text-white font-bold">
+                  <span className="text-[var(--text-primary)] font-bold">
                     {showOverrideSubModal.activeCamerasCount ?? showOverrideSubModal.cameraCount ?? 0} cameras
                   </span>
                 </div>
@@ -2316,7 +2316,7 @@ function PlatformControlPanelInner() {
                 <button
                   type="button"
                   onClick={() => setShowOverrideSubModal(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
                 >
                   Cancel
                 </button>

@@ -163,15 +163,15 @@ export default function EmployeeDetailPage() {
 
       {/* 360 Multi-Angle Face Biometric Enrollment Modal */}
       {show360Modal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <RotateCw size={18} className="text-[#38BDF8]" /> 360° Multi-Angle Face Enrollment: {employee?.name}
               </h3>
               <button
                 onClick={() => setShow360Modal(false)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
               >
                 ✕
               </button>

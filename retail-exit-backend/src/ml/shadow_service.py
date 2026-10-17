@@ -48,10 +48,13 @@ class ShadowDeploymentService:
                 opts = ort.SessionOptions()
                 opts.intra_op_num_threads = 2
                 opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+                avail_providers = ort.get_available_providers()
+                active_providers = [p for p in ["TensorrtExecutionProvider", "CUDAExecutionProvider", "DmlExecutionProvider", "OpenVINOExecutionProvider"] if p in avail_providers]
+                active_providers.append("CPUExecutionProvider")
                 self._shadow_session = ort.InferenceSession(
                     shadow_model.weights_path,
                     sess_options=opts,
-                    providers=["CPUExecutionProvider"]
+                    providers=active_providers
                 )
                 self._current_shadow_version = shadow_model.model_version
                 logger.info("Initialized shadow inference session for %s", shadow_model.model_version)

@@ -32,6 +32,7 @@ from src.db.models import (
     get_utc_now,
 )
 from src.realtime.hub import ws_hub
+from src.core.config import settings
 
 logger = logging.getLogger("secops.engine.inventory_ledger")
 
@@ -67,6 +68,7 @@ class InventoryLedgerEngine:
         location_id: str = "MAIN_WAREHOUSE",
         timestamp: Optional[datetime] = None,
         commit: bool = True,
+        allow_negative: Optional[bool] = None,
     ) -> Tuple[MaterialMovementLedger, MaterialInventoryBalance, Optional[Alert]]:
         """Atomically persists a confirmed material movement transaction and updates inventory balance.
 
@@ -262,6 +264,33 @@ class InventoryLedgerEngine:
         elif tx_type == "ADJUSTMENT":
             balance.adjusted_stock += total_units
             balance.current_stock += total_units
+
+        # Enforce Negative Stock Policy (Section 6.3 / E10)
+        allow_neg = allow_negative if allow_negative is not None else getattr(settings, "ALLOW_NEGATIVE_STOCK", False)
+        if balance.current_stock < 0:
+            logger.warning(
+                "Negative Stock Alert for material %s (%s): current_stock=%d after %s of %d units",
+                resolved_mat_id, material.name, balance.current_stock, tx_type, total_units,
+            )
+            negative_alert = Alert(
+                alert_id=f"alt_neg_{uuid.uuid4().hex[:8]}",
+                camera_id=camera_id,
+                event_id=None,
+                alert_type="INVENTORY_ANOMALY",
+                severity="HIGH",
+                delta_units=abs(balance.current_stock),
+                status="OPEN",
+                resolution_note=(
+                    f"Negative Stock Invariant Violation: Material '{material.name}' (SKU: {material.sku_code}) "
+                    f"dropped to negative balance ({balance.current_stock} units) after {tx_type} transaction of {total_units} units."
+                ),
+                created_at=now,
+            )
+            session.add(negative_alert)
+            if not allow_neg and tx_type == "ADJUSTMENT":
+                raise ValueError(
+                    f"Negative stock prohibited by inventory policy: Adjustment would reduce '{material.name}' balance to {balance.current_stock} units."
+                )
 
         # Defect tracking partition
         defect_event = None

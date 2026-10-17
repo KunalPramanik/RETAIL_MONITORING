@@ -75,7 +75,7 @@ export default function ReportsPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)] shadow-sm">
+      <div className="card-3d flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-6 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-3">
             <FileText className="text-[#38BDF8]" /> Daily Loss-Prevention Audit Digest
@@ -85,7 +85,7 @@ export default function ReportsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg px-3 py-1.5 text-xs font-mono text-[var(--text-primary)]">
+          <div className="flex items-center gap-2 input-3d px-3 py-1.5 text-xs font-mono text-[var(--text-primary)]">
             <Calendar size={14} className="text-[#38BDF8]" />
             <input
               type="date"
@@ -96,7 +96,7 @@ export default function ReportsPage() {
           </div>
           <button
             onClick={fetchReport}
-            className="p-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg transition-colors"
+            className="p-2.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-lg transition-colors shadow-sm"
             title="Refresh Report Data"
           >
             <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
@@ -106,7 +106,7 @@ export default function ReportsPage() {
               const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
               window.open(`${apiBaseUrl}/api/reports/export/xlsx?start_date=${reportDate}&end_date=${reportDate}`, "_blank");
             }}
-            className="px-3.5 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-emerald-900/30 transition-all font-mono"
+            className="btn-3d btn-3d-success text-sm font-semibold flex items-center gap-2 font-mono"
             title="Export Multi-Tab Audit Workbook (.xlsx)"
           >
             <FileSpreadsheet size={16} /> Export Excel (.xlsx)
@@ -116,7 +116,7 @@ export default function ReportsPage() {
               const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
               window.open(`${apiBaseUrl}/api/reports/daily?date=${reportDate}`, "_blank");
             }}
-            className="px-3.5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold flex items-center gap-2 shadow-lg shadow-blue-900/30 transition-all"
+            className="btn-3d btn-3d-primary text-sm font-semibold flex items-center gap-2"
             title="Download Daily Compliance Digest"
           >
             <Download size={15} /> Download PDF / JSON
@@ -126,7 +126,7 @@ export default function ReportsPage() {
 
       {/* KPI Highlights for the Selected Date */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] space-y-1">
+        <div className="stat-box-3d space-y-1">
           <span className="text-xs font-mono text-[var(--text-secondary)] flex items-center gap-1.5">
             <CheckCircle size={13} className="text-[#4FD1B3]" /> VERIFIED DISPATCH VALUE
           </span>
@@ -138,7 +138,7 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <div className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] space-y-1">
+        <div className="stat-box-3d space-y-1">
           <span className="text-xs font-mono text-[var(--text-secondary)] flex items-center gap-1.5">
             <ShieldAlert size={13} className="text-[#E8A33D]" /> PREVENTED SHRINKAGE VALUE
           </span>
@@ -150,7 +150,7 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <div className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] space-y-1">
+        <div className="stat-box-3d space-y-1">
           <span className="text-xs font-mono text-[var(--text-secondary)] flex items-center gap-1.5">
             <TrendingUp size={13} className="text-[#38BDF8]" /> CONSENSUS FUSION PARITY
           </span>
@@ -162,7 +162,7 @@ export default function ReportsPage() {
           </p>
         </div>
 
-        <div className="bg-[var(--bg-panel)] p-5 rounded-xl border border-[var(--border-hairline)] space-y-1">
+        <div className="stat-box-3d space-y-1">
           <span className="text-xs font-mono text-[var(--text-secondary)] flex items-center gap-1.5">
             <AlertTriangle size={13} className="text-[#E5484D]" /> HIGH SEVERITY ALERTS
           </span>
@@ -176,7 +176,7 @@ export default function ReportsPage() {
       </div>
 
       {/* Discrepancy & Violation Audit Table */}
-      <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-sm">
+      <div className="card-3d overflow-hidden shadow-sm">
         <div className="p-5 border-b border-[var(--border-hairline)] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div>
             <h2 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -191,7 +191,7 @@ export default function ReportsPage() {
               const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
               window.open(`${apiBaseUrl}/api/reports/export/csv?dataset=events`, "_blank");
             }}
-            className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded text-xs font-mono flex items-center gap-1.5 transition-colors"
+            className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-subtle)] rounded-lg text-xs font-mono flex items-center gap-1.5 transition-colors shadow-sm"
           >
             <Download size={13} /> Export CSV
           </button>
@@ -211,8 +211,8 @@ export default function ReportsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] text-xs font-mono border-b border-[var(--border-hairline)]">
+            <table className="table-3d w-full text-left text-sm">
+              <thead>
                 <tr>
                   <th className="p-4">SEVERITY</th>
                   <th className="p-4">EVENT ID</th>
@@ -225,7 +225,7 @@ export default function ReportsPage() {
               </thead>
               <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
                 {reportData.violations.map((violation) => (
-                  <tr key={violation.eventId} className="hover:bg-[var(--bg-panel-raised)] transition-colors">
+                  <tr key={violation.eventId} className="hover:bg-[var(--bg-panel-hover)] transition-colors">
                     <td className="p-4">
                       <span
                         className={`px-2 py-0.5 rounded text-xs font-mono font-semibold ${

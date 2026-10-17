@@ -440,13 +440,67 @@ async def get_metrics():
 # Health Check
 @app.get("/health", tags=["Observability"])
 async def get_health():
-    """Standard health check endpoint reporting live system status."""
-    nodes_online = await get_active_edge_nodes_count()
+    """Standard authentic health check endpoint running SELECT 1 and querying fleet metrics."""
+    from sqlalchemy import text
+    from fastapi.responses import JSONResponse
+    from src.ml.level1_detection.vision_service import VisionInferenceService
+    from src.ml.face_recognition.face_service import FaceRecognitionService
+    from src.ml.acceleration import HardwareAccelerator
+
+    # 1. DB check via SELECT 1
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+
+            # 2. Camera fleet status
+            res = await session.execute(
+                select(Camera.status).where(Camera.removed_at.is_(None))
+            )
+            statuses = res.scalars().all()
+            online_count = sum(1 for s in statuses if s == "ONLINE")
+            degraded_count = sum(1 for s in statuses if s == "DEGRADED")
+            offline_count = sum(1 for s in statuses if s == "OFFLINE")
+            total_count = len(statuses)
+    except Exception as db_err:
+        logger.error("Health check DB probe failed: %s", db_err)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "UNHEALTHY",
+                "service": settings.APP_NAME,
+                "version": settings.APP_VERSION,
+                "database": "DISCONNECTED",
+                "error": str(db_err),
+            },
+        )
+
+    # 3. Inference runtime status
+    hw_prof = HardwareAccelerator.get_hardware_profile()
+    yolox_loaded = VisionInferenceService._session is not None
+    face_loaded = FaceRecognitionService._app is not None
+
+    # 4. Camera worker status
+    worker_running = getattr(camera_worker, "is_running", False)
+    poll_sec = getattr(camera_worker, "poll_interval_sec", 0.5)
+
     return {
         "status": "HEALTHY",
         "service": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "database": "CONNECTED",
-        "edgeNodesOnline": nodes_online,
-        "edgeCluster": f"{nodes_online}_NODES_ONLINE",
+        "cameraFleet": {
+            "online": online_count,
+            "degraded": degraded_count,
+            "offline": offline_count,
+            "total": total_count,
+        },
+        "inferenceRuntime": {
+            "yolox_loaded": yolox_loaded,
+            "face_model_loaded": face_loaded,
+            "provider": hw_prof.selected_provider,
+        },
+        "worker": {
+            "camera_worker_running": worker_running,
+            "poll_interval_sec": poll_sec,
+        },
     }

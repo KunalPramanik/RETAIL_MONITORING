@@ -244,8 +244,8 @@ export default function InvoicesPage() {
 
       {/* Upload Invoice Modal */}
       {showUploadModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <UploadCloud size={18} className="text-[#38BDF8]" /> Upload Bill / Invoice Scan
@@ -287,14 +287,14 @@ export default function InvoicesPage() {
                 <button
                   type="button"
                   onClick={() => setShowUploadModal(false)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !selectedFile}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
                 >
                   {uploading ? "Extracting Text & Math..." : "Upload & Parse OCR"}
                 </button>
@@ -306,8 +306,8 @@ export default function InvoicesPage() {
 
       {/* Inspect Line Items Modal */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Hash size={18} className="text-[#38BDF8]" /> Manifest Details: {selectedInvoice.invoiceNumber || selectedInvoice.invoiceId}
@@ -348,7 +348,7 @@ export default function InvoicesPage() {
               </div>
 
               {/* Line Items Table */}
-              <div className="border border-[var(--border-hairline)] rounded-lg overflow-hidden bg-[var(--bg-canvas)]">
+              <div className="border border-[var(--border-hairline)] rounded-xl overflow-hidden bg-[var(--bg-canvas)] shadow-inner">
                 <div className="px-4 py-2 border-b border-[var(--border-hairline)] bg-[var(--bg-panel-raised)] flex justify-between items-center text-xs">
                   <span className="font-bold text-[var(--text-primary)]">EXTRACTED SKU LINE ITEMS</span>
                   <span className="text-[var(--text-muted)]">{selectedInvoice.lineItems?.length || 0} items extracted</span>
@@ -393,7 +393,7 @@ export default function InvoicesPage() {
 
               {/* Raw OCR Text Preview */}
               {selectedInvoice.rawOcrText && (
-                <div className="border border-[var(--border-hairline)] rounded-lg p-3 bg-[var(--bg-canvas)] text-xs max-h-36 overflow-y-auto">
+                <div className="border border-[var(--border-hairline)] rounded-xl p-3 bg-[var(--bg-canvas)] text-xs max-h-36 overflow-y-auto">
                   <div className="text-[var(--text-secondary)] mb-1 font-bold">OCR ENGINE EXTRACTION AUDIT LOG:</div>
                   <pre className="text-[#38BDF8] whitespace-pre-wrap font-mono text-[11px]">
                     {selectedInvoice.rawOcrText}
@@ -418,7 +418,7 @@ export default function InvoicesPage() {
 
               <button
                 onClick={() => setSelectedInvoice(null)}
-                className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-medium"
+                className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
               >
                 Close
               </button>

@@ -69,8 +69,14 @@ class ConcealmentDetectionService:
         if l_mag > 0.01 and t_mag > 0.01:
             cos_theta = (l_vel[0] * t_vel[0] + l_vel[1] * t_vel[1]) / (l_mag * t_mag)
 
+        # Dynamic Resolution-Independent Proximity: Relative to leading person height (Section 3.1)
+        from src.core.config import settings
+        leading_h = max(1.0, float(l_box[3]))
+        proximity_ratio = getattr(settings.tripwire, "concealment_proximity_ratio", 0.35)
+        proximity_threshold = leading_h * proximity_ratio
+
         # Concealment trigger rule
-        is_close_overlap = (iou >= cls.IOU_THRESHOLD or h_overlap >= cls.HORIZONTAL_OVERLAP_THRESHOLD or dist < cls.CENTROID_PROXIMITY_PX)
+        is_close_overlap = (iou >= cls.IOU_THRESHOLD or h_overlap >= cls.HORIZONTAL_OVERLAP_THRESHOLD or dist < proximity_threshold)
         is_confident_lead = l_conf >= cls.MIN_LEADING_CONFIDENCE
         has_confidence_drop = t_conf < (l_conf - cls.CONFIDENCE_DELTA_DROP)
         is_aligned = cos_theta >= cls.VELOCITY_COS_THETA_THRESHOLD

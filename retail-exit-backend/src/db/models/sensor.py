@@ -17,7 +17,9 @@ class VisionDetection(Base):
     track_id: Any = Column(String(64), nullable=True)
     category: Any = Column(String(32), nullable=False, default="GENERAL_OBJECT")  # PERSON, MATERIAL, GENERAL_OBJECT, ENVIRONMENT
     snapshot_url: Any = Column(Text, nullable=True)
-    direction: Any = Column(String(32), nullable=True, default="IN")  # IN, OUT, TRAVERSAL
+    direction: Any = Column(String(32), nullable=True)  # IN, OUT, TRAVERSAL (None if no tripwire crossing)
+    posture: Any = Column(String(64), nullable=True)  # Standing, Sitting, Walking, Crouching/Bending, Lying, Unknown
+    posture_confidence: Any = Column(Numeric(5, 4), nullable=True)
 
     event = relationship("ExitEvent", back_populates="vision_detections")
     camera = relationship("Camera", back_populates="vision_detections")

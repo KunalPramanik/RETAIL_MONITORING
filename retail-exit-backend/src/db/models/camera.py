@@ -23,6 +23,8 @@ class Lane(Base):
     exit_events = relationship("ExitEvent", back_populates="lane")
     cameras = relationship("Camera", back_populates="lane")
 
+from src.core.encryption import EncryptedStringType
+
 class Camera(Base):
     __tablename__ = "camera"
 
@@ -32,7 +34,7 @@ class Camera(Base):
     ip_address: Any = Column(String(64), nullable=False)
     rtsp_path: Any = Column(String(255), nullable=False)
     sub_stream_path: Any = Column(String(255), nullable=True)
-    credentials_ref: Any = Column(String(128), nullable=True)  # pointer into secrets manager
+    credentials_ref: Any = Column(EncryptedStringType, nullable=True)  # Fernet encrypted credentials at rest
     stream_url: Any = Column(Text, nullable=True)  # media-server WebRTC/HLS URL
     pairing_method: Any = Column(String(32), nullable=False, default="MANUAL")
     resolution: Any = Column(String(32), nullable=True, default="1920x1080")
@@ -40,6 +42,7 @@ class Camera(Base):
     pipeline_mode: Any = Column(String(64), nullable=False, default="STANDARD_DETECTION")
     camera_role: Any = Column(String(32), nullable=False, default="GENERAL_MONITORING")
     roi_polygon: Any = Column(JSONType, nullable=True)  # Dynamic Region of Interest (e.g. [[x,y], ...])
+    ignore_polygons: Any = Column(JSONType, nullable=True)  # Ignore zones / exclusion polygons
     ignored_classes: Any = Column(JSONType, nullable=True)  # Classes to ignore (e.g. ["STORAGE_SHELF"])
     status: Any = Column(String(32), nullable=False, default="PENDING_SETUP")
     degraded_reason: Any = Column(String(255), nullable=True)

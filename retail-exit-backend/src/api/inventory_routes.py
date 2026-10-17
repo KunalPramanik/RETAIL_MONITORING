@@ -333,6 +333,8 @@ async def manual_inventory_adjustment(
             "currentStock": balance.current_stock,
             "reason": req.reason,
         }
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

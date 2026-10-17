@@ -91,6 +91,7 @@ desktop.ini
 # Test Suites, SQLite DB and Pytest Cache (Production Cleanliness)
 retail-exit-backend/tests/
 .pytest_cache/
+.github/
 retail-exit-backend/ml/
 retail-exit-backend/src/ml/weights/checkpoints/*.onnx
 !retail-exit-backend/src/ml/weights/checkpoints/.gitkeep

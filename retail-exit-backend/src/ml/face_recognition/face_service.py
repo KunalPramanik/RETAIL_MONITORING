@@ -39,8 +39,8 @@ class FaceRecognitionService:
     # InsightFace ArcFace 512-dimensional deep-learning embedding model
     MODEL_VERSION = "insightface-arcface-buffalo_s-512d"
     EMBEDDING_DIM = 512
-    MATCH_THRESHOLD = 0.65
-    LOW_CONFIDENCE_THRESHOLD = 0.45
+    MATCH_THRESHOLD = float(os.getenv("SECOPS_FACE_MATCH_THRESHOLD", "0.65"))
+    LOW_CONFIDENCE_THRESHOLD = float(os.getenv("SECOPS_FACE_LOW_CONF_THRESHOLD", "0.45"))
     THRESHOLD_MATCHED = MATCH_THRESHOLD
     THRESHOLD_LOW_CONF = LOW_CONFIDENCE_THRESHOLD
 
@@ -49,10 +49,14 @@ class FaceRecognitionService:
     @classmethod
     def get_app(cls) -> FaceAnalysis:
         if cls._app is None:
+            import onnxruntime as _ort
+            avail_providers = _ort.get_available_providers()
+            active_providers = [p for p in ["TensorrtExecutionProvider", "CUDAExecutionProvider", "DmlExecutionProvider", "OpenVINOExecutionProvider"] if p in avail_providers]
+            active_providers.append("CPUExecutionProvider")
             app = FaceAnalysis(
                 name="buffalo_s",
                 allowed_modules=["detection", "recognition", "genderage", "landmark_3d_68"],
-                providers=["CPUExecutionProvider"],
+                providers=active_providers,
             )
             app.prepare(ctx_id=0, det_thresh=0.06, det_size=(640, 640))
             cls._app = app
@@ -127,7 +131,8 @@ class FaceRecognitionService:
                 frames_evaluated=0,
             )
 
-        threshold = match_threshold or cls.MATCH_THRESHOLD
+        threshold = match_threshold if match_threshold is not None else getattr(settings.biometric, "face_match_threshold", cls.MATCH_THRESHOLD)
+        low_conf_threshold = getattr(settings.biometric, "face_low_confidence_threshold", cls.LOW_CONFIDENCE_THRESHOLD)
 
         if not probe_embedding or not enrolled_employees:
             return FaceMatchResult(
@@ -228,7 +233,7 @@ class FaceRecognitionService:
                 frames_evaluated=len(frames),
                 badge_number=badge_num,
             )
-        elif best_score >= cls.LOW_CONFIDENCE_THRESHOLD and best_employee:
+        elif best_score >= low_conf_threshold and best_employee:
             return FaceMatchResult(
                 matched_employee_id=best_employee.get("employee_id"),
                 employee_name=best_employee.get("name"),

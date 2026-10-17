@@ -1,6 +1,7 @@
 from .base import *
 from sqlalchemy import Column, String, Integer, Numeric, Boolean, DateTime, ForeignKey, Text, CheckConstraint, Index, JSON
 from sqlalchemy.orm import relationship
+from src.core.encryption import EncryptedJSONType
 
 class StaticImageDetection(Base):
     __tablename__ = "static_image_detection"
@@ -40,7 +41,7 @@ class PersonAppearanceSummary(Base):
     accessories: Any = Column(JSONType, nullable=False, default=list)  # e.g. ["bag", "cap", "glasses"]
     accessories_confidence: Any = Column(JSONType, nullable=False, default=dict)  # {"bag": 0.88, "cap": 0.76}
     model_version: Any = Column(String(64), nullable=False, default="appearance-reid-v1.0")
-    reid_embedding: Any = Column(JSONType, nullable=True)  # 256-d normalized float vector
+    reid_embedding: Any = Column(EncryptedJSONType, nullable=True)  # 256-d normalized float vector encrypted at rest
     reid_cluster_id: Any = Column(String(36), nullable=True, index=True)
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now, index=True)
 

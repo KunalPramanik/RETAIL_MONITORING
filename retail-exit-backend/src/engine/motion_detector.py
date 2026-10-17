@@ -46,7 +46,9 @@ class MotionDetector:
             if bk % 2 == 0:
                 bk += 1
             dt = diff_threshold if diff_threshold is not None else settings.motion.diff_threshold
-            pt = pixel_threshold if pixel_threshold is not None else settings.motion.pixel_threshold
+            total_pixels = rw * rh
+            area_ratio = getattr(settings.motion, "area_ratio_threshold", 0.05)
+            effective_pt = pixel_threshold if pixel_threshold is not None else int(area_ratio * total_pixels)
             db = debounce_seconds if debounce_seconds is not None else settings.motion.debounce_seconds
 
             small = cv2.resize(img, (rw, rh))
@@ -66,13 +68,15 @@ class MotionDetector:
             # Throttle events using configurable debounce per camera
             now_ts = time.time()
             last_event = self._last_event_time.get(camera_id, 0.0)
-            if motion_pixels > pt and (now_ts - last_event) > db:
+            if motion_pixels > effective_pt and (now_ts - last_event) > db:
                 self._last_event_time[camera_id] = now_ts
                 logger.info(
-                    "Significant motion detected on %s (%d px > %d threshold). Triggering exit event.",
+                    "Significant motion detected on %s (%d px / %d total = %.2f%% > %.2f%% threshold). Triggering exit event.",
                     camera_id,
                     motion_pixels,
-                    pt,
+                    total_pixels,
+                    (motion_pixels / float(total_pixels)) * 100.0,
+                    (effective_pt / float(total_pixels)) * 100.0,
                 )
                 return True
         except Exception as e:

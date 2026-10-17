@@ -33,6 +33,13 @@ def require_roles(allowed_roles: List[str]):
             )
 
         token = authorization[7:].strip()
+        from src.security import is_token_revoked
+        if is_token_revoked(token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication token has been revoked or session terminated. Please log in again.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         try:
             payload = jwt.decode(
                 token,
@@ -67,7 +74,8 @@ def require_roles(allowed_roles: List[str]):
                         headers={"WWW-Authenticate": "Bearer"},
                     )
                 current_role = (user.role or "VIEWER").upper().strip()
-                if (user.email or "").strip().lower() == "ces@gmail.com":
+                owner_email = (os.getenv("BOOTSTRAP_OWNER_EMAIL") or "").strip().lower()
+                if owner_email and (user.email or "").strip().lower() == owner_email:
                     current_role = "SUPER_ADMIN"
         except HTTPException:
             raise

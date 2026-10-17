@@ -12,6 +12,8 @@ class Shift(Base):
 
     employees = relationship("Employee", back_populates="shift")
 
+from src.core.encryption import EncryptedJSONType
+
 class Employee(Base):
     __tablename__ = "employee"
 
@@ -22,7 +24,7 @@ class Employee(Base):
     rfid_badge_id: Any = Column(String(128), unique=True, nullable=False, index=True)
     shift_id: Any = Column(String(36), ForeignKey("shift.shift_id"), nullable=True)
     active_flag: Any = Column(Boolean, nullable=False, default=True)
-    face_embedding: Any = Column(JSONType, nullable=True)  # 512-d ArcFace vector or JSON array
+    face_embedding: Any = Column(EncryptedJSONType, nullable=True)  # 512-d ArcFace vector encrypted at rest
     embedding_updated_at: Any = Column(DateTime(timezone=True), nullable=True)
     created_at: Any = Column(DateTime(timezone=True), nullable=False, default=get_utc_now)
 

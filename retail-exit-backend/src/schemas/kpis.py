@@ -1,7 +1,7 @@
 """Live Telemetry KPI Schemas"""
 
+from typing import Dict, Any, Optional
 from pydantic import BaseModel
-from typing import Dict, Any
 
 
 class LiveKPIResponse(BaseModel):
@@ -13,3 +13,4 @@ class LiveKPIResponse(BaseModel):
     totalLanesCount: int
     camerasOnlineCount: int
     camerasTotalCount: int
+    startOfDay: Optional[str] = None

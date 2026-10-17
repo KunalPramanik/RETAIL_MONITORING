@@ -178,12 +178,12 @@ function SoftwareOwnerDashboardView() {
       {/* 2. Top-Level Core Metric Cards (Section 7.2) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Companies / Tenants */}
-        <div className="bg-[var(--bg-panel)] p-5 rounded-2xl border border-[var(--border-hairline)] shadow-lg hover:border-[#38BDF8]/40 transition-colors">
+        <div className="stat-box-3d">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-[var(--text-secondary)] uppercase tracking-wider">
               Companies / Tenants
             </span>
-            <div className="p-2 rounded-xl bg-blue-500/10 text-[#38BDF8]">
+            <div className="p-2.5 rounded-xl bg-blue-500/10 text-[#38BDF8] border border-blue-500/20 shadow-sm">
               <Building size={18} />
             </div>
           </div>
@@ -203,12 +203,12 @@ function SoftwareOwnerDashboardView() {
         </div>
 
         {/* Physical Stores Fleet */}
-        <div className="bg-[var(--bg-panel)] p-5 rounded-2xl border border-[var(--border-hairline)] shadow-lg hover:border-[#4FD1B3]/40 transition-colors">
+        <div className="stat-box-3d">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-[var(--text-secondary)] uppercase tracking-wider">
               Physical Stores
             </span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-[#4FD1B3]">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-[#4FD1B3] border border-emerald-500/20 shadow-sm">
               <Store size={18} />
             </div>
           </div>
@@ -233,12 +233,12 @@ function SoftwareOwnerDashboardView() {
         </div>
 
         {/* Camera Fleet Overview */}
-        <div className="bg-[var(--bg-panel)] p-5 rounded-2xl border border-[var(--border-hairline)] shadow-lg hover:border-[#E8A33D]/40 transition-colors">
+        <div className="stat-box-3d">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-[var(--text-secondary)] uppercase tracking-wider">
               Global Camera Fleet
             </span>
-            <div className="p-2 rounded-xl bg-amber-500/10 text-[#E8A33D]">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 text-[#E8A33D] border border-amber-500/20 shadow-sm">
               <Camera size={18} />
             </div>
           </div>
@@ -261,12 +261,12 @@ function SoftwareOwnerDashboardView() {
         </div>
 
         {/* Subscriptions & Invoicing */}
-        <div className="bg-[var(--bg-panel)] p-5 rounded-2xl border border-[var(--border-hairline)] shadow-lg hover:border-indigo-500/40 transition-colors">
+        <div className="stat-box-3d">
           <div className="flex items-center justify-between">
             <span className="text-xs font-mono text-[var(--text-secondary)] uppercase tracking-wider">
               Billing & Subscriptions
             </span>
-            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400">
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 shadow-sm">
               <CreditCard size={18} />
             </div>
           </div>
@@ -393,7 +393,7 @@ function SoftwareOwnerDashboardView() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Link
           href="/platform?tab=tenants"
-          className="bg-[var(--bg-panel)] p-5 rounded-2xl border border-[var(--border-hairline)] hover:border-[#38BDF8]/60 transition-all group block shadow-md"
+          className="card-3d p-5 group block"
         >
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -407,13 +407,13 @@ function SoftwareOwnerDashboardView() {
                 </p>
               </div>
             </div>
-            <ArrowRight size={16} className="text-[var(--text-muted)] group-hover:text-white transition-colors" />
+            <ArrowRight size={16} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors" />
           </div>
         </Link>
 
         <Link
           href="/platform?tab=stores"
-          className="bg-[var(--bg-panel)] p-5 rounded-2xl border border-[var(--border-hairline)] hover:border-[#4FD1B3]/60 transition-all group block shadow-md"
+          className="card-3d p-5 group block"
         >
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -427,13 +427,13 @@ function SoftwareOwnerDashboardView() {
                 </p>
               </div>
             </div>
-            <ArrowRight size={16} className="text-[var(--text-muted)] group-hover:text-white transition-colors" />
+            <ArrowRight size={16} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors" />
           </div>
         </Link>
 
         <Link
           href="/platform?tab=audit"
-          className="bg-[var(--bg-panel)] p-5 rounded-2xl border border-[var(--border-hairline)] hover:border-amber-500/60 transition-all group block shadow-md"
+          className="card-3d p-5 group block"
         >
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
@@ -447,7 +447,7 @@ function SoftwareOwnerDashboardView() {
                 </p>
               </div>
             </div>
-            <ArrowRight size={16} className="text-[var(--text-muted)] group-hover:text-white transition-colors" />
+            <ArrowRight size={16} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)] transition-colors" />
           </div>
         </Link>
       </div>

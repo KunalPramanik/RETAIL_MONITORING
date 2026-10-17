@@ -18,6 +18,7 @@ import uuid
 import httpx
 import cv2
 import numpy as np
+import random
 from sqlalchemy import select, and_
 
 from src.core.config import settings
@@ -88,6 +89,9 @@ class CameraIngestionWorker:
         self._last_annotated_frames: Dict[str, bytes] = {}
         self._last_hazard_alert_ts: Dict[Tuple[str, str], float] = {}
         self._circuit_breakers: Dict[str, InferenceCircuitBreaker] = {}
+        self._reconnect_retries: Dict[str, int] = {}
+        self._next_poll_ts: Dict[str, float] = {}
+        self._missed_frames: Dict[str, int] = {}
 
     def _get_circuit_breaker(self, camera_id: str) -> InferenceCircuitBreaker:
         """Retrieves or creates the inference circuit breaker for this camera."""
@@ -158,29 +162,41 @@ class CameraIngestionWorker:
                 res = await session.execute(stmt)
                 cameras = list(res.scalars().all())
 
-            # 2. Process each camera with its own independent transaction (F2 transaction isolation)
-            for cam in cameras:
-                if not self.is_running:
-                    break
-                try:
-                    async with db_session.AsyncSessionLocal() as cam_session:
-                        try:
-                            cam_in_session = await cam_session.get(Camera, cam.camera_id)
-                            if cam_in_session and not cam_in_session.removed_at:
-                                await self.poll_single_camera(cam_in_session, cam_session)
-                                if cam_session.is_active:
-                                    try:
-                                        await cam_session.commit()
-                                    except Exception:
-                                        pass
-                        except Exception:
+            # 2. Process each camera with its own independent transaction & concurrent bounded tasks (F2)
+            max_conc = getattr(settings.camera, "max_concurrent_cameras", 8) or 8
+            sem = asyncio.Semaphore(max_conc)
+
+            async def _poll_cam_worker(cam_id: str):
+                async with sem:
+                    if not self.is_running:
+                        return
+                    now_mono = time.monotonic()
+                    if now_mono < self._next_poll_ts.get(cam_id, 0.0):
+                        return  # In backoff cooldown period, do not stall or spam
+
+                    try:
+                        async with db_session.AsyncSessionLocal() as cam_session:
                             try:
-                                await cam_session.rollback()
+                                cam_in_session = await cam_session.get(Camera, cam_id)
+                                if cam_in_session and not cam_in_session.removed_at:
+                                    await self.poll_single_camera(cam_in_session, cam_session)
+                                    if cam_session.is_active:
+                                        try:
+                                            await cam_session.commit()
+                                        except Exception:
+                                            pass
                             except Exception:
-                                pass
-                            raise
-                except Exception as cam_err:
-                    logger.error("Isolated camera loop error on %s: %s", cam.camera_id, cam_err)
+                                try:
+                                    await cam_session.rollback()
+                                except Exception:
+                                    pass
+                                raise
+                    except Exception as cam_err:
+                        logger.debug("Isolated camera loop error on %s: %s", cam_id, cam_err)
+
+            tasks = [_poll_cam_worker(cam.camera_id) for cam in cameras]
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -220,19 +236,34 @@ class CameraIngestionWorker:
         from src.cache import cache_service
         from src.realtime.hub import ws_hub
 
-        status_changed = False
-        if cam.status != "OFFLINE":
-            if not hasattr(self, "_missed_frames"):
-                self._missed_frames = {}
-            missed = self._missed_frames.get(cam.camera_id, 0) + 1
-            self._missed_frames[cam.camera_id] = missed
+        # Exponential backoff with jitter on reconnect
+        retries = self._reconnect_retries.get(cam.camera_id, 0) + 1
+        self._reconnect_retries[cam.camera_id] = retries
+        base_delay = getattr(settings.camera, "reconnect_base_delay_sec", 1.0) or 1.0
+        max_delay = getattr(settings.camera, "max_reconnect_delay_sec", 30.0) or 30.0
+        backoff = min(max_delay, base_delay * (2 ** min(retries - 1, 5))) + random.uniform(0.1, 0.5)
+        self._next_poll_ts[cam.camera_id] = time.monotonic() + backoff
 
-            hb = cam.last_heartbeat_at.replace(tzinfo=timezone.utc) if cam.last_heartbeat_at and cam.last_heartbeat_at.tzinfo is None else cam.last_heartbeat_at
-            if missed >= 1 or not hb or (now - hb).total_seconds() > 3.0:
+        logger.debug(
+            "Camera %s reconnect attempt %d. Backoff delay: %.1fs",
+            cam.camera_id, retries, backoff
+        )
+
+        max_missed = getattr(settings.camera, "max_missed_frames", 5) or 5
+        missed = self._missed_frames.get(cam.camera_id, 0) + 1
+        self._missed_frames[cam.camera_id] = missed
+
+        status_changed = False
+        if missed >= max_missed:
+            if cam.status != "OFFLINE":
                 cam.status = "OFFLINE"
                 cam.offline_since = now
+                cam.degraded_reason = f"OFFLINE: {missed} consecutive frame dropouts"
                 status_changed = True
-                self._missed_frames[cam.camera_id] = 0
+        elif cam.status == "ONLINE":
+            cam.status = "DEGRADED"
+            cam.degraded_reason = f"RECONNECTING: dropped {missed}/{max_missed} frames (backoff {backoff:.1f}s)"
+            status_changed = True
 
         if status_changed:
             try:
@@ -304,30 +335,21 @@ class CameraIngestionWorker:
             draw_boxes = []
             for d in vis_res.detections:
                 bx, by, bw, bh = d.bbox
-                disp_label = (d.specific_label or d.class_label).upper()
-                conf_pct = int(d.confidence * 100)
-
-                if d.class_label == "person":
-                    color = (0, 255, 180)
-                elif d.class_label == "case_full":
-                    color = (0, 230, 115)
-                elif d.class_label == "vehicle":
-                    color = (255, 190, 0)
-                elif d.class_label in ("doorway", "wall_picture", "bookshelf") or d.is_environment_only:
-                    color = (255, 200, 0)
-                else:
-                    color = (0, 165, 255)
-
                 draw_boxes.append({
                     'bbox': [bx, by, bw, bh],
-                    'label': f"{disp_label} {conf_pct}%",
-                    'color': color,
+                    'class_label': d.class_label,
+                    'specific_label': d.specific_label,
+                    'track_id': d.track_id,
+                    'confidence': d.confidence,
+                    'posture': getattr(d, 'posture', None),
+                    'color': FrameRenderer.get_class_color(d.specific_label or d.class_label),
                 })
 
             for fb in face_boxes:
                 draw_boxes.append({
                     'bbox': [fb[0], fb[1], fb[2], fb[3]],
-                    'label': 'FACE',
+                    'class_label': 'face',
+                    'label': 'Face Recognition',
                     'color': (255, 100, 100),
                 })
 
@@ -365,6 +387,7 @@ class CameraIngestionWorker:
                     roi_polygon=cam.roi_polygon,
                     ignored_classes=cam.ignored_classes,
                     camera_id=cam.camera_id,
+                    ignore_polygons=getattr(cam, "ignore_polygons", None),
                 ),
                 timeout=settings.detection.inference_timeout_sec,
             )
@@ -520,16 +543,23 @@ class CameraIngestionWorker:
                             has_face_overlap = True
                             break
                 if not has_face_overlap and d.confidence >= cfg.person_conf_threshold:
+                    posture_val = getattr(d, "posture", None) or "Standing"
+                    posture_str = f" · {posture_val}"
+                    tid_str = f" #{d.track_id}" if d.track_id is not None else ""
+                    conf_pct = int(d.confidence * 100)
                     overlay_boxes.append({
                         "box": d.bbox,
-                        "type": "PERSON_UNMATCHED",
-                        "label": "[UNKNOWN - UNAUTHORIZED]",
+                        "type": "PERSON",
+                        "label": f"Person{tid_str}{posture_str} · {conf_pct}%",
                         "confidence": round(float(d.confidence), 4),
-                        "color": "red",
-                        "entity": "Unknown Person",
-                        "identity_status": "NO_MATCH",
-                        "sub_label": "Match: No confirmed database match",
+                        "color": "green",
+                        "entity": f"Person{tid_str}",
+                        "identity_status": "UNENROLLED",
+                        "sub_label": f"Posture: {posture_val}",
                         "detection_state": "CONFIRMED",
+                        "posture": posture_val,
+                        "posture_confidence": getattr(d, "posture_confidence", None),
+                        "track_id": d.track_id,
                     })
                 continue
 
@@ -590,15 +620,7 @@ class CameraIngestionWorker:
                         parent_tid = f"person_{p_idx + 1}"
                         break
 
-            # Requirement: If carried by a person or held in hand:
-            # Strictly show SINGLE UNIT - DO NOT show phone, smartphone, or remote control
             is_carried = (item_relation == "carried_by")
-            if is_carried and not is_case:
-                is_phone = False
-                item_label = "Single Unit"
-                item_lower = "single unit"
-                d.specific_label = "Single Unit"
-                d.class_label = "single_unit"
 
             b_type, b_label, b_color = self._determine_box_style(
                 is_veh, is_case, is_door, is_screen, is_laptop, is_watch,
@@ -606,7 +628,7 @@ class CameraIngestionWorker:
                 is_carried=is_carried,
             )
 
-            track_tag = parent_tid or f"TRK-{len(overlay_boxes) + 1}"
+            track_tag = d.track_id or parent_tid or f"TRK-{len(overlay_boxes) + 1}"
             box_label_formatted = f"[{b_label} {int(d.confidence * 100)}% ID:{track_tag}]"
 
             overlay_boxes.append({
@@ -1343,13 +1365,13 @@ class CameraIngestionWorker:
                         else:
                             det_cat = "LIVE_SCENE"
                         matched_tid = None
-                        matched_dir = "IN"
+                        matched_dir = None
                         for ob in overlay_boxes:
                             ob_box = ob.get("box", [])
                             if len(ob_box) == 4 and d.bbox:
                                 if abs(ob_box[0] - d.bbox[0]) < 15 and abs(ob_box[1] - d.bbox[1]) < 15:
                                     matched_tid = ob.get("track_id")
-                                    matched_dir = ob.get("direction", "IN")
+                                    matched_dir = ob.get("direction")
                                     break
                         if not matched_tid and d.track_id is not None:
                             matched_tid = str(d.track_id)
@@ -1370,6 +1392,8 @@ class CameraIngestionWorker:
                             category=det_cat,
                             snapshot_url=batch_snap_url,
                             direction=matched_dir,
+                            posture=getattr(d, "posture", None),
+                            posture_confidence=getattr(d, "posture_confidence", None),
                         )
                         session.add(vdet)
 
@@ -1404,7 +1428,9 @@ class CameraIngestionWorker:
                             track_id=ob.get("track_id"),
                             category=ob_cat,
                             snapshot_url=batch_snap_url,
-                            direction=ob.get("direction", "IN"),
+                            direction=ob.get("direction"),
+                            posture=ob.get("posture"),
+                            posture_confidence=ob.get("posture_confidence"),
                         ))
 
         def _persist_to_disk(c_id: str, raw_b: bytes, ann_b: bytes):
@@ -1430,11 +1456,12 @@ class CameraIngestionWorker:
             await self._handle_offline_camera(cam, session, now)
             return None
 
-        # Camera is streaming live video: update heartbeat and frame timestamp
+        # Camera is streaming live video: update heartbeat, frame timestamp, and reset backoff
         cam.last_heartbeat_at = now
         cam.last_frame_at = now
-        if hasattr(self, "_missed_frames"):
-            self._missed_frames[cam.camera_id] = 0
+        self._missed_frames[cam.camera_id] = 0
+        self._reconnect_retries[cam.camera_id] = 0
+        self._next_poll_ts[cam.camera_id] = 0.0
 
         status_changed = False
         if cam.status != "ONLINE":
@@ -1861,6 +1888,7 @@ class CameraIngestionWorker:
                         roi_polygon=cam.roi_polygon,
                         ignored_classes=cam.ignored_classes,
                         camera_id=cam.camera_id,
+                        ignore_polygons=getattr(cam, "ignore_polygons", None),
                     ),
                     timeout=settings.detection.inference_timeout_sec,
                 )
@@ -1989,6 +2017,8 @@ class CameraIngestionWorker:
                 category=det_cat,
                 snapshot_url=snapshot_url,
                 direction=getattr(d, "direction", "OUT") or "OUT",
+                posture=getattr(d, "posture", None),
+                posture_confidence=getattr(d, "posture_confidence", None),
             )
             session.add(det)
 

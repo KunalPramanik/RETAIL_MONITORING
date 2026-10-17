@@ -99,6 +99,7 @@ class DetectionConfig(BaseModel):
     inference_timeout_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_INFERENCE_TIMEOUT_SEC", "6.0")))
     circuit_breaker_failure_threshold: int = Field(default_factory=lambda: int(os.getenv("SECOPS_CIRCUIT_BREAKER_FAILURES", "3")))
     circuit_breaker_cooldown_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CIRCUIT_BREAKER_COOLDOWN_SEC", "30.0")))
+    posture_smoothing_window: int = Field(default_factory=lambda: int(os.getenv("SECOPS_POSTURE_SMOOTHING_WINDOW", "5")))
 
 
 class TrackingConfig(BaseModel):
@@ -109,6 +110,12 @@ class TrackingConfig(BaseModel):
 class TripwireConfig(BaseModel):
     lock_cooldown_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_TRIPWIRE_LOCK_COOLDOWN_SEC", "3.5")))
     tailgating_window_sec: float = Field(default_factory=lambda: float(os.getenv("SECOPS_TAILGATING_WINDOW_SEC", "1.2")))
+    concealment_proximity_ratio: float = Field(default_factory=lambda: float(os.getenv("SECOPS_CONCEALMENT_PROXIMITY_RATIO", "0.35")))
+
+
+class StoreConfig(BaseModel):
+    timezone: str = Field(default_factory=lambda: os.getenv("STORE_TIMEZONE", "Asia/Kolkata"))
+    id: str = Field(default_factory=lambda: os.getenv("DEFAULT_STORE_ID", ""))
 
 
 class FusionConfig(BaseModel):
@@ -137,6 +144,7 @@ class MotionConfig(BaseModel):
     blur_kernel_size: int = Field(default_factory=lambda: int(os.getenv("SECOPS_MOTION_BLUR_KERNEL_SIZE", "21")))
     diff_threshold: int = Field(default_factory=lambda: int(os.getenv("SECOPS_MOTION_DIFF_THRESHOLD", "25")))
     pixel_threshold: int = Field(default_factory=lambda: int(os.getenv("SECOPS_MOTION_PIXEL_THRESHOLD", "3500")))
+    area_ratio_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MOTION_AREA_RATIO_THRESHOLD", "0.05")))
     debounce_seconds: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MOTION_DEBOUNCE_SEC", "6.0")))
 
 
@@ -164,6 +172,7 @@ class CameraConfig(BaseModel):
 class BiometricConfig(BaseModel):
     enabled: bool = Field(default_factory=lambda: os.getenv("SECOPS_BIOMETRIC_ENABLED", "false").lower() == "true")
     face_match_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_FACE_MATCH_THRESHOLD", "0.65")))
+    face_low_confidence_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_FACE_LOW_CONF_THRESHOLD", "0.45")))
     min_leading_confidence: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MIN_LEADING_CONFIDENCE", "0.65")))
 
 
@@ -184,6 +193,10 @@ class Settings(BaseSettings):
     
     # Database (Mandatory - strictly loaded from environment)
     DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    
+    # Store and Timezone
+    STORE_TIMEZONE: str = os.getenv("STORE_TIMEZONE", "Asia/Kolkata")
+    ALLOW_NEGATIVE_STOCK: bool = os.getenv("ALLOW_NEGATIVE_STOCK", "false").lower() == "true"
     
     # CORS (Dynamic parsing)
     CORS_ORIGINS: Union[List[str], str] = Field(default_factory=list)
@@ -223,6 +236,7 @@ class Settings(BaseSettings):
     WS_HEARTBEAT_INTERVAL_SEC: int = int(os.getenv("WS_HEARTBEAT_INTERVAL_SEC", "15"))
     
     # Subsystem Configurations
+    store: StoreConfig = Field(default_factory=StoreConfig)
     detection: DetectionConfig = Field(default_factory=DetectionConfig)
     tracking: TrackingConfig = Field(default_factory=TrackingConfig)
     tripwire: TripwireConfig = Field(default_factory=TripwireConfig)

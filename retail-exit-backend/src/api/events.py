@@ -265,6 +265,9 @@ async def get_event_detail(
             "productId": vd.product_id,
             "confidence": float(vd.confidence),
             "modelVersion": vd.model_version,
+            "posture": getattr(vd, "posture", None),
+            "postureConfidence": float(vd.posture_confidence) if getattr(vd, "posture_confidence", None) is not None else None,
+            "trackId": getattr(vd, "track_id", None),
         }
         for vd in ev.vision_detections
     ]

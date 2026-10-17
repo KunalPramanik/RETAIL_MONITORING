@@ -118,8 +118,8 @@ export default function VerifyAndSaveModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-5">
+    <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="card-3d max-w-xl w-full p-6 shadow-2xl space-y-5">
         {/* Header */}
         <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
           <div>
@@ -132,7 +132,7 @@ export default function VerifyAndSaveModal({
           </div>
           <button
             onClick={onClose}
-            className="text-[var(--text-secondary)] hover:text-white p-1 rounded-md transition-colors"
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-md transition-colors"
           >
             <X size={18} />
           </button>

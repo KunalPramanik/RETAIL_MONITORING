@@ -790,26 +790,30 @@ async def get_camera_snapshot(
         except Exception:
             pass
 
-    # Read disk snapshot if available (serving raw frame if raw=True)
+    # Read disk snapshot if fresh (serving raw frame if raw=True)
     disk_target = raw_path if (raw and os.path.exists(raw_path)) else snapshot_path
+    max_staleness = getattr(settings.camera, "snapshot_max_staleness_sec", 10.0) or 10.0
     if os.path.exists(disk_target):
         try:
-            with open(disk_target, "rb") as f:
-                cached_bytes = f.read()
-            if len(cached_bytes) > 200:
-                return Response(
-                    content=cached_bytes,
-                    media_type="image/jpeg",
-                    headers={
-                        "Cache-Control": "no-cache, no-store, must-revalidate",
-                        "Pragma": "no-cache",
-                        "Expires": "0",
-                    },
-                )
+            mtime = os.path.getmtime(disk_target)
+            if (time.time() - mtime) <= max_staleness:
+                with open(disk_target, "rb") as f:
+                    cached_bytes = f.read()
+                if len(cached_bytes) > 200:
+                    return Response(
+                        content=cached_bytes,
+                        media_type="image/jpeg",
+                        headers={
+                            "Cache-Control": "no-cache, no-store, must-revalidate",
+                            "Pragma": "no-cache",
+                            "Expires": "0",
+                            "X-Frame-Source": "DiskCache",
+                        },
+                    )
         except Exception:
             pass
 
-    # Fall back to custom diagnostic frame uniquely for this camera
+    # Fall back to custom diagnostic frame uniquely for this camera with honest HTTP 503 Service Unavailable
     diag_bytes = generate_diagnostic_preview_frame(
         label=cam.label or f"Camera {cam.camera_id}",
         ip=str(cam.ip_address or "UNKNOWN"),
@@ -820,11 +824,14 @@ async def get_camera_snapshot(
     )
     return Response(
         content=diag_bytes,
+        status_code=503,
         media_type="image/jpeg",
         headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
+            "Retry-After": "2",
+            "X-Camera-Status": str(cam.status or "OFFLINE"),
         },
     )
 

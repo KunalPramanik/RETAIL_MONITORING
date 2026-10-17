@@ -278,8 +278,8 @@ function LoginForm() {
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md rounded-2xl bg-[var(--bg-panel)] border border-[var(--border-hairline)] p-6 shadow-2xl">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md rounded-2xl card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] p-6 shadow-2xl">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-2.5 text-[#38BDF8]">
                 <HelpCircle size={22} />
@@ -310,7 +310,7 @@ function LoginForm() {
               <button
                 type="button"
                 onClick={() => setShowForgotModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] transition-colors"
+                className="btn-3d px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] transition-colors"
               >
                 Close
               </button>

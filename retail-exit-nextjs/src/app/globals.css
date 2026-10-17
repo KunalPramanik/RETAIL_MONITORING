@@ -1,50 +1,56 @@
 @import "tailwindcss";
 
-:root {
+:root,
+html.dark,
+[data-theme="dark"] {
   --bg-canvas: #090D16;
-  --bg-canvas-radial: radial-gradient(circle at 50% 0%, #131E33 0%, #090D16 75%);
-  --bg-panel: #111827;
-  --bg-panel-glass: rgba(17, 24, 39, 0.85);
-  --bg-panel-raised: #1A2336;
-  --bg-panel-hover: #222E46;
-  --bg-panel-sunken: #0C121D;
-  --border-hairline: #26334D;
-  --border-subtle: #384A6E;
-  --border-accent: rgba(56, 189, 248, 0.35);
-  --border-glow: rgba(56, 189, 248, 0.6);
-  --text-primary: #F1F5F9;
+  --bg-canvas-radial: radial-gradient(circle at 50% 0%, #152238 0%, #090D16 80%);
+  --bg-panel: #0F172A;
+  --bg-panel-glass: rgba(15, 23, 42, 0.88);
+  --bg-panel-raised: #1A263D;
+  --bg-panel-hover: #22324F;
+  --bg-panel-sunken: #0A0F1D;
+  --border-hairline: #1E293B;
+  --border-subtle: #334155;
+  --border-accent: rgba(56, 189, 248, 0.45);
+  --border-glow: rgba(56, 189, 248, 0.65);
+  --text-primary: #F8FAFC;
   --text-secondary: #94A3B8;
   --text-muted: #64748B;
   --signal-cyan: #00F0FF;
   --signal-sky: #38BDF8;
-  --signal-blue: #2563EB;
+  --signal-blue: #3B82F6;
   --signal-amber: #F59E0B;
   --status-ok: #10B981;
   --status-low: #F59E0B;
   --status-medium: #F97316;
   --status-high: #EF4444;
-  --data-mono-text: #67E8F9;
-  --input-bg: #0C121D;
-  --header-bg: rgba(13, 19, 31, 0.92);
-  --sidebar-bg: #0D131F;
-  --table-stripe: #0E1421;
-  --shadow-3d-sm: 0 4px 12px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --shadow-3d-md: 0 10px 25px -4px rgba(0, 0, 0, 0.6), 0 4px 10px -2px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-  --shadow-3d-lg: 0 20px 40px -6px rgba(0, 0, 0, 0.75), 0 8px 16px -4px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  --data-mono-text: #38BDF8;
+  --input-bg: #0B1120;
+  --input-border: #1E293B;
+  --header-bg: rgba(11, 17, 32, 0.92);
+  --sidebar-bg: #0C1222;
+  --table-stripe: #0E1528;
+  --card-3d-bg: linear-gradient(145deg, #131E33 0%, #0C1322 100%);
+  --card-3d-border: rgba(56, 189, 248, 0.22);
+  --shadow-3d-sm: 0 4px 14px -2px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  --shadow-3d-md: 0 12px 30px -4px rgba(0, 0, 0, 0.75), 0 4px 12px -2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  --shadow-3d-lg: 0 24px 50px -6px rgba(0, 0, 0, 0.85), 0 8px 22px -4px rgba(0, 0, 0, 0.65), inset 0 1px 1px rgba(255, 255, 255, 0.18);
   --shadow-card: var(--shadow-3d-md);
 }
 
-html.light, [data-theme="light"] {
-  --bg-canvas: #F0F4F8;
-  --bg-canvas-radial: radial-gradient(circle at 50% 0%, #FFFFFF 0%, #F0F4F8 75%);
+html.light,
+[data-theme="light"] {
+  --bg-canvas: #F1F5F9;
+  --bg-canvas-radial: radial-gradient(circle at 50% 0%, #FFFFFF 0%, #F1F5F9 85%);
   --bg-panel: #FFFFFF;
-  --bg-panel-glass: rgba(255, 255, 255, 0.9);
+  --bg-panel-glass: rgba(255, 255, 255, 0.92);
   --bg-panel-raised: #F8FAFC;
-  --bg-panel-hover: #EDF2F7;
+  --bg-panel-hover: #F1F5F9;
   --bg-panel-sunken: #E2E8F0;
   --border-hairline: #CBD5E1;
   --border-subtle: #94A3B8;
-  --border-accent: rgba(37, 99, 235, 0.35);
+  --border-accent: rgba(37, 99, 235, 0.45);
   --border-glow: rgba(37, 99, 235, 0.6);
   --text-primary: #0F172A;
   --text-secondary: #475569;
@@ -57,14 +63,17 @@ html.light, [data-theme="light"] {
   --status-low: #D97706;
   --status-medium: #EA580C;
   --status-high: #DC2626;
-  --data-mono-text: #0369A1;
+  --data-mono-text: #0284C7;
   --input-bg: #FFFFFF;
-  --header-bg: rgba(255, 255, 255, 0.92);
-  --sidebar-bg: #F8FAFC;
+  --input-border: #CBD5E1;
+  --header-bg: rgba(255, 255, 255, 0.94);
+  --sidebar-bg: #FFFFFF;
   --table-stripe: #F8FAFC;
-  --shadow-3d-sm: 0 4px 12px -2px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  --shadow-3d-md: 0 10px 20px -3px rgba(15, 23, 42, 0.12), 0 4px 6px -2px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --shadow-3d-lg: 0 20px 35px -5px rgba(15, 23, 42, 0.16), 0 8px 12px -3px rgba(15, 23, 42, 0.08);
+  --card-3d-bg: linear-gradient(145deg, #FFFFFF 0%, #F8FAFC 100%);
+  --card-3d-border: rgba(148, 163, 184, 0.4);
+  --shadow-3d-sm: 0 2px 8px -1px rgba(15, 23, 42, 0.08), 0 1px 3px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 1);
+  --shadow-3d-md: 0 10px 24px -3px rgba(15, 23, 42, 0.12), 0 4px 8px -1px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 1);
+  --shadow-3d-lg: 0 20px 40px -5px rgba(15, 23, 42, 0.16), 0 8px 16px -2px rgba(15, 23, 42, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1);
   --shadow-card: var(--shadow-3d-md);
 }
 
@@ -108,51 +117,37 @@ body {
    3D HIGH-TECH CYBER DESIGN SYSTEM & BOX ELEVATIONS
    ============================================================================== */
 
-/* Base 3D Card / Panel with Layered Lighting & Bevel */
+/* Base 3D Card / Panel with Dynamic Lighting, Shape & Bevel */
 .panel-card,
-.card-3d {
-  background: linear-gradient(145deg, var(--bg-panel), var(--bg-panel-sunken));
-  border: 1px solid var(--border-hairline);
+.card-3d,
+.card-shaped,
+.box-3d {
+  background: var(--card-3d-bg);
+  border: 1.5px solid var(--card-3d-border);
   box-shadow: var(--shadow-3d-md);
   border-radius: 1rem;
   position: relative;
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.25s ease;
-  backdrop-filter: blur(16px);
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
 }
 
 .panel-card:hover,
-.card-3d:hover {
-  border-color: var(--border-accent);
-  box-shadow: var(--shadow-3d-lg), 0 0 20px -4px rgba(56, 189, 248, 0.15);
-}
-
-/* 3D Elevated Interactive Box */
-.box-3d {
-  background: linear-gradient(135deg, rgba(26, 35, 54, 0.95), rgba(15, 23, 38, 0.95));
-  border: 1px solid rgba(56, 189, 248, 0.25);
-  box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.6), inset 0 1px 1px 0 rgba(255, 255, 255, 0.1);
-  border-radius: 1rem;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-  position: relative;
-  overflow: hidden;
-}
-
+.card-3d:hover,
 .box-3d:hover {
-  transform: translateY(-2px) scale(1.004);
-  border-color: rgba(56, 189, 248, 0.5);
-  box-shadow: 0 16px 36px -4px rgba(0, 0, 0, 0.75), 0 0 25px -2px rgba(56, 189, 248, 0.25), inset 0 1px 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+  border-color: var(--border-accent);
+  box-shadow: var(--shadow-3d-lg), 0 0 20px -4px rgba(56, 189, 248, 0.2);
 }
 
 /* 3D Stat Box with Luminous Top Accent */
 .stat-box-3d {
-  background: linear-gradient(150deg, var(--bg-panel-raised), var(--bg-panel));
-  border: 1px solid var(--border-hairline);
+  background: var(--card-3d-bg);
+  border: 1.5px solid var(--card-3d-border);
   box-shadow: var(--shadow-3d-sm);
   border-radius: 1rem;
   padding: 1.25rem;
   position: relative;
   overflow: hidden;
-  transition: all 0.25s ease;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .stat-box-3d::before {
@@ -161,23 +156,23 @@ body {
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 3px;
   background: linear-gradient(90deg, transparent, var(--signal-sky), transparent);
-  opacity: 0.6;
-  transition: opacity 0.25s ease;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
 }
 
 .stat-box-3d:hover {
   transform: translateY(-3px);
   border-color: var(--border-accent);
-  box-shadow: var(--shadow-3d-md), 0 0 15px -3px rgba(56, 189, 248, 0.2);
+  box-shadow: var(--shadow-3d-md), 0 0 18px -3px rgba(56, 189, 248, 0.25);
 }
 
 .stat-box-3d:hover::before {
   opacity: 1;
 }
 
-/* Tactical HUD Corner Brackets for Camera & High-Tech Cards */
+/* Tactical HUD Corner Brackets for High-Tech Cards */
 .hud-corner {
   position: relative;
 }
@@ -204,85 +199,143 @@ body {
   border-right: 2px solid var(--signal-sky);
 }
 
-/* 3D Tactile Buttons */
-.btn-3d-primary {
-  background: linear-gradient(180deg, #3B82F6 0%, #1D4ED8 100%);
-  border: 1px solid rgba(147, 197, 253, 0.4);
-  box-shadow: 0 4px 12px rgba(29, 78, 216, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  color: #FFFFFF;
+/* ==============================================================================
+   3D TACTILE BUTTONS
+   ============================================================================== */
+.btn-3d {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   font-weight: 600;
   border-radius: 0.75rem;
   transition: all 0.15s ease;
+  cursor: pointer;
+  box-shadow: var(--shadow-3d-sm);
+  user-select: none;
+}
+.btn-3d:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-3d-md);
+}
+.btn-3d:active {
+  transform: translateY(1px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), inset 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.btn-3d-primary {
+  background: linear-gradient(180deg, #3B82F6 0%, #1D4ED8 100%);
+  border: 1px solid rgba(147, 197, 253, 0.45);
+  box-shadow: 0 4px 14px rgba(29, 78, 216, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #FFFFFF !important;
 }
 .btn-3d-primary:hover {
   background: linear-gradient(180deg, #60A5FA 0%, #2563EB 100%);
-  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.4);
-  transform: translateY(-1px);
-}
-.btn-3d-primary:active {
-  transform: translateY(1px);
-  box-shadow: 0 2px 6px rgba(29, 78, 216, 0.5), inset 0 2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.btn-3d-danger {
-  background: linear-gradient(180deg, #EF4444 0%, #B91C1C 100%);
-  border: 1px solid rgba(254, 202, 202, 0.35);
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.25);
-  color: #FFFFFF;
-  font-weight: 600;
-  border-radius: 0.75rem;
-  transition: all 0.15s ease;
-}
-.btn-3d-danger:hover {
-  background: linear-gradient(180deg, #F87171 0%, #DC2626 100%);
-  box-shadow: 0 6px 18px rgba(220, 38, 38, 0.5);
-  transform: translateY(-1px);
-}
-.btn-3d-danger:active {
-  transform: translateY(1px);
-  box-shadow: 0 2px 6px rgba(185, 28, 28, 0.5), inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
 .btn-3d-success {
   background: linear-gradient(180deg, #10B981 0%, #047857 100%);
-  border: 1px solid rgba(167, 243, 208, 0.4);
-  box-shadow: 0 4px 12px rgba(4, 120, 87, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  color: #FFFFFF;
-  font-weight: 600;
-  border-radius: 0.75rem;
-  transition: all 0.15s ease;
+  border: 1px solid rgba(167, 243, 208, 0.45);
+  box-shadow: 0 4px 14px rgba(4, 120, 87, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: #FFFFFF !important;
 }
 .btn-3d-success:hover {
   background: linear-gradient(180deg, #34D399 0%, #059669 100%);
-  box-shadow: 0 6px 18px rgba(5, 150, 105, 0.5);
-  transform: translateY(-1px);
-}
-.btn-3d-success:active {
-  transform: translateY(1px);
-  box-shadow: 0 2px 6px rgba(4, 120, 87, 0.5), inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.55);
 }
 
-/* 3D High-Contrast Shaped Inputs */
-.input-3d {
-  background: var(--input-bg);
+.btn-3d-danger {
+  background: linear-gradient(180deg, #EF4444 0%, #B91C1C 100%);
+  border: 1px solid rgba(254, 202, 202, 0.4);
+  box-shadow: 0 4px 14px rgba(185, 28, 28, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  color: #FFFFFF !important;
+}
+.btn-3d-danger:hover {
+  background: linear-gradient(180deg, #F87171 0%, #DC2626 100%);
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.55);
+}
+
+.btn-3d-secondary {
+  background: var(--bg-panel-raised);
   border: 1.5px solid var(--border-hairline);
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 1px 2px rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-3d-sm);
+}
+.btn-3d-secondary:hover {
+  background: var(--bg-panel-hover);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+/* ==============================================================================
+   3D HIGH-CONTRAST SHAPED INPUTS & SELECTS
+   ============================================================================== */
+.input-3d,
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+  background-color: var(--input-bg);
+  border: 1.5px solid var(--input-border);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15), 0 1px 2px rgba(255, 255, 255, 0.05);
   border-radius: 0.75rem;
   color: var(--text-primary);
   transition: all 0.2s ease;
 }
-.input-3d:focus {
+
+.input-3d:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+select:focus,
+textarea:focus {
   outline: none;
   border-color: var(--signal-sky);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.25), inset 0 1px 2px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.28), inset 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* 3D Structured Table Rows */
-.table-3d tr {
+/* Ensure Dropdown Options Always Match Theme in Chrome & Edge */
+select option {
+  background-color: var(--bg-panel);
+  color: var(--text-primary);
+}
+
+/* ==============================================================================
+   3D STRUCTURED TABLES
+   ============================================================================== */
+.table-3d {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.table-3d thead tr {
+  background: var(--bg-canvas);
+  border-bottom: 2px solid var(--border-hairline);
+}
+.table-3d thead th {
+  padding: 0.875rem 1rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary);
+}
+.table-3d tbody tr {
   transition: background-color 0.15s ease, transform 0.15s ease;
+  border-bottom: 1px solid var(--border-hairline);
 }
 .table-3d tbody tr:hover {
   background-color: var(--bg-panel-hover);
+}
+.table-3d tbody td {
+  padding: 0.875rem 1rem;
 }
 
 /* Cyber Glow Accents */
@@ -349,9 +402,10 @@ body {
 }
 
 .detection-tag-3d {
-  background: rgba(13, 19, 31, 0.95);
+  background: var(--bg-panel);
   border: 1px solid currentColor;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.5);
+  color: var(--text-primary);
   padding: 2px 6px;
   font-size: 11px;
   font-family: 'JetBrains Mono', monospace;
@@ -363,24 +417,3 @@ body {
   align-items: center;
   gap: 4px;
 }
-
-/* Card Shape & High Contrast Visibility Resets */
-.card-shaped {
-  border-radius: 1rem;
-  border: 1px solid var(--border-hairline);
-  background-color: var(--bg-panel);
-  box-shadow: var(--shadow-3d-md);
-  position: relative;
-  overflow: hidden;
-}
-
-.card-shaped::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.12), transparent);
-}
-

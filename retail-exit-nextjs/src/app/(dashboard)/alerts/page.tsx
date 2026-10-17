@@ -185,7 +185,7 @@ export default function AlertsPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
+      <div className="card-3d flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-6 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-3">
             <ShieldAlert className="text-[#E5484D]" /> Real-Time Discrepancy & Security Alarms
@@ -198,25 +198,25 @@ export default function AlertsPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={fetchAlerts}
-            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            className="btn-3d btn-3d-secondary text-sm font-medium flex items-center gap-2"
           >
-            <RefreshCw size={15} /> Refresh Queue
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh Queue
           </button>
         </div>
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+      <div className="card-3d flex flex-wrap items-center justify-between gap-4 p-4 shadow-sm">
         <div className="flex items-center gap-2">
           <span className="text-xs font-mono text-[var(--text-secondary)]">STATUS:</span>
           {["ALL", "OPEN", "ACKNOWLEDGED", "RESOLVED"].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
+              className={`px-3 py-1 rounded-lg text-xs font-mono transition-colors border ${
                 statusFilter === st
-                  ? "bg-[#2563EB] text-white font-bold"
-                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
+                  ? "bg-[#2563EB] text-white font-bold border-blue-500 shadow-sm"
+                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-panel-hover)]"
               }`}
             >
               {st}
@@ -230,10 +230,10 @@ export default function AlertsPage() {
             <button
               key={sev}
               onClick={() => setSeverityFilter(sev)}
-              className={`px-3 py-1 rounded text-xs font-mono transition-colors ${
+              className={`px-3 py-1 rounded-lg text-xs font-mono transition-colors border ${
                 severityFilter === sev
-                  ? "bg-[#2563EB] text-white font-bold"
-                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
+                  ? "bg-[#2563EB] text-white font-bold border-blue-500 shadow-sm"
+                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-panel-hover)]"
               }`}
             >
               {sev}
@@ -245,7 +245,7 @@ export default function AlertsPage() {
       {/* Alerts Stream List */}
       <div className="space-y-3">
         {filtered.length === 0 && !loading ? (
-          <div className="p-12 text-center text-[var(--text-secondary)] bg-[var(--bg-panel)] rounded-xl border border-[var(--border-hairline)]">
+          <div className="card-3d p-12 text-center text-[var(--text-secondary)] shadow-sm">
             <CheckCircle size={40} className="mx-auto mb-3 text-[#4FD1B3]" />
             <h4 className="text-base font-bold text-[var(--text-primary)]">Zero Active Discrepancies</h4>
             <p className="text-xs text-[var(--text-secondary)] mt-1 max-w-sm mx-auto">
@@ -257,7 +257,7 @@ export default function AlertsPage() {
             const isHigh = item.severity === "HIGH";
             const isMedium = item.severity === "MEDIUM";
             const borderCol = isHigh
-              ? "border-[#E5484D] shadow-[0_0_15px_rgba(229,72,77,0.15)]"
+              ? "border-[#E5484D] shadow-[0_4px_20px_rgba(229,72,77,0.2)]"
               : isMedium
               ? "border-[#F0924A]"
               : "border-[#E8C34D]";
@@ -270,7 +270,7 @@ export default function AlertsPage() {
             return (
               <div
                 key={item.alertId}
-                className={`p-5 rounded-xl border-l-4 bg-[var(--bg-panel)] border border-[var(--border-hairline)] ${borderCol} flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all`}
+                className={`card-3d p-5 rounded-xl border-l-4 ${borderCol} flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all shadow-md hover:translate-y-[-2px]`}
               >
                 <div className="space-y-1.5 flex-1">
                   <div className="flex items-center gap-3">
@@ -304,7 +304,7 @@ export default function AlertsPage() {
                   </h3>
 
                   {item.resolutionNote && (
-                    <p className="text-xs text-[#B8E3D6] font-mono bg-[var(--bg-canvas)] p-2 rounded border border-[var(--border-hairline)]">
+                    <p className="text-xs text-[var(--text-primary)] font-mono bg-[var(--bg-canvas)] p-2 rounded-lg border border-[var(--border-hairline)]">
                       Resolution: {item.resolutionNote} — Authorized by {item.resolvedBy}
                     </p>
                   )}
@@ -319,7 +319,7 @@ export default function AlertsPage() {
                   {item.status === "OPEN" && (
                     <button
                       onClick={() => handleAcknowledge(item.alertId)}
-                      className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[#E8A33D] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium transition-colors"
+                      className="px-3 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[#E8A33D] border border-[var(--border-subtle)] rounded-lg text-xs font-mono font-medium transition-colors shadow-sm"
                     >
                       Acknowledge
                     </button>
@@ -332,7 +332,7 @@ export default function AlertsPage() {
                         setResolutionNote("");
                         clearSignature();
                       }}
-                      className="px-4 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow transition-colors"
+                      className="btn-3d btn-3d-primary text-xs font-semibold flex items-center gap-1.5 shadow"
                     >
                       <Unlock size={14} /> Resolve & Override Gate
                     </button>
@@ -346,13 +346,16 @@ export default function AlertsPage() {
 
       {/* Supervisor Signature Gate Modal (Part CC.3) */}
       {resolvingAlert && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <ShieldAlert size={18} className="text-[#E5484D]" /> Supervisor Signature Gate (Part CC.3)
               </h3>
-              <button onClick={() => setResolvingAlert(null)} className="text-[var(--text-secondary)] hover:text-white">
+              <button
+                onClick={() => setResolvingAlert(null)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
+              >
                 ✕
               </button>
             </div>
@@ -378,7 +381,7 @@ export default function AlertsPage() {
                   required
                   value={supervisorName}
                   onChange={(e) => setSupervisorName(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] outline-none"
                 />
               </div>
 
@@ -392,7 +395,7 @@ export default function AlertsPage() {
                   value={resolutionNote}
                   onChange={(e) => setResolutionNote(e.target.value)}
                   placeholder="e.g. Verified with store manager. Discrepancy cleared due to promotional sample pack."
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none text-xs font-mono"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] outline-none text-xs font-mono"
                 />
               </div>
 
@@ -410,7 +413,7 @@ export default function AlertsPage() {
                     <RotateCcw size={11} /> Clear Ink
                   </button>
                 </div>
-                <div className="border border-[var(--border-hairline)] rounded-lg bg-black overflow-hidden relative cursor-crosshair">
+                <div className="border border-[var(--border-subtle)] rounded-lg bg-black overflow-hidden relative cursor-crosshair box-3d p-0.5">
                   <canvas
                     ref={canvasRef}
                     width={450}
@@ -422,7 +425,7 @@ export default function AlertsPage() {
                     className="w-full h-[120px]"
                   />
                   {!hasSignature && (
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-600 font-mono text-xs pointer-events-none">
+                    <div className="absolute inset-0 flex items-center justify-center text-gray-500 font-mono text-xs pointer-events-none">
                       Sign Here to Authorize Gate Unlock
                     </div>
                   )}
@@ -433,14 +436,14 @@ export default function AlertsPage() {
                 <button
                   type="button"
                   onClick={() => setResolvingAlert(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium"
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium border border-[var(--border-subtle)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting || !hasSignature}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-900/30 flex items-center gap-2 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
                 >
                   <Unlock size={15} /> {isSubmitting ? "Authorizing..." : "Sign & Unlock Turnstile"}
                 </button>

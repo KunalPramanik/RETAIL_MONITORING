@@ -51,3 +51,17 @@ def create_access_token(
     if email:
         to_encode["email"] = str(email).lower().strip()
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+
+_revoked_tokens: set = set()
+
+def revoke_token(token: str) -> None:
+    """Adds a token to the in-memory revocation blocklist."""
+    if token:
+        _revoked_tokens.add(token.strip())
+
+def is_token_revoked(token: str) -> bool:
+    """Checks whether the given token has been revoked."""
+    if not token:
+        return False
+    return token.strip() in _revoked_tokens

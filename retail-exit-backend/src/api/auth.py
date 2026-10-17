@@ -173,8 +173,16 @@ async def login_for_access_token(
 
 
 @router.post("/logout")
-async def logout_user(current_user: Any = Depends(get_current_user)):
+async def logout_user(
+    request: Request,
+    current_user: Any = Depends(get_current_user),
+):
     """Logs out the active operator and records an audit log entry."""
+    auth_header = request.headers.get("authorization", "")
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:].strip()
+        from src.security import revoke_token
+        revoke_token(token)
     logger.info("Operator logged out: %s (id: %s, role: %s)", current_user.email, current_user.user_id, current_user.role)
     return {"msg": "Successfully logged out", "status": "LOGGED_OUT"}
 
@@ -239,7 +247,8 @@ async def register_user(
 async def read_users_me(current_user: Any = Depends(get_current_user)):
     """Returns the authenticated operator or Software Owner profile."""
     role = (current_user.role or "VIEWER").upper()
-    is_owner = role == "SUPER_ADMIN" or (current_user.email or "").strip().lower() == "ces@gmail.com"
+    owner_email = (os.getenv("BOOTSTRAP_OWNER_EMAIL") or "").strip().lower()
+    is_owner = role == "SUPER_ADMIN" or (bool(owner_email) and (current_user.email or "").strip().lower() == owner_email)
 
     return {
         "id": current_user.user_id,

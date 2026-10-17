@@ -679,13 +679,16 @@ export default function CameraManagementPage() {
       </div>
 
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-xl w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Plus size={18} className="text-[#38BDF8]" /> Connect New Camera Device
               </h3>
-              <button onClick={() => setShowAddModal(false)} className="text-[var(--text-secondary)] hover:text-white">
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
+              >
                 ✕
               </button>
             </div>
@@ -883,8 +886,8 @@ export default function CameraManagementPage() {
       )}
 
       {selectedCameraForIgnore && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div>
                 <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -896,7 +899,7 @@ export default function CameraManagementPage() {
               </div>
               <button
                 onClick={() => setSelectedCameraForIgnore(null)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
               >
                 ✕
               </button>
@@ -964,8 +967,8 @@ export default function CameraManagementPage() {
       )}
 
       {viewingPreview && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-2xl w-full p-5 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-2xl w-full p-5 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div>
                 <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2 font-mono">
@@ -981,13 +984,13 @@ export default function CameraManagementPage() {
               </div>
               <button
                 onClick={() => setViewingPreview(null)}
-                className="text-[var(--text-secondary)] hover:text-white p-1"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center">
+            <div className="relative aspect-video bg-neutral-900 rounded-lg overflow-hidden border border-[var(--border-hairline)] flex items-center justify-center box-3d p-1">
               {viewingPreview.success ? (
                 <img
                   src={`/api/cameras/${viewingPreview.cameraId}/stream?raw=false&t=${previewModalNonce}`}
@@ -1011,7 +1014,7 @@ export default function CameraManagementPage() {
             <div className="flex justify-end pt-2 border-t border-[var(--border-hairline)]">
               <button
                 onClick={() => setViewingPreview(null)}
-                className="px-4 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-mono border border-[var(--border-hairline)] transition-colors"
+                className="px-4 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-mono border border-[var(--border-subtle)] transition-colors"
               >
                 Close Preview
               </button>
@@ -1022,8 +1025,8 @@ export default function CameraManagementPage() {
 
       {/* Gate / Tripwire Passage Line Configuration Modal */}
       {selectedCameraForGate && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-2xl w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div>
                 <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
@@ -1033,7 +1036,10 @@ export default function CameraManagementPage() {
                   AI-suggested passage traversal threshold line for boundary crossing detection
                 </p>
               </div>
-              <button onClick={() => setSelectedCameraForGate(null)} className="text-[var(--text-secondary)] hover:text-white p-1">
+              <button
+                onClick={() => setSelectedCameraForGate(null)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
+              >
                 ✕
               </button>
             </div>
@@ -1090,7 +1096,7 @@ export default function CameraManagementPage() {
 
             <div className="bg-[var(--bg-canvas)] p-3 rounded-lg border border-[var(--border-hairline)] text-xs font-mono text-[var(--text-secondary)] flex justify-between items-center">
               <div>
-                <span className="text-white font-bold">Tripwire Coordinates: </span>
+                <span className="text-[var(--text-primary)] font-bold">Tripwire Coordinates: </span>
                 {suggestedGateLine.map((p, i) => `P${i + 1}: (${p.x.toFixed(2)}, ${p.y.toFixed(2)})`).join("  →  ")}
               </div>
               <div className="text-[11px] text-[var(--text-muted)]">{gateExplanation}</div>
@@ -1105,7 +1111,7 @@ export default function CameraManagementPage() {
                       prev.map((p) => ({ ...p, y: Math.max(0.1, Number((p.y - 0.05).toFixed(2))) }))
                     )
                   }
-                  className="px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-white rounded border border-[var(--border-hairline)] flex items-center gap-1"
+                  className="btn-3d px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded border border-[var(--border-hairline)] flex items-center gap-1"
                 >
                   <MoveUp size={13} /> NUDGE UP
                 </button>
@@ -1116,7 +1122,7 @@ export default function CameraManagementPage() {
                       prev.map((p) => ({ ...p, y: Math.min(0.95, Number((p.y + 0.05).toFixed(2))) }))
                     )
                   }
-                  className="px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-white rounded border border-[var(--border-hairline)] flex items-center gap-1"
+                  className="btn-3d px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded border border-[var(--border-hairline)] flex items-center gap-1"
                 >
                   <MoveDown size={13} /> NUDGE DOWN
                 </button>
@@ -1128,7 +1134,7 @@ export default function CameraManagementPage() {
                       { x: 0.88, y: 0.82 },
                     ]);
                   }}
-                  className="px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] rounded border border-[var(--border-hairline)]"
+                  className="btn-3d px-2.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] rounded border border-[var(--border-hairline)]"
                 >
                   RESET
                 </button>
@@ -1138,7 +1144,7 @@ export default function CameraManagementPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedCameraForGate(null)}
-                  className="px-3.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded"
+                  className="btn-3d px-3.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded"
                 >
                   Cancel
                 </button>
@@ -1146,7 +1152,7 @@ export default function CameraManagementPage() {
                   type="button"
                   onClick={() => handleSaveGateLine(suggestedGateLine)}
                   disabled={savingGateLine}
-                  className="px-4 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded flex items-center gap-1.5 shadow-md shadow-emerald-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-success px-4 py-1.5 bg-[#10B981] hover:bg-[#059669] text-white font-bold rounded flex items-center gap-1.5 shadow-md shadow-emerald-900/30 disabled:opacity-50"
                 >
                   <Check size={14} /> {savingGateLine ? "Saving..." : "ACCEPT (Save Line)"}
                 </button>

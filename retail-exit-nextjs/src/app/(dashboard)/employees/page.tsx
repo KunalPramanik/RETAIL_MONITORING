@@ -421,8 +421,8 @@ export default function EmployeesPage() {
 
       {/* Add Employee Modal with Integrated Photo & 360 Face Enrollment */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Users size={18} className="text-[#4FD1B3]" /> Register New Employee & Face Biometrics
@@ -452,7 +452,7 @@ export default function EmployeesPage() {
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                     placeholder="e.g. Alice Chen"
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                    className="input-3d w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                   />
                 </div>
 
@@ -616,7 +616,7 @@ export default function EmployeesPage() {
                 {/* Skip Mode Notice */}
                 {addEnrollMode === "none" && (
                   <p className="text-xs text-[#E8A33D] font-mono bg-[#E8A33D]/10 border border-[#E8A33D]/20 p-2.5 rounded-lg">
-                    Notice: This employee will be created without face biometrics. Live cameras will identify them as "Unknown Person" until a face photo is enrolled later.
+                    Notice: This employee will be created without face biometrics. Live cameras will identify them as &quot;Unknown Person&quot; until a face photo is enrolled later.
                   </p>
                 )}
               </div>
@@ -626,14 +626,14 @@ export default function EmployeesPage() {
                   type="button"
                   disabled={isSubmittingAdd}
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-sm font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingAdd}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-900/30 flex items-center gap-2 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-sm font-semibold shadow-lg shadow-blue-900/30 flex items-center gap-2 disabled:opacity-50"
                 >
                   {isSubmittingAdd ? (
                     <>
@@ -651,8 +651,8 @@ export default function EmployeesPage() {
 
       {/* Face Biometric Photo Enrollment Modal */}
       {enrollEmployee && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Camera size={18} className="text-[#38BDF8]" /> Biometric Enrollment: {enrollEmployee.name}
@@ -693,14 +693,14 @@ export default function EmployeesPage() {
                 <button
                   type="button"
                   onClick={() => setEnrollEmployee(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium"
+                  className="btn-3d px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-sm font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={uploading || !selectedFile}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-sm font-semibold shadow-lg shadow-blue-900/30 disabled:opacity-50"
                 >
                   {uploading ? "Extracting Embeddings..." : "Save Biometric Face"}
                 </button>
@@ -712,8 +712,8 @@ export default function EmployeesPage() {
 
       {/* 360 Multi-Angle Face Biometric Enrollment Modal */}
       {enroll360Employee && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-3d bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <RotateCw size={18} className="text-[#38BDF8]" /> 360° Multi-Angle Face Enrollment: {enroll360Employee.name}
@@ -788,14 +788,14 @@ export default function EmployeesPage() {
                   <button
                     type="button"
                     onClick={() => setEnroll360Employee(null)}
-                    className="px-3.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-medium"
+                    className="btn-3d px-3.5 py-1.5 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-xl text-xs font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={uploading360 || Object.values(files360).filter((f) => f !== null).length === 0}
-                    className="px-4 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-semibold shadow-lg shadow-blue-900/30 disabled:opacity-50 flex items-center gap-1.5"
+                    className="btn-3d btn-3d-primary px-4 py-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-xl text-xs font-semibold shadow-lg shadow-blue-900/30 disabled:opacity-50 flex items-center gap-1.5"
                   >
                     {uploading360 ? "Synthesizing 360 Embeddings..." : "Save 360° Profile"}
                   </button>

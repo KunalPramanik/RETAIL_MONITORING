@@ -382,7 +382,9 @@ CREATE TABLE IF NOT EXISTS public.vision_detection (
     track_id VARCHAR(64),
     category VARCHAR(32) NOT NULL DEFAULT 'GENERAL_OBJECT',
     snapshot_url TEXT,
-    direction VARCHAR(32) DEFAULT 'IN'
+    direction VARCHAR(32),
+    posture VARCHAR(64),
+    posture_confidence NUMERIC(5, 4)
 );
 CREATE INDEX IF NOT EXISTS idx_vis_det_event ON public.vision_detection(event_id);
 CREATE INDEX IF NOT EXISTS idx_vis_det_camera ON public.vision_detection(camera_id);

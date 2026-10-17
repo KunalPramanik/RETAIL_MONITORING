@@ -373,7 +373,7 @@ export default function ProductsPage() {
   return (
     <div className="space-y-6">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
+      <div className="card-3d flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-6 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-3">
             <Box className="text-[#E8A33D]" /> Product Catalog & Inventory Stock Master
@@ -386,21 +386,21 @@ export default function ProductsPage() {
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             onClick={() => openLedgerModal()}
-            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
+            className="btn-3d btn-3d-secondary text-xs font-mono font-medium flex items-center gap-1.5"
             title="View Full Movement Ledger"
           >
             <History size={14} className="text-[#E8A33D]" /> Movement Ledger
           </button>
           <button
             onClick={handleExportCsv}
-            className="px-3 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
+            className="btn-3d btn-3d-secondary text-xs font-mono font-medium flex items-center gap-1.5"
             title="Export CSV"
           >
             <Download size={13} className="text-[#38BDF8]" /> Export CSV
           </button>
           <button
             onClick={handleExportJson}
-            className="px-3 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
+            className="btn-3d btn-3d-secondary text-xs font-mono font-medium flex items-center gap-1.5"
             title="Export JSON"
           >
             <FileText size={13} className="text-[#4FD1B3]" /> JSON
@@ -408,7 +408,7 @@ export default function ProductsPage() {
           <button
             onClick={fetchData}
             disabled={loading}
-            className="px-3 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-xs font-mono font-medium flex items-center gap-1.5 transition-colors"
+            className="btn-3d btn-3d-secondary text-xs font-mono font-medium flex items-center gap-1.5"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
@@ -427,7 +427,7 @@ export default function ProductsPage() {
               });
               setShowAddModal(true);
             }}
-            className="px-4 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-semibold flex items-center gap-2 shadow-lg shadow-blue-900/30 transition-all"
+            className="btn-3d btn-3d-primary text-xs font-semibold flex items-center gap-2"
           >
             <Plus size={15} /> Add Product
           </button>
@@ -435,7 +435,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Filter / Search Bar with Dynamic Category Pills */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-between bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+      <div className="card-3d flex flex-col sm:flex-row gap-4 justify-between p-4 shadow-sm">
         <div className="relative flex-1 max-w-md">
           <Search
             size={16}
@@ -446,7 +446,7 @@ export default function ProductsPage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search by SKU code, name, or category..."
-            className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
+            className="w-full input-3d pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
           />
         </div>
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
@@ -454,10 +454,10 @@ export default function ProductsPage() {
             <button
               key={cat}
               onClick={() => setCategoryFilter(cat)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-colors whitespace-nowrap border ${
                 categoryFilter.toUpperCase() === cat.toUpperCase()
-                  ? "bg-[#2563EB] text-white"
-                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)]"
+                  ? "bg-[#2563EB] text-white border-blue-500 shadow-sm"
+                  : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-panel-hover)]"
               }`}
             >
               {cat}
@@ -467,7 +467,7 @@ export default function ProductsPage() {
       </div>
 
       {/* Products & Inventory Master Table */}
-      <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
+      <div className="card-3d overflow-hidden shadow-xl">
         {filtered.length === 0 && !loading ? (
           <div className="p-12 text-center text-[var(--text-secondary)]">
             <Package size={40} className="mx-auto mb-3 text-[#2C323D]" />
@@ -480,7 +480,7 @@ export default function ProductsPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
+            <table className="table-3d w-full text-left text-sm">
               <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] text-xs font-mono border-b border-[var(--border-hairline)]">
                 <tr>
                   <th className="p-3.5">SKU CODE</th>
@@ -629,8 +629,8 @@ export default function ProductsPage() {
 
       {/* Add / Edit Product Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-lg w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Box size={18} className="text-[#E8A33D]" />
@@ -638,7 +638,7 @@ export default function ProductsPage() {
               </h3>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
               >
                 <X size={18} />
               </button>
@@ -656,7 +656,7 @@ export default function ProductsPage() {
                     value={formData.skuCode ?? ""}
                     onChange={(e) => setFormData({ ...formData, skuCode: e.target.value })}
                     placeholder="e.g. MAT-CEM-50KG"
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
+                    className="w-full input-3d p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
                   />
                 </div>
                 <div>
@@ -666,7 +666,7 @@ export default function ProductsPage() {
                   <select
                     value={formData.category ?? "Building Materials"}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
+                    className="w-full input-3d p-2.5 text-[var(--text-primary)] font-mono outline-none"
                   >
                     {dynamicCategories
                       .filter((c) => c !== "ALL")
@@ -690,7 +690,7 @@ export default function ProductsPage() {
                     value={formData.customCategory ?? ""}
                     onChange={(e) => setFormData({ ...formData, customCategory: e.target.value })}
                     placeholder="e.g. Building Materials, Hazardous, Logistics"
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
+                    className="w-full input-3d p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
                   />
                 </div>
               )}
@@ -705,7 +705,7 @@ export default function ProductsPage() {
                   value={formData.name ?? ""}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder="e.g. Cement Bag (50kg)"
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -722,7 +722,7 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, packSize: parseInt(e.target.value) || 1 })
                     }
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[#E8A33D] font-mono font-bold outline-none"
+                    className="w-full input-3d p-2.5 text-[#E8A33D] font-mono font-bold outline-none"
                   />
                   <span className="text-[10px] text-[var(--text-secondary)]">
                     Units per sealed case
@@ -740,7 +740,7 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, unitPrice: parseFloat(e.target.value) || 0 })
                     }
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
+                    className="w-full input-3d p-2.5 text-[var(--text-primary)] font-mono outline-none"
                   />
                 </div>
                 <div>
@@ -755,7 +755,7 @@ export default function ProductsPage() {
                     onChange={(e) =>
                       setFormData({ ...formData, casePrice: parseFloat(e.target.value) || 0 })
                     }
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[#4FD1B3] font-mono outline-none"
+                    className="w-full input-3d p-2.5 text-[#4FD1B3] font-mono outline-none"
                   />
                 </div>
               </div>
@@ -770,7 +770,7 @@ export default function ProductsPage() {
                   onChange={(e) =>
                     setFormData({ ...formData, reorderThreshold: parseInt(e.target.value) || 0 })
                   }
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] font-mono outline-none"
                 />
               </div>
 
@@ -778,13 +778,13 @@ export default function ProductsPage() {
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium"
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium border border-[var(--border-subtle)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-sm font-semibold shadow-lg shadow-blue-900/30"
+                  className="btn-3d btn-3d-primary text-sm font-semibold"
                 >
                   {editingProduct ? "Save Changes" : "Create Product"}
                 </button>
@@ -796,8 +796,8 @@ export default function ProductsPage() {
 
       {/* Update Stock / Manual Adjustment Modal */}
       {showAdjustModal && adjustTarget && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Sliders size={18} className="text-[#38BDF8]" />
@@ -805,7 +805,7 @@ export default function ProductsPage() {
               </h3>
               <button
                 onClick={() => setShowAdjustModal(false)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
               >
                 <X size={18} />
               </button>
@@ -836,7 +836,7 @@ export default function ProductsPage() {
                         actionType: e.target.value as "ADD" | "DEDUCT",
                       })
                     }
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none"
+                    className="w-full input-3d p-2.5 text-xs font-mono text-[var(--text-primary)] outline-none"
                   >
                     <option value="ADD">+ Add Stock (Inbound)</option>
                     <option value="DEDUCT">- Deduct Stock (Outbound / Damage)</option>
@@ -857,7 +857,7 @@ export default function ProductsPage() {
                         qtyChange: Math.max(1, parseInt(e.target.value) || 1),
                       })
                     }
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono font-bold outline-none"
+                    className="w-full input-3d p-2.5 text-sm font-bold font-mono text-[#38BDF8] outline-none"
                   />
                 </div>
               </div>
@@ -869,7 +869,7 @@ export default function ProductsPage() {
                 <select
                   value={adjustData.reason ?? "Cycle count receiving"}
                   onChange={(e) => setAdjustData({ ...adjustData, reason: e.target.value })}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none mb-2"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] font-mono outline-none mb-2"
                 >
                   <option value="Cycle count receiving">Cycle count receiving</option>
                   <option value="Physical count discrepancy correction">Physical count discrepancy correction</option>
@@ -882,7 +882,7 @@ export default function ProductsPage() {
                   placeholder="Or enter custom reason note..."
                   value={adjustData.reason ?? ""}
                   onChange={(e) => setAdjustData({ ...adjustData, reason: e.target.value })}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2 text-xs text-[var(--text-primary)] outline-none"
+                  className="w-full input-3d p-2 text-xs text-[var(--text-primary)] outline-none"
                 />
               </div>
 
@@ -890,14 +890,14 @@ export default function ProductsPage() {
                 <button
                   type="button"
                   onClick={() => setShowAdjustModal(false)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium"
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-sm font-medium border border-[var(--border-subtle)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={adjustSubmitting}
-                  className="px-5 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-900/30 flex items-center gap-2"
+                  className="btn-3d btn-3d-success text-sm font-semibold flex items-center gap-2"
                 >
                   {adjustSubmitting ? (
                     <RefreshCw size={14} className="animate-spin" />
@@ -914,8 +914,8 @@ export default function ProductsPage() {
 
       {/* Movement Ledger Modal */}
       {showLedgerModal && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-2xl max-w-4xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-4xl w-full max-h-[85vh] flex flex-col p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div className="flex items-center gap-2 font-mono text-base font-bold text-[var(--text-primary)]">
                 <History size={20} className="text-[#E8A33D]" />
@@ -926,7 +926,7 @@ export default function ProductsPage() {
               </div>
               <button
                 onClick={() => setShowLedgerModal(false)}
-                className="p-1 text-[var(--text-secondary)] hover:text-white rounded"
+                className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-subtle)]"
               >
                 <X size={18} />
               </button>
@@ -943,8 +943,8 @@ export default function ProductsPage() {
                   No movement ledger entries recorded yet.
                 </div>
               ) : (
-                <table className="w-full text-left text-xs font-mono">
-                  <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-b border-[var(--border-hairline)]">
+                <table className="table-3d w-full text-left text-xs font-mono">
+                  <thead>
                     <tr>
                       <th className="p-2.5">TIMESTAMP</th>
                       <th className="p-2.5">SKU / ITEM</th>

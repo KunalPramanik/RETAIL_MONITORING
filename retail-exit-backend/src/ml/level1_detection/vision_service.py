@@ -47,6 +47,8 @@ class DetectedBox:
     parent_track_id: Optional[Any] = None
     object_role: Optional[str] = None    # 'physical_object', 'wearable', 'body_part', 'environment'
     class_id: Optional[int] = None
+    posture: Optional[str] = None        # 'Standing', 'Sitting', 'Walking', 'Crouching/Bending', 'Lying', 'Unknown'
+    posture_confidence: Optional[float] = None
 
     @property
     def box(self) -> List[int]:
@@ -155,7 +157,10 @@ class VisionInferenceService:
             opts = ort.SessionOptions()
             opts.intra_op_num_threads = 2
             opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            cls._session = ort.InferenceSession(target_path, sess_options=opts, providers=["CPUExecutionProvider"])
+            avail_providers = ort.get_available_providers()
+            active_providers = [p for p in ["TensorrtExecutionProvider", "CUDAExecutionProvider", "DmlExecutionProvider", "OpenVINOExecutionProvider"] if p in avail_providers]
+            active_providers.append("CPUExecutionProvider")
+            cls._session = ort.InferenceSession(target_path, sess_options=opts, providers=active_providers)
             cls._loaded_version = target_version
             try:
                 in_shape = cls._session.get_inputs()[0].shape
@@ -327,6 +332,7 @@ class VisionInferenceService:
         confidence_floor: float = 0.25,
         catalog_products: Optional[List[Dict[str, Any]]] = None,
         roi_polygon: Optional[Union[List[Any], Dict[str, Any]]] = None,
+        ignore_polygons: Optional[Union[List[Any], Dict[str, Any]]] = None,
         ignored_classes: Optional[list] = None,
         camera_id: Optional[str] = None,
     ) -> Tuple[VisionInferenceResult, bytes]:
@@ -534,6 +540,31 @@ class VisionInferenceService:
                             dist = _cv2.pointPolygonTest(pts, (cx, cy), False)
                             if dist < 0:
                                 continue  # Center is strictly outside ROI
+
+                    # Section 2.3: Apply ignore zones / exclusion polygons
+                    if ignore_polygons:
+                        import cv2 as _cv2
+                        import numpy as _np
+                        cx = float(bx + bw / 2.0)
+                        cy = float(by + bh / 2.0)
+                        raw_ign_list = ignore_polygons if isinstance(ignore_polygons, list) else [ignore_polygons]
+                        dropped_by_ignore = False
+                        for raw_poly in raw_ign_list:
+                            clean_ign_pts = []
+                            poly_pts = raw_poly.get("points") if isinstance(raw_poly, dict) else raw_poly
+                            if isinstance(poly_pts, (list, tuple)):
+                                for pt in poly_pts:
+                                    if isinstance(pt, dict):
+                                        clean_ign_pts.append([int(pt.get("x", 0)), int(pt.get("y", 0))])
+                                    elif isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                                        clean_ign_pts.append([int(pt[0]), int(pt[1])])
+                            if len(clean_ign_pts) >= 3:
+                                ign_pts_arr = _np.array(clean_ign_pts, _np.int32)
+                                if _cv2.pointPolygonTest(ign_pts_arr, (cx, cy), False) >= 0:
+                                    dropped_by_ignore = True
+                                    break
+                        if dropped_by_ignore:
+                            continue
 
                     specific_label_check = cfg.class_labels.get(cid, "Retail Item")
 
@@ -793,29 +824,62 @@ class VisionInferenceService:
                 d.track_id = tid
                 tid += 1
 
+        # Real-time Posture classification for human detections
+        orig_h, orig_w = img.shape[:2] if img is not None else (1080, 1920)
+        try:
+            from src.ml.posture_service import PostureClassifier
+            for d in detections:
+                if d.class_label == "person":
+                    p_res = PostureClassifier.classify_posture(
+                        person_bbox=d.bbox,
+                        camera_id=camera_id or "default",
+                        track_id=d.track_id,
+                        frame_h=orig_h,
+                        frame_w=orig_w,
+                    )
+                    d.posture = p_res.posture
+                    d.posture_confidence = p_res.confidence
+                    if p_res.is_static_false_positive:
+                        d.detection_state = "STATIC_FALSE_POSITIVE"
+                        d.is_inventory_relevant = False
+                        d.is_environment_only = True
+                        d.specific_label = "Static False Positive (Mannequin / Poster)"
+        except Exception as _p_err:
+            logger.debug("Posture classification fallback: %s", _p_err)
+
         latency_ms = round((time.perf_counter() - t0) * 1000.0, 2)
         avg_conf = round(sum(conf_scores) / max(1, len(conf_scores)), 3) if conf_scores else 0.0
+
         # Real Evidence Annotation: Draw detection bounding boxes, labels, confidence, and track IDs
         annotated_bytes = frame_bytes
         if detections and img is not None:
             try:
-                annotated_img = img.copy()
+                from src.services.vision_detection.frame_renderer import FrameRenderer
+                draw_boxes = []
                 for d in detections:
-                    bx, by, bw, bh = d.bbox
-                    color = (0, 220, 100) if d.class_label == "person" else (240, 160, 20)
-                    cv2.rectangle(annotated_img, (bx, by), (bx + bw, by + bh), color, 2)
-                    lbl = f"{d.specific_label or d.class_label} {int(d.confidence * 100)}%"
-                    if d.track_id is not None:
-                        lbl += f" [TRK-{d.track_id}]"
-                    (tw, th), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-                    cv2.rectangle(annotated_img, (bx, max(0, by - 18)), (bx + tw + 4, max(18, by)), color, -1)
-                    cv2.putText(annotated_img, lbl, (bx + 2, max(14, by - 4)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 0), 1, cv2.LINE_AA)
+                    draw_boxes.append({
+                        "bbox": d.bbox,
+                        "class_label": d.class_label,
+                        "specific_label": d.specific_label,
+                        "track_id": d.track_id,
+                        "confidence": d.confidence,
+                        "posture": d.posture,
+                        "color": FrameRenderer.get_class_color(d.specific_label or d.class_label),
+                    })
+                total_cases = sum(1 for d in detections if d.class_label == "case_full")
+                total_units = sum(d.pack_size for d in detections if d.class_label in ("case_full", "single_unit", "vehicle"))
+                status_banner = f"SURVEILLANCE CV // DETECTIONS: {len(detections)} (CASES:{total_cases} UNITS:{total_units})"
+                annotated_img = FrameRenderer.draw_overlay(
+                    img.copy(),
+                    draw_boxes,
+                    status_banner=status_banner,
+                    latency_ms=latency_ms,
+                )
                 _success, buf = cv2.imencode(".jpg", annotated_img, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 if _success:
                     annotated_bytes = buf.tobytes()
             except Exception as _draw_err:
                 logger.debug("Annotated frame rendering fallback: %s", _draw_err)
-
 
         return (
             VisionInferenceResult(

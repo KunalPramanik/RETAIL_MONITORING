@@ -582,7 +582,7 @@ export default function StoreDashboard() {
                   className={`px-2.5 py-1 text-xs font-mono rounded border transition-colors flex items-center gap-1.5 ${
                     !streamIsRaw
                       ? "bg-[#38BDF8]/15 text-[#38BDF8] border-[#38BDF8]/40"
-                      : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:text-white"
+                      : "bg-[var(--bg-canvas)] text-[var(--text-secondary)] border-[var(--border-hairline)] hover:text-[var(--text-primary)]"
                   }`}
                   title="Toggle between AI Overlays and Raw Camera Stream"
                 >
@@ -598,7 +598,7 @@ export default function StoreDashboard() {
                       className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
                         streamViewMode === "grid"
                           ? "bg-[var(--bg-panel-raised)] text-[#38BDF8] font-bold"
-                          : "text-[var(--text-secondary)] hover:text-white"
+                          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                       }`}
                     >
                       Grid ({cameras.length})
@@ -611,7 +611,7 @@ export default function StoreDashboard() {
                       className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
                         streamViewMode === "single"
                           ? "bg-[var(--bg-panel-raised)] text-[#38BDF8] font-bold"
-                          : "text-[var(--text-secondary)] hover:text-white"
+                          : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                       }`}
                     >
                       Single
@@ -640,7 +640,7 @@ export default function StoreDashboard() {
                     setStreamNonce(Date.now());
                     fetchData();
                   }}
-                  className="p-1.5 text-xs font-mono bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-white rounded border border-[var(--border-hairline)] transition-colors"
+                  className="p-1.5 text-xs font-mono bg-[var(--bg-canvas)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded border border-[var(--border-hairline)] transition-colors"
                   title="Reload Streams"
                 >
                   <RefreshCw size={13} />
@@ -778,7 +778,7 @@ export default function StoreDashboard() {
           </div>
           <button
             onClick={fetchData}
-            className="px-2.5 py-1 text-xs font-mono bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-white rounded border border-[var(--border-hairline)] flex items-center gap-1.5 transition-colors"
+            className="px-2.5 py-1 text-xs font-mono bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded border border-[var(--border-hairline)] flex items-center gap-1.5 transition-colors"
           >
             <RefreshCw size={12} /> Refresh
           </button>
@@ -1102,8 +1102,8 @@ export default function StoreDashboard() {
 
       {/* Snapshot Preview Modal */}
       {previewSnapshot && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-3xl w-full p-5 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-3xl w-full p-5 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-sm font-bold font-mono text-[var(--text-primary)] flex items-center gap-2">
                 <Camera size={16} className="text-[#38BDF8]" />
@@ -1111,7 +1111,7 @@ export default function StoreDashboard() {
               </h3>
               <button
                 onClick={() => setPreviewSnapshot(null)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
                 <X size={18} />
               </button>
@@ -1156,15 +1156,15 @@ export default function StoreDashboard() {
 
       {/* Edit Initial Stock Count Correction Modal */}
       {editingVerif && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-base font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Edit2 size={16} className="text-[#E8A33D]" /> Correct Stock Count Baseline
               </h3>
               <button
                 onClick={() => setEditingVerif(null)}
-                className="text-[var(--text-secondary)] hover:text-white"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
               >
                 <X size={18} />
               </button>
@@ -1186,7 +1186,7 @@ export default function StoreDashboard() {
                   min="0"
                   value={correctionQty}
                   onChange={(e) => setCorrectionQty(parseInt(e.target.value) || 0)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-base font-bold text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="w-full input-3d p-2.5 text-base font-bold text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -1197,7 +1197,7 @@ export default function StoreDashboard() {
                   value={correctionReason}
                   onChange={(e) => setCorrectionReason(e.target.value)}
                   placeholder="e.g. Broken packaging pallet, recount override"
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                 />
               </div>
             </div>
@@ -1205,7 +1205,7 @@ export default function StoreDashboard() {
             <div className="flex justify-end gap-2.5 pt-3 border-t border-[var(--border-hairline)]">
               <button
                 onClick={() => setEditingVerif(null)}
-                className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-medium"
+                className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-medium border border-[var(--border-subtle)]"
               >
                 Cancel
               </button>
@@ -1214,7 +1214,7 @@ export default function StoreDashboard() {
                   handleConfirmStock(editingVerif.verificationId, false, correctionQty, correctionReason)
                 }
                 disabled={submittingCorrection}
-                className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/30 flex items-center gap-1.5"
+                className="btn-3d btn-3d-primary text-xs font-bold flex items-center gap-1.5"
               >
                 {submittingCorrection ? <RefreshCw size={13} className="animate-spin" /> : <Check size={13} />}
                 Save Correction Baseline
@@ -1232,11 +1232,11 @@ export default function StoreDashboard() {
 
       {/* Full Camera Inspector Modal with PTZ, ROI and AI Detections */}
       {inspectingCamera && (
-        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-5xl w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-5xl w-full max-h-[92vh] overflow-y-auto p-5 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-[#38BDF8]/10 text-[#38BDF8] rounded-lg">
+                <div className="p-2 bg-[#38BDF8]/10 text-[#38BDF8] rounded-lg border border-[#38BDF8]/20">
                   <Video size={18} />
                 </div>
                 <div>
@@ -1250,13 +1250,13 @@ export default function StoreDashboard() {
               </div>
               <button
                 onClick={() => setInspectingCamera(null)}
-                className="p-1.5 text-[var(--text-secondary)] hover:text-white hover:bg-[var(--bg-panel-hover)] rounded-lg transition-colors"
+                className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-panel-hover)] rounded-lg transition-colors border border-transparent hover:border-[var(--border-subtle)]"
               >
                 <X size={18} />
               </button>
             </div>
 
-            <div className="rounded-lg overflow-hidden border border-[var(--border-hairline)]">
+            <div className="rounded-lg overflow-hidden border border-[var(--border-hairline)] box-3d p-1">
               <StreamPlayer
                 cameraId={inspectingCamera.cameraId}
                 cameraName={inspectingCamera.label}

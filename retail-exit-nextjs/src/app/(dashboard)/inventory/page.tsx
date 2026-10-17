@@ -268,7 +268,7 @@ export default function InventoryDashboardPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[var(--bg-panel)] p-6 rounded-xl border border-[var(--border-hairline)]">
+      <div className="card-3d flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-6 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-3">
             <Box className="text-[#38BDF8]" /> Inventory Ledger & Opening Stock Census
@@ -280,38 +280,38 @@ export default function InventoryDashboardPage() {
         <div className="flex items-center gap-3">
           <button
             onClick={() => setShowScanModal(true)}
-            className="px-3.5 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-lg text-sm font-medium flex items-center gap-2 shadow-lg shadow-sky-900/30 transition-all font-mono"
+            className="btn-3d btn-3d-primary text-sm font-medium flex items-center gap-2 font-mono"
           >
             <Camera size={15} /> Scan & Auto-Count
           </button>
           <button
             onClick={() => setShowAdjustModal(true)}
-            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors font-mono"
+            className="btn-3d btn-3d-secondary text-sm font-medium flex items-center gap-2 font-mono"
           >
             <Plus size={15} /> Adjust Stock
           </button>
           <button
             onClick={fetchData}
-            className="px-3.5 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] border border-[var(--border-hairline)] rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+            className="btn-3d btn-3d-secondary text-sm font-medium flex items-center gap-2"
           >
-            <RefreshCw size={15} /> Refresh
+            <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+        <div className="stat-box-3d">
           <span className="text-xs font-mono text-[var(--text-secondary)] uppercase">Total On-Hand Units</span>
           <div className="text-2xl font-bold font-mono text-[#38BDF8] mt-1">{totalOnHandUnits.toLocaleString()} U</div>
           <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Live across all storage zones</span>
         </div>
-        <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+        <div className="stat-box-3d">
           <span className="text-xs font-mono text-[var(--text-secondary)] uppercase">Total Valuation (₹ INR)</span>
           <div className="text-2xl font-bold font-mono text-[#4FD1B3] mt-1">₹ {totalInventoryValue.toLocaleString()}</div>
           <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Indian Rupees asset value</span>
         </div>
-        <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)]">
+        <div className="stat-box-3d">
           <span className="text-xs font-mono text-[var(--text-secondary)] uppercase">Pending Opening Verifications</span>
           <div className="text-2xl font-bold font-mono text-[#E8A33D] mt-1">{pendingVerifications.length} Items</div>
           <span className="text-[11px] text-[var(--text-muted)] mt-1 block">Awaiting operator YES / NO audit</span>
@@ -350,7 +350,7 @@ export default function InventoryDashboardPage() {
       {/* Tab Content: Current Stock Ledger */}
       {activeTab === "STOCK" && (
         <div className="space-y-4">
-          <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)] flex justify-between items-center">
+          <div className="card-3d p-4 flex justify-between items-center shadow-sm">
             <div className="relative flex-1 max-w-md">
               <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-secondary)]" />
               <input
@@ -358,7 +358,7 @@ export default function InventoryDashboardPage() {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search by SKU or material name..."
-                className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
+                className="w-full input-3d pl-10 pr-4 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-muted)] outline-none focus:border-[#38BDF8]"
               />
             </div>
             <div className="text-xs font-mono text-[var(--text-secondary)]">
@@ -366,7 +366,7 @@ export default function InventoryDashboardPage() {
             </div>
           </div>
 
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
+          <div className="card-3d overflow-hidden shadow-xl">
             {loading ? (
               <div className="p-12 text-center text-[var(--text-secondary)]">
                 <RefreshCw size={28} className="mx-auto mb-3 text-[#38BDF8] animate-spin" />
@@ -383,8 +383,8 @@ export default function InventoryDashboardPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] text-xs font-mono border-b border-[var(--border-hairline)]">
+                <table className="table-3d w-full text-left text-sm">
+                  <thead>
                     <tr>
                       <th className="p-4">SKU / CODE</th>
                       <th className="p-4">MATERIAL NAME</th>
@@ -401,7 +401,7 @@ export default function InventoryDashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
                     {stockList.map((item, idx) => (
-                      <tr key={`${item.skuCode}-${idx}`} className="hover:bg-[var(--bg-panel-raised)] transition-colors font-mono">
+                      <tr key={`${item.skuCode}-${idx}`} className="hover:bg-[var(--bg-panel-hover)] transition-colors font-mono">
                         <td className="p-4 font-bold text-[#38BDF8]">{item.skuCode}</td>
                         <td className="p-4 font-sans font-semibold text-[var(--text-primary)]">{item.productName}</td>
                         <td className="p-4 text-xs text-[var(--text-secondary)]">{item.category}</td>
@@ -438,7 +438,7 @@ export default function InventoryDashboardPage() {
       {/* Tab Content: Opening Stock Census */}
       {activeTab === "VERIFICATIONS" && (
         <div className="space-y-4">
-          <div className="bg-[var(--bg-panel)] p-4 rounded-xl border border-[var(--border-hairline)] text-xs text-[var(--text-secondary)] flex justify-between items-center">
+          <div className="card-3d p-4 text-xs text-[var(--text-secondary)] flex justify-between items-center shadow-sm">
             <div>
               <span className="font-bold text-[var(--text-primary)]">Human-in-the-Loop Opening Stock Protocol:</span>
               <p className="mt-0.5">
@@ -447,7 +447,7 @@ export default function InventoryDashboardPage() {
             </div>
           </div>
 
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl overflow-hidden shadow-xl">
+          <div className="card-3d overflow-hidden shadow-xl">
             {loading ? (
               <div className="p-12 text-center text-[var(--text-secondary)]">
                 <RefreshCw size={28} className="mx-auto mb-3 text-[#38BDF8] animate-spin" />
@@ -464,8 +464,8 @@ export default function InventoryDashboardPage() {
               </div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-[var(--bg-canvas)] text-[var(--text-secondary)] text-xs font-mono border-b border-[var(--border-hairline)]">
+                <table className="table-3d w-full text-left text-sm">
+                  <thead>
                     <tr>
                       <th className="p-4">STATUS</th>
                       <th className="p-4">SKU / CODE</th>
@@ -479,7 +479,7 @@ export default function InventoryDashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-[var(--border-hairline)] text-[var(--text-primary)]">
                     {verifications.map((v, idx) => (
-                      <tr key={`${v.verificationId}-${idx}`} className="hover:bg-[var(--bg-panel-raised)] transition-colors font-mono">
+                      <tr key={`${v.verificationId}-${idx}`} className="hover:bg-[var(--bg-panel-hover)] transition-colors font-mono">
                         <td className="p-4">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
@@ -500,7 +500,7 @@ export default function InventoryDashboardPage() {
                               <button
                                 type="button"
                                 onClick={() => setPreviewSnapshot(v.snapshotUrl!)}
-                                className="relative group shrink-0 w-9 h-9 rounded-md border border-[var(--border-hairline)] overflow-hidden bg-black/40 hover:border-[#38BDF8] transition-all"
+                                className="relative group shrink-0 w-9 h-9 rounded-md border border-[var(--border-subtle)] overflow-hidden bg-black/40 hover:border-[#38BDF8] transition-all shadow-sm"
                                 title="Click to view camera evidence snapshot"
                               >
                                 <img src={v.snapshotUrl} alt="Snapshot" className="w-full h-full object-cover" />
@@ -544,7 +544,7 @@ export default function InventoryDashboardPage() {
                               <button
                                 onClick={() => handleAcceptProposal(v.verificationId)}
                                 disabled={submitting}
-                                className="px-3 py-1 bg-[#10B981] hover:bg-[#059669] text-white rounded text-xs font-bold font-mono flex items-center gap-1 shadow-sm transition-all disabled:opacity-50"
+                                className="btn-3d btn-3d-success text-xs font-bold font-mono flex items-center gap-1 disabled:opacity-50"
                               >
                                 <Check size={13} /> YES — ACCEPT
                               </button>
@@ -555,7 +555,7 @@ export default function InventoryDashboardPage() {
                                   setCorrectionReason("");
                                 }}
                                 disabled={submitting}
-                                className="px-3 py-1 bg-[var(--bg-panel-raised)] hover:bg-[#E5484D]/20 text-[#E5484D] border border-[#E5484D]/40 rounded text-xs font-bold font-mono flex items-center gap-1 transition-all disabled:opacity-50"
+                                className="btn-3d btn-3d-danger text-xs font-bold font-mono flex items-center gap-1 disabled:opacity-50"
                               >
                                 <X size={13} /> NO — EDIT
                               </button>
@@ -576,13 +576,16 @@ export default function InventoryDashboardPage() {
 
       {/* Recount / Correction Modal */}
       {editingItem && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <FileCheck size={18} className="text-[#E8A33D]" /> Recount Correction: {editingItem.skuCode}
               </h3>
-              <button onClick={() => setEditingItem(null)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+              <button
+                onClick={() => setEditingItem(null)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
+              >
                 ✕
               </button>
             </div>
@@ -607,7 +610,7 @@ export default function InventoryDashboardPage() {
                   required
                   value={correctedCount}
                   onChange={(e) => setCorrectedCount(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] font-mono outline-none focus:border-[#38BDF8]"
                 />
               </div>
 
@@ -619,7 +622,7 @@ export default function InventoryDashboardPage() {
                   placeholder="e.g. 3 cases obscured behind pillar; manual verification done."
                   value={correctionReason}
                   onChange={(e) => setCorrectionReason(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-sans text-xs outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)]"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] font-sans text-xs outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)]"
                 />
               </div>
 
@@ -627,14 +630,14 @@ export default function InventoryDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setEditingItem(null)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs"
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs border border-[var(--border-subtle)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary text-xs font-bold disabled:opacity-50"
                 >
                   {submitting ? "Saving..." : "Lock Corrected Baseline"}
                 </button>
@@ -646,13 +649,16 @@ export default function InventoryDashboardPage() {
 
       {/* Manual Stock Adjustment Modal */}
       {showAdjustModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Plus size={18} className="text-[#38BDF8]" /> Manual Stock Adjustment
               </h3>
-              <button onClick={() => setShowAdjustModal(false)} className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+              <button
+                onClick={() => setShowAdjustModal(false)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors"
+              >
                 ✕
               </button>
             </div>
@@ -693,7 +699,7 @@ export default function InventoryDashboardPage() {
                     required
                     value={adjustSku}
                     onChange={(e) => setAdjustSku(e.target.value)}
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
+                    className="w-full input-3d p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8]"
                   >
                     <option value="" className="bg-[var(--bg-panel)] text-[var(--text-secondary)]">-- Select registered material --</option>
                     {stockList.map((s) => (
@@ -709,7 +715,7 @@ export default function InventoryDashboardPage() {
                     placeholder="Enter any SKU Code (e.g. SKU-WAT-500 or RAW-MAT-01)"
                     value={adjustSku}
                     onChange={(e) => setAdjustSku(e.target.value)}
-                    className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)] font-mono"
+                    className="w-full input-3d p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)] font-mono"
                   />
                 )}
               </div>
@@ -725,7 +731,7 @@ export default function InventoryDashboardPage() {
                   placeholder="e.g. +10 or -5"
                   value={adjustQty}
                   onChange={(e) => setAdjustQty(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)] font-mono text-base font-bold"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)] font-mono text-base font-bold"
                 />
 
                 {/* Quick Delta Chips */}
@@ -762,7 +768,7 @@ export default function InventoryDashboardPage() {
                   placeholder="e.g. Warehouse intake receipt, damaged pallet write-off"
                   value={adjustReason}
                   onChange={(e) => setAdjustReason(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] font-sans text-xs outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)]"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] font-sans text-xs outline-none focus:border-[#38BDF8] placeholder-[var(--text-muted)]"
                 />
 
                 {/* Quick Reason Chips */}
@@ -777,7 +783,7 @@ export default function InventoryDashboardPage() {
                       key={r}
                       type="button"
                       onClick={() => setAdjustReason(r)}
-                      className="px-2 py-0.5 rounded bg-[var(--bg-panel-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-hairline)] transition-colors"
+                      className="px-2 py-0.5 rounded bg-[var(--bg-panel-raised)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] border border-[var(--border-subtle)] transition-colors"
                     >
                       {r}
                     </button>
@@ -789,14 +795,14 @@ export default function InventoryDashboardPage() {
                 <button
                   type="button"
                   onClick={() => setShowAdjustModal(false)}
-                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-mono"
+                  className="px-4 py-2 bg-[var(--bg-panel-raised)] hover:bg-[var(--bg-panel-hover)] text-[var(--text-primary)] rounded-lg text-xs font-mono border border-[var(--border-subtle)]"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-5 py-2 bg-[#2563EB] hover:bg-[#1D4ED8] text-white rounded-lg text-xs font-bold font-mono shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                  className="btn-3d btn-3d-primary text-xs font-bold font-mono disabled:opacity-50"
                 >
                   {submitting ? "Posting..." : "Post Adjustment"}
                 </button>
@@ -808,8 +814,8 @@ export default function InventoryDashboardPage() {
 
       {/* AI Scan & Auto-Count Modal */}
       {showScanModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[var(--bg-panel)] border border-[var(--border-hairline)] rounded-xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="card-3d max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-[var(--border-hairline)] pb-3">
               <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <Camera size={20} className="text-[#38BDF8]" /> AI Vision Scan & Multi-Material Counting
@@ -821,7 +827,7 @@ export default function InventoryDashboardPage() {
                   setScanImageBase64(null);
                   setScanImageName(null);
                 }}
-                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-lg"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1 rounded-lg transition-colors text-lg"
               >
                 ✕
               </button>
@@ -841,7 +847,7 @@ export default function InventoryDashboardPage() {
                 <select
                   value={scanCameraId}
                   onChange={(e) => setScanCameraId(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] text-xs outline-none focus:border-[#38BDF8]"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] text-xs outline-none focus:border-[#38BDF8]"
                 >
                   <option value="CAM-01">CAM-01: Main Warehouse Exit Portal (Live / Snapshot)</option>
                   <option value="CAM-02">CAM-02: Express Dispatch & Bookshelf Bay (Live / Snapshot)</option>
@@ -858,7 +864,7 @@ export default function InventoryDashboardPage() {
                 <select
                   value={scanTargetSku}
                   onChange={(e) => setScanTargetSku(e.target.value)}
-                  className="w-full bg-[var(--bg-canvas)] border border-[var(--border-hairline)] rounded-lg p-2.5 text-[var(--text-primary)] text-xs outline-none focus:border-[#38BDF8]"
+                  className="w-full input-3d p-2.5 text-[var(--text-primary)] text-xs outline-none focus:border-[#38BDF8]"
                 >
                   <option value="">Auto-Detect All Visible Materials (Recommended)</option>
                   <option value="MAT-BOK-SHELF">Bookshelf Inventory & Documents (MAT-BOK-SHELF)</option>
@@ -926,7 +932,7 @@ export default function InventoryDashboardPage() {
                 type="button"
                 onClick={handleTriggerScanAndCount}
                 disabled={scanning}
-                className="w-full py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-sky-900/30 transition-all disabled:opacity-50"
+                className="btn-3d btn-3d-primary w-full py-3 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {scanning ? (
                   <>
@@ -952,7 +958,7 @@ export default function InventoryDashboardPage() {
                   </div>
 
                   {scanResult.snapshotUrl && (
-                    <div className="relative rounded-lg overflow-hidden border border-[var(--border-hairline)] max-h-48 bg-black flex items-center justify-center">
+                    <div className="relative rounded-lg overflow-hidden border border-[var(--border-hairline)] max-h-48 bg-black flex items-center justify-center box-3d p-1">
                       <img
                         src={scanResult.snapshotUrl}
                         alt="Scan Detection Overlay"
@@ -968,7 +974,7 @@ export default function InventoryDashboardPage() {
                     {scanResult.scannedMaterials?.map((m: any, idx: number) => (
                       <div
                         key={idx}
-                        className="flex justify-between items-center p-2 rounded bg-[var(--bg-panel)] border border-[var(--border-hairline)] text-xs"
+                        className="flex justify-between items-center p-2 rounded-lg bg-[var(--bg-panel)] border border-[var(--border-subtle)] text-xs shadow-sm"
                       >
                         <div>
                           <span className="font-bold text-[#38BDF8] mr-2">{m.skuCode}</span>
@@ -989,7 +995,7 @@ export default function InventoryDashboardPage() {
                         setActiveTab("VERIFICATIONS");
                         fetchData();
                       }}
-                      className="px-4 py-2 bg-[#10B981] hover:bg-[#059669] text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all font-mono"
+                      className="btn-3d btn-3d-success text-xs font-bold flex items-center gap-1.5 font-mono"
                     >
                       <FileCheck size={14} /> Review & Confirm in Opening Census
                     </button>
@@ -1004,10 +1010,10 @@ export default function InventoryDashboardPage() {
       {/* Full-size Snapshot Evidence Viewer Modal */}
       {previewSnapshot && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
+          className="fixed inset-0 z-[9999] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-pointer"
           onClick={() => setPreviewSnapshot(null)}
         >
-          <div className="relative max-w-4xl max-h-[90vh] bg-[var(--bg-panel)] p-2 rounded-xl border border-[var(--border-hairline)] shadow-2xl">
+          <div className="card-3d relative max-w-4xl max-h-[90vh] p-3 shadow-2xl">
             <button
               onClick={() => setPreviewSnapshot(null)}
               className="absolute top-4 right-4 z-10 p-2 bg-black/70 hover:bg-black text-white rounded-full text-xs"
@@ -1017,7 +1023,7 @@ export default function InventoryDashboardPage() {
             <img
               src={previewSnapshot}
               alt="Evidence Snapshot Full View"
-              className="max-h-[85vh] max-w-full rounded object-contain"
+              className="max-h-[85vh] max-w-full rounded-lg object-contain"
             />
           </div>
         </div>

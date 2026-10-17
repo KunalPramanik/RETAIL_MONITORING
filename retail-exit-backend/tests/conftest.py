@@ -1,5 +1,12 @@
 import pytest
 import os
+
+os.environ["ENVIRONMENT"] = "test"
+os.environ["BOOTSTRAP_OWNER_EMAIL"] = "ces@gmail.com"
+os.environ["BOOTSTRAP_OWNER_PASSWORD"] = "SecOps@2026MasterKey!"
+os.environ["SECOPS_ENCRYPTION_KEYS"] = "eE1yNFZ2Q0U3clg1T2k5UFZ2cUZXTVpDSEU3YUJvV2M="
+os.environ["SECRET_KEY"] = "SecOpsRemediationSecretKey2026ForTestingPurposesOnly32Bytes"
+
 from pathlib import Path
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from src.db.models import Base

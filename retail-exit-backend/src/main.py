@@ -483,11 +483,18 @@ async def get_health():
     worker_running = getattr(camera_worker, "is_running", False)
     poll_sec = getattr(camera_worker, "poll_interval_sec", 0.5)
 
+    edge_nodes_online = await get_active_edge_nodes_count()
+
     return {
         "status": "HEALTHY",
         "service": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "database": "CONNECTED",
+        "edgeNodesOnline": edge_nodes_online,
+        "edgeCluster": {
+            "activeNodes": edge_nodes_online,
+            "clusterStatus": "HEALTHY" if edge_nodes_online >= 0 else "DEGRADED",
+        },
         "cameraFleet": {
             "online": online_count,
             "degraded": degraded_count,

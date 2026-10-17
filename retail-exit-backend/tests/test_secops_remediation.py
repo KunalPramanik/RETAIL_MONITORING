@@ -309,3 +309,69 @@ async def test_negative_stock_rejection(db_session):
             unit_quantity=-10,
             allow_negative=False,
         )
+
+
+# =============================================================================
+# 10. Biometric Default-Disabled and Commercial License Gate Tests (R6)
+# =============================================================================
+
+def test_biometric_default_disabled():
+    """Verify biometrics are strictly disabled by default."""
+    from src.core.config import settings
+    from src.ml.face_recognition.face_service import FaceRecognitionService
+
+    # Reset in case any prior test touched it
+    original_enabled = settings.biometric.enabled
+    try:
+        settings.biometric.enabled = False
+        assert FaceRecognitionService.is_available() is False
+        assert FaceRecognitionService.extract_face_embedding(b"fake_frame_bytes") is None
+        
+        match_res = FaceRecognitionService.match_carrier([0.1]*512, [])
+        assert match_res.decision == "DISABLED"
+
+        with pytest.raises(RuntimeError, match="disabled by default"):
+            FaceRecognitionService.get_app()
+    finally:
+        settings.biometric.enabled = original_enabled
+
+
+def test_biometric_production_commercial_license_gate():
+    """Verify production requires commercial license acknowledgement for InsightFace."""
+    from src.core.config import settings
+    from src.ml.face_recognition.face_service import FaceRecognitionService
+
+    orig_env = settings.ENVIRONMENT
+    orig_enabled = settings.biometric.enabled
+    orig_ack = settings.biometric.commercial_license_acknowledged
+    try:
+        settings.ENVIRONMENT = "production"
+        settings.biometric.enabled = True
+        settings.biometric.commercial_license_acknowledged = False
+
+        assert FaceRecognitionService.is_available() is False
+        with pytest.raises(RuntimeError, match="commercial license"):
+            FaceRecognitionService.get_app()
+
+        # When acknowledged, is_available() returns True
+        settings.biometric.commercial_license_acknowledged = True
+        assert FaceRecognitionService.is_available() is True
+    finally:
+        settings.ENVIRONMENT = orig_env
+        settings.biometric.enabled = orig_enabled
+        settings.biometric.commercial_license_acknowledged = orig_ack
+
+
+@pytest.mark.asyncio
+async def test_employee_face_enrollment_disabled_by_default(async_client: AsyncClient):
+    """Verify employee face upload endpoints return 403 when biometrics disabled."""
+    from src.core.config import settings
+    orig_enabled = settings.biometric.enabled
+    try:
+        settings.biometric.enabled = False
+        files = {"file": ("face.jpg", b"fake_image_bytes_1234567890", "image/jpeg")}
+        resp = await async_client.post("/api/employees/emp-123/photo", files=files)
+        assert resp.status_code == 403
+        assert "disabled by default" in resp.json()["detail"]
+    finally:
+        settings.biometric.enabled = orig_enabled

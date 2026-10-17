@@ -118,11 +118,7 @@ pyrightconfig.json
 *.bat
 
 # Exclude non-README markdown files from Git repository
-*.md
 !README.md
-docs/*.md
-retail-exit-backend/*.md
-!retail-exit-backend/README.md
-retail-exit-nextjs/*.md
-!retail-exit-nextjs/README.md
+!THIRD_PARTY_LICENSES*
+!docs/FINAL_REPORT.md
 

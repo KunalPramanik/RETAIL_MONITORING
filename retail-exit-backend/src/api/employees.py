@@ -241,7 +241,13 @@ async def upload_employee_photo(
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db),
 ):
-    """Enrolls an employee's face photo for biometric Known/Unknown person authentication."""
+    from src.core.config import settings
+    if not settings.biometric.enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometric face enrollment is disabled by default (SECOPS_BIOMETRIC_ENABLED=false). Legal review and license authorization required.",
+        )
+
     result = await session.execute(select(Employee).where(Employee.employee_id == employee_id))
     emp = result.scalar_one_or_none()
     if not emp:
@@ -305,7 +311,13 @@ async def upload_employee_360_faces(
     files: List[UploadFile] = File(...),
     session: AsyncSession = Depends(get_db),
 ):
-    """Enrolls multiple angles (360-degree multi-view) for robust biometric face recognition."""
+    from src.core.config import settings
+    if not settings.biometric.enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Biometric face enrollment is disabled by default (SECOPS_BIOMETRIC_ENABLED=false). Legal review and license authorization required.",
+        )
+
     result = await session.execute(select(Employee).where(Employee.employee_id == employee_id))
     emp = result.scalar_one_or_none()
     if not emp:

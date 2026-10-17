@@ -47,7 +47,35 @@ class FaceRecognitionService:
     _app: Optional[FaceAnalysis] = None
 
     @classmethod
+    def is_available(cls) -> bool:
+        """Checks if biometric face service is legally licensed and administratively enabled."""
+        from src.core.config import settings
+        if not getattr(settings.biometric, "enabled", False):
+            return False
+        if (
+            getattr(settings, "ENVIRONMENT", "").lower() == "production"
+            and not getattr(settings.biometric, "commercial_license_acknowledged", False)
+        ):
+            return False
+        return True
+
+    @classmethod
     def get_app(cls) -> FaceAnalysis:
+        from src.core.config import settings
+        if not getattr(settings.biometric, "enabled", False):
+            raise RuntimeError(
+                "Biometric facial recognition is disabled by default (SECOPS_BIOMETRIC_ENABLED=false). "
+                "Legal review and explicit administrative activation required per SEC-OPS privacy policy."
+            )
+        if (
+            getattr(settings, "ENVIRONMENT", "").lower() == "production"
+            and not getattr(settings.biometric, "commercial_license_acknowledged", False)
+        ):
+            raise RuntimeError(
+                "InsightFace pretrained models (buffalo_s/buffalo_l) are licensed strictly for non-commercial research. "
+                "Commercial retail production deployment requires an upstream commercial license agreement with DeepInsight (contact@insightface.ai). "
+                "Set SECOPS_BIOMETRIC_COMMERCIAL_LICENSE_ACKNOWLEDGED=true once license is secured."
+            )
         if cls._app is None:
             import onnxruntime as _ort
             avail_providers = _ort.get_available_providers()
@@ -80,6 +108,8 @@ class FaceRecognitionService:
     @classmethod
     def extract_face_embedding(cls, frame_bytes: bytes) -> Optional[List[float]]:
         """Extracts a real 512-d ArcFace embedding from a single face image."""
+        if not cls.is_available():
+            return None
         nparr = np.frombuffer(frame_bytes, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if img is None:
@@ -98,6 +128,8 @@ class FaceRecognitionService:
     @classmethod
     def extract_360_face_embedding(cls, frame_bytes_list: List[bytes]) -> Optional[List[float]]:
         """Extracts and fuses multi-angle 360-degree ArcFace embeddings into a robust centroid."""
+        if not cls.is_available():
+            return None
         embeddings = []
         for fb in frame_bytes_list:
             emb = cls.extract_face_embedding(fb)
@@ -119,8 +151,7 @@ class FaceRecognitionService:
         is_ir_mode: bool = False,
     ) -> FaceMatchResult:
         """Runs 1:N cosine similarity search with multi-frame temporal voting across active roster."""
-        from src.core.config import settings
-        if not getattr(settings.biometric, "enabled", False):
+        if not cls.is_available():
             return FaceMatchResult(
                 matched_employee_id=None,
                 employee_name=None,
@@ -130,6 +161,8 @@ class FaceRecognitionService:
                 unauthorized_alert_needed=False,
                 frames_evaluated=0,
             )
+
+        from src.core.config import settings
 
         threshold = match_threshold if match_threshold is not None else getattr(settings.biometric, "face_match_threshold", cls.MATCH_THRESHOLD)
         low_conf_threshold = getattr(settings.biometric, "face_low_confidence_threshold", cls.LOW_CONFIDENCE_THRESHOLD)

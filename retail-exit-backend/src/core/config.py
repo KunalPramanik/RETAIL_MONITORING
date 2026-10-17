@@ -171,6 +171,7 @@ class CameraConfig(BaseModel):
 
 class BiometricConfig(BaseModel):
     enabled: bool = Field(default_factory=lambda: os.getenv("SECOPS_BIOMETRIC_ENABLED", "false").lower() == "true")
+    commercial_license_acknowledged: bool = Field(default_factory=lambda: os.getenv("SECOPS_BIOMETRIC_COMMERCIAL_LICENSE_ACKNOWLEDGED", "false").lower() == "true")
     face_match_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_FACE_MATCH_THRESHOLD", "0.65")))
     face_low_confidence_threshold: float = Field(default_factory=lambda: float(os.getenv("SECOPS_FACE_LOW_CONF_THRESHOLD", "0.45")))
     min_leading_confidence: float = Field(default_factory=lambda: float(os.getenv("SECOPS_MIN_LEADING_CONFIDENCE", "0.65")))

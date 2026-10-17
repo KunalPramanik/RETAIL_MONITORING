@@ -3,18 +3,26 @@
 import os
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
-from src.api.deps import get_current_user, role_required
-from src.db.models import AppUser as User
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from src.core.config import settings
+from src.api.deps import get_current_user, role_required
+from src.db.models import (
+    AppUser as User,
+    ThresholdConfig,
+    get_utc_now,
+    Store,
+    Camera,
+    Product,
+    InitialStockVerification,
+)
 from src.db.session import get_db
-from src.db.models import ThresholdConfig, get_utc_now
 from src.db.audit import log_audit_entry
 from src.schemas.settings import ThresholdConfigSchema
 from src.cache import cache_service
 from src.api.deps_auth import require_roles
-from src.core.config import settings
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
 
@@ -200,10 +208,6 @@ async def reset_database(
 
 
 # --- Store Profile & Onboarding Directives (Section A-7) ---
-
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
-from src.db.models import Store, Camera, Product, InitialStockVerification
 
 
 class StoreProfileSchema(BaseModel):

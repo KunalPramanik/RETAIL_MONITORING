@@ -12,6 +12,9 @@ from src.core.encryption import (
     decrypt_string,
     encrypt_json,
     decrypt_json,
+    rotate_ciphertext,
+    erase_biometric_embedding,
+    reset_fernet_instance,
 )
 from src.security import revoke_token, is_token_revoked, create_access_token
 from src.engine.motion_detector import MotionDetector
@@ -114,14 +117,14 @@ def test_static_false_positive_detection():
 
 
 # =============================================================================
-# 2. Fernet Encryption & Legacy Plaintext Fallback Tests
+# 2. MultiFernet Encryption, Key Rotation & Secure Erasure Tests (R8)
 # =============================================================================
 
 def test_fernet_string_encryption_roundtrip():
     secret = "rtsp://admin:super_secret_password@192.168.1.50:554/stream"
     encrypted = encrypt_string(secret)
     assert encrypted != secret
-    assert encrypted.startswith("enc:")
+    assert encrypted.startswith("enc:v1:")
     
     decrypted = decrypt_string(encrypted)
     assert decrypted == secret
@@ -131,19 +134,83 @@ def test_fernet_json_encryption_roundtrip():
     payload = {"rtsp_url": "rtsp://cam1", "user": "admin", "token": "abc123xyz"}
     encrypted = encrypt_json(payload)
     assert isinstance(encrypted, str)
-    assert encrypted.startswith("enc:")
+    assert encrypted.startswith("enc:v1:")
     
     decrypted = decrypt_json(encrypted)
     assert decrypted == payload
 
 
-def test_fernet_legacy_plaintext_fallback():
+def test_fernet_legacy_plaintext_and_unversioned_fallback():
+    # Legacy plain text without encryption
     plaintext = "legacy_unencrypted_credential"
     assert decrypt_string(plaintext) == plaintext
     
+    # Legacy unversioned enc: prefix
+    from cryptography.fernet import Fernet
+    from src.core.encryption import get_encryption_keys
+    primary_key = get_encryption_keys()[0]
+    legacy_token = f"enc:{Fernet(primary_key).encrypt(b'unversioned_secret').decode('utf-8')}"
+    assert decrypt_string(legacy_token) == "unversioned_secret"
+
     raw_json_str = '{"user": "legacy", "verified": true}'
     decrypted_json = decrypt_json(raw_json_str)
     assert decrypted_json == {"user": "legacy", "verified": True}
+
+
+def test_multifernet_key_rotation():
+    """Verify MultiFernet decrypts with secondary retiring keys and rotates to primary."""
+    import os
+    from cryptography.fernet import Fernet
+    
+    # Generate two distinct 32-byte Fernet keys
+    old_key = Fernet.generate_key().decode("utf-8")
+    new_primary_key = Fernet.generate_key().decode("utf-8")
+    
+    # Token encrypted under old key
+    old_cipher = Fernet(old_key.encode("utf-8"))
+    old_ciphertext = f"enc:v1:{old_cipher.encrypt(b'confidential_data_payload').decode('utf-8')}"
+    
+    # Configure MultiFernet with new key first (primary), then old key
+    orig_keys_env = os.environ.get("SECOPS_ENCRYPTION_KEYS")
+    try:
+        os.environ["SECOPS_ENCRYPTION_KEYS"] = f"{new_primary_key},{old_key}"
+        reset_fernet_instance()
+        
+        # 1. Decrypts old ciphertext seamlessly
+        assert decrypt_string(old_ciphertext) == "confidential_data_payload"
+        
+        # 2. Rotate ciphertext to re-encrypt under new primary key
+        rotated = rotate_ciphertext(old_ciphertext)
+        assert rotated != old_ciphertext
+        assert rotated.startswith("enc:v1:")
+        assert decrypt_string(rotated) == "confidential_data_payload"
+        
+        # 3. New primary key alone can decrypt the rotated token
+        raw_rotated = rotated.replace("enc:v1:", "")
+        new_cipher = Fernet(new_primary_key.encode("utf-8"))
+        assert new_cipher.decrypt(raw_rotated.encode("utf-8")).decode("utf-8") == "confidential_data_payload"
+    finally:
+        if orig_keys_env is not None:
+            os.environ["SECOPS_ENCRYPTION_KEYS"] = orig_keys_env
+        else:
+            os.environ.pop("SECOPS_ENCRYPTION_KEYS", None)
+        reset_fernet_instance()
+
+
+def test_biometric_secure_erasure():
+    """Verify explicit erasure zeros and clears biometric embedding vectors."""
+    class MockEmployee:
+        def __init__(self):
+            self.face_embedding = [0.123, -0.456, 0.789, 0.321]
+            self.embedding_updated_at = datetime.now(timezone.utc)
+    
+    emp = MockEmployee()
+    assert emp.face_embedding is not None
+    assert len(emp.face_embedding) == 4
+    
+    erase_biometric_embedding(emp)
+    assert emp.face_embedding is None
+    assert emp.embedding_updated_at is None
 
 
 # =============================================================================

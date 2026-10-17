@@ -387,8 +387,8 @@ async def delete_employee_photo(
         raise HTTPException(status_code=404, detail=f"Employee '{employee_id}' not found")
 
     had_face = bool(emp.face_embedding is not None and len(emp.face_embedding) > 0)
-    emp.face_embedding = None
-    emp.embedding_updated_at = None
+    from src.core.encryption import erase_biometric_embedding
+    erase_biometric_embedding(emp)
     session.add(emp)
     await session.flush()
 
